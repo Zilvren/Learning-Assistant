@@ -1,7 +1,7 @@
 from .data_store import load_json, save_json, now_str
 
 def load_subjects():
-    return load_json("subjects.json", ["数据结构", "计算机组成原理", "操作系统", "计算机网络", "数学", "英语"])
+    return load_json("subjects.json", [])
 
 def save_subjects(data):
     save_json("subjects.json", data)

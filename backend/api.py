@@ -180,9 +180,8 @@ def get_daily_push():
     errors = load_json("errors.json", [])
     import random
     # Pick one tip per subject
-    subjects_408 = ["数据结构", "计算机组成原理", "操作系统", "计算机网络"]
     knowledge = {}
-    for s in subjects_408 + ["数学", "英语"]:
+    for s in SUBJECTS:
         if s in kb and kb[s]:
             knowledge[s] = random.choice(kb[s])
     weak = [{"id": e["id"], "subject": e["subject"],

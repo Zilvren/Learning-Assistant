@@ -8,7 +8,7 @@ const emit = defineEmits(["snack"])
 const stats = ref({ total: 0, reviewed: 0, review_rate: 0, subject_counts: {}, weak_errors: [] })
 const loading = ref(true)
 
-const colors = { "数据结构": "#0EA5E9", "计算机组成原理": "#8B5CF6", "操作系统": "#10B981", "计算机网络": "#F97316", "数学": "#EC4899", "英语": "#F59E0B" }
+const colors = {}
 const colorPool = ["#0EA5E9","#8B5CF6","#10B981","#F97316","#EC4899","#F59E0B","#6366F1","#14B8A6","#F43F5E","#EAB308"]
 function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return h }
 function subjectColor(name) { return colors[name] || colorPool[Math.abs(hashCode(name)) % colorPool.length] }

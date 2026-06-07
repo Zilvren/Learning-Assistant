@@ -28,13 +28,13 @@ const showEditDlg = ref(false)
 const ocrInputAdd = ref(null)
 const ocrInputEdit = ref(null)
 const ocrLoading = ref(false)
-const addForm = ref({ subject:"数据结构", question:"", wrong:"", correct:"", reason:"", tags:"" })
+const addForm = ref({ subject:"", question:"", wrong:"", correct:"", reason:"", tags:"" })
 const addTab = ref("question")
 const editForm = ref({ subject:"", question:"", wrong:"", correct:"", reason:"", tags:"" })
 const { subjectRef } = useSubjects()
 const subjects = subjectRef
 
-const colors = { "数据结构": "#0EA5E9", "计算机组成原理": "#8B5CF6", "操作系统": "#10B981", "计算机网络": "#F97316", "数学": "#EC4899", "英语": "#F59E0B" }
+const colors = {}
 const colorPool = ["#0EA5E9","#8B5CF6","#10B981","#F97316","#EC4899","#F59E0B","#6366F1","#14B8A6","#F43F5E","#EAB308"]
 function subjectColor(name) { return colors[name] || colorPool[Math.abs(hashCode(name)) % colorPool.length] }
 function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return h }
@@ -81,7 +81,7 @@ async function saveAdd(){
       tags: addForm.value.tags.trim()?addForm.value.tags.trim().split(/\s+/):[],
     })
     showAddDlg.value = false
-    addForm.value = { subject:"数据结构", question:"", wrong:"", correct:"", reason:"", tags:"" }
+    addForm.value = { subject:subjects.value[1]||"", question:"", wrong:"", correct:"", reason:"", tags:"" }
     addTab.value = "question"
     emit("snack","错题已添加")
     await refresh()

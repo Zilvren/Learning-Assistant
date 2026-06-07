@@ -15,7 +15,7 @@ const formTabs = [
   { key: "tags", label: "标签" },
 ]
 const form = ref({
-  subject: "数据结构",
+  subject: "",
   question: "",
   wrong: "",
   correct: "",

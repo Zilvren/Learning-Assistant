@@ -16,7 +16,7 @@ DATA_DIR = os.path.join(os.getcwd(), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 _defaults = {
     "errors.json": "[]",
-    "subjects.json": '["数据结构","计算机组成原理","操作系统","计算机网络","数学","英语"]',
+    "subjects.json": '[]',
     "config.json": '{"mineru_token":""}',
 }
 for fname, content in _defaults.items():

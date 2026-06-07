@@ -1,9 +1,6 @@
 import { renderMd } from "./markdown.js"
 
-const colors = {
-  '数据结构':'#0EA5E9','计算机组成原理':'#8B5CF6','操作系统':'#10B981',
-  '计算机网络':'#F97316','数学':'#EC4899','英语':'#F59E0B',
-}
+const colors = {}
 const colorPool = ['#0EA5E9','#8B5CF6','#10B981','#F97316','#EC4899','#F59E0B','#6366F1','#14B8A6','#F43F5E','#EAB308']
 function subjectColor(name){if(colors[name])return colors[name];let h=0;for(let i=0;i<name.length;i++)h=((h<<5)-h+name.charCodeAt(i))|0;return colorPool[Math.abs(h)%colorPool.length]}
 
