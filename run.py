@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""11408 考研学习追踪器 - EXE 入口"""
+"""错题追踪器 - EXE 入口"""
 import sys, os
 
 # PyInstaller 打包后需要找到数据目录

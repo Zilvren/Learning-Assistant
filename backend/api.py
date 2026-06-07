@@ -20,7 +20,7 @@ from utils.pdf_export import generate_pdf
 from utils.data_store import load_json, save_json, today_str
 from backend.mineru import ocr_image
 
-app = FastAPI(title="11408 考研学习追踪器")
+app = FastAPI(title="错题追踪器")
 
 app.add_middleware(
     CORSMiddleware,
