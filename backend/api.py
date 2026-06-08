@@ -44,6 +44,7 @@ class AddErrorRequest(BaseModel):
     correct: str = "未记录"
     reason: str = "未记录"
     tags: list[str] = []
+    reason_tags: list[str] = []
 class UpdateErrorRequest(BaseModel):
     subject: Optional[str] = None
     title: Optional[str] = None
@@ -52,6 +53,7 @@ class UpdateErrorRequest(BaseModel):
     correct: Optional[str] = None
     reason: Optional[str] = None
     tags: Optional[list[str]] = None
+    reason_tags: Optional[list[str]] = None
 
 
 
@@ -108,7 +110,7 @@ def create_error(req: AddErrorRequest):
         raise HTTPException(400, f"无效科目，可选：{', '.join(SUBJECTS)}")
     if not req.question.strip():
         raise HTTPException(400, "题目不能为空")
-    ok = add_error(req.subject, req.question, req.wrong, req.correct, req.reason, req.tags, req.title)
+    ok = add_error(req.subject, req.question, req.wrong, req.correct, req.reason, req.tags, req.title, req.reason_tags)
     if ok:
         errors = load_json("errors.json", [])
         return {"id": errors[-1]["id"], "message": "添加成功"}
@@ -148,6 +150,8 @@ def update_error(error_id: int, req: UpdateErrorRequest):
                 e["reason"] = req.reason
             if req.tags is not None:
                 e["tags"] = req.tags
+            if req.reason_tags is not None:
+                e["reason_tags"] = req.reason_tags
             save_json("errors.json", errors)
             return {"message": f"错题 #{error_id} 已更新"}
     raise HTTPException(404, f"未找到错题 #{error_id}")

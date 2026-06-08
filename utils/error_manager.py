@@ -9,7 +9,7 @@ def save_subjects(data):
 SUBJECTS = load_subjects()
 
 
-def add_error(subject, question, wrong, correct, reason, tags=None, title=None):
+def add_error(subject, question, wrong, correct, reason, tags=None, title=None, reason_tags=None):
     if subject not in SUBJECTS:
         print(f'未知科目，可选：{", ".join(SUBJECTS)}')
         return False
@@ -23,6 +23,7 @@ def add_error(subject, question, wrong, correct, reason, tags=None, title=None):
         'correct': correct,
         'reason': reason,
         'tags': tags or [],
+        'reason_tags': reason_tags or [],
         'created': now_str(),
         'review_count': 0,
         'last_review': None
@@ -39,9 +40,9 @@ def list_errors(subject=None, keyword=None, tag=None):
         data = [e for e in data if e['subject'] == subject]
     if keyword:
         kw = keyword.lower()
-        data = [e for e in data if kw in e['question'].lower() or kw in (e.get('title') or '').lower() or kw in (e.get('reason') or '').lower() or any(kw in t.lower() for t in e.get('tags', []))]
+        data = [e for e in data if kw in e['question'].lower() or kw in (e.get('title') or '').lower() or kw in (e.get('reason') or '').lower() or any(kw in t.lower() for t in e.get('tags', [])) or any(kw in t.lower() for t in e.get('reason_tags', []))]
     if tag:
-        data = [e for e in data if any(tag.lower() in t.lower() for t in e.get('tags', []))]
+        data = [e for e in data if any(tag.lower() in t.lower() for t in e.get('tags', [])) or any(tag.lower() in t.lower() for t in e.get('reason_tags', []))]
     return data
 
 def all_tags():
@@ -49,6 +50,8 @@ def all_tags():
     tags = set()
     for e in data:
         for t in e.get('tags', []):
+            tags.add(t)
+        for t in e.get('reason_tags', []):
             tags.add(t)
     return sorted(tags)
 

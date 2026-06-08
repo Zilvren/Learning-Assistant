@@ -22,7 +22,8 @@ const formTabs = [
   { key: "wrong", label: "错答" },
   { key: "correct", label: "正解" },
   { key: "reason", label: "错因" },
-  { key: "tags", label: "标签" },
+  { key: "tags", label: "题目标签" },
+  { key: "reason_tags", label: "错因标签" },
 ]
 const detail = ref(null)
 const showDeleteDlg = ref(false)
@@ -33,9 +34,9 @@ const ocrInputEdit = ref(null)
 const ocrLoading = ref(false)
 const addEditor = ref(null)
 const editEditor = ref(null)
-const addForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"" })
+const addForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" })
 const addTab = ref("question")
-const editForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"" })
+const editForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" })
 const { subjectRef } = useSubjects()
 const subjects = subjectRef
 
@@ -88,9 +89,10 @@ async function saveAdd(){
       correct: addForm.value.correct.trim()||"未记录",
       reason: addForm.value.reason.trim()||"未记录",
       tags: addForm.value.tags.trim()?addForm.value.tags.trim().split(/\s+/):[],
+      reason_tags: addForm.value.reason_tags.trim()?addForm.value.reason_tags.trim().split(/s+/):[],
     })
     showAddDlg.value = false
-    addForm.value = { subject:subjects.value[1]||"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"" }
+    addForm.value = { subject:subjects.value[1]||"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" }
     addTab.value = "question"
     emit("snack","错题已添加")
     await refresh()
@@ -108,6 +110,7 @@ function doEdit(){
     wrong: e.wrong || "",
     correct: e.correct || "",
     reason: e.reason || "",
+    reason_tags: (e.reason_tags||[]).join(" "),
     tags: (e.tags||[]).join(" "),
   }
 }
@@ -186,6 +189,7 @@ async function saveEdit(){
       question: editForm.value.question.trim(),
       wrong: editForm.value.wrong.trim()||"未记录",
       correct: editForm.value.correct.trim()||"未记录",
+      reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/s+/):[],
       reason: editForm.value.reason.trim()||"未记录",
       tags: editForm.value.tags.trim()?editForm.value.tags.trim().split(/\s+/):[],
     })
@@ -198,6 +202,7 @@ async function saveEdit(){
         title: editForm.value.title.trim(),
         question: editForm.value.question.trim(),
         wrong: editForm.value.wrong.trim()||"未记录",
+        reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/s+/):[],
         correct: editForm.value.correct.trim()||"未记录",
         reason: editForm.value.reason.trim()||"未记录",
         tags: editForm.value.tags.trim()?editForm.value.tags.trim().split(/\s+/):[],
@@ -292,7 +297,8 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             <th style="width:50px">编号</th>
             <th style="width:100px">科目</th>
             <th>标题</th>
-            <th style="width:120px">标签</th>
+            <th style="width:120px">题目标签</th>
+            <th style="width:120px">错因标签</th>
           </tr>
         </thead>
         <tbody>
@@ -303,7 +309,7 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             <td>
               <span class="badge" :style="{ background: subjectColor(e.subject) }">{{ e.subject }}</span>
             </td>
-            <td><div class="md-inline" v-html="renderMd(e.question || '')"></div></td>
+            <td>{{ e.title || e.question?.slice(0,50) }}</td>
             <td>
               <span v-if="e.tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
                 <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='标签';keyword=t;refresh()">{{ t }}</span>
@@ -312,7 +318,7 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             </td>
           </tr>
           <tr v-if="!errors.length">
-            <td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">暂无错题数据</td>
+            <td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">暂无错题数据</td>
           </tr>
         </tbody>
       </table>
@@ -397,6 +403,9 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
                 <MarkdownEditor ref="addEditor" v-model="addForm.reason" :fill="true" :editOnly="true" />
               </div>
               <div v-if="addTab === 'tags'" class="form-group">
+              <div v-if="addTab === 'reason_tags'" class="form-group">
+                <input v-model="addForm.reason_tags" class="form-input" placeholder="空格分隔，如 概念混淆 计算错误" />
+              </div>
                 <input v-model="addForm.tags" class="form-input" placeholder="用空格分隔" />
               </div>
               <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
@@ -481,6 +490,9 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
                 <MarkdownEditor ref="editEditor" v-model="editForm.reason" :fill="true" :editOnly="true" />
               </div>
               <div v-if="editTab === 'tags'" class="form-group">
+              <div v-if="editTab === 'reason_tags'" class="form-group">
+                <input v-model="editForm.reason_tags" class="form-input" placeholder="空格分隔" />
+              </div>
                 <input v-model="editForm.tags" class="form-input" placeholder="用空格分隔" />
               </div>
 
