@@ -34,7 +34,7 @@ def add_error(subject, question, wrong, correct, reason, tags=None, title=None, 
     return True
 
 
-def list_errors(subject=None, keyword=None, tag=None):
+def list_errors(subject=None, keyword=None, tag=None, reason_tag=None):
     data = load_json('errors.json', [])
     if subject:
         data = [e for e in data if e['subject'] == subject]
@@ -42,7 +42,9 @@ def list_errors(subject=None, keyword=None, tag=None):
         kw = keyword.lower()
         data = [e for e in data if kw in e['question'].lower() or kw in (e.get('title') or '').lower() or kw in (e.get('reason') or '').lower() or any(kw in t.lower() for t in e.get('tags', [])) or any(kw in t.lower() for t in e.get('reason_tags', []))]
     if tag:
-        data = [e for e in data if any(tag.lower() in t.lower() for t in e.get('tags', [])) or any(tag.lower() in t.lower() for t in e.get('reason_tags', []))]
+        data = [e for e in data if any(tag.lower() in t.lower() for t in e.get('tags', []))]
+    if reason_tag:
+        data = [e for e in data if any(reason_tag.lower() in t.lower() for t in e.get('reason_tags', []))]
     return data
 
 def all_tags():

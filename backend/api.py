@@ -95,8 +95,8 @@ def remove_subject(name: str):
 
 
 @app.get("/api/errors")
-def get_errors(subject: Optional[str] = None, keyword: Optional[str] = None, tag: Optional[str] = None):
-    errors = list_errors(subject=subject, keyword=keyword, tag=tag)
+def get_errors(subject: Optional[str] = None, keyword: Optional[str] = None, tag: Optional[str] = None, reason_tag: Optional[str] = None):
+    errors = list_errors(subject=subject, keyword=keyword, tag=tag, reason_tag=reason_tag)
     return {"errors": errors, "total": len(errors)}
 
 @app.get("/api/tags")

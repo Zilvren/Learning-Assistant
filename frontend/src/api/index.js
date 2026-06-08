@@ -30,11 +30,12 @@ export const api = {
   },
   saveToken: (token) => request('PUT', '/settings/token', { token }),
   getToken: () => request('GET', '/settings/token'),
-  getErrors: (subject, keyword, tag) => {
+  getErrors: (subject, keyword, tag, reason_tag) => {
     const p = new URLSearchParams()
     if (subject && subject !== '全部') p.set('subject', subject)
     if (keyword) p.set('keyword', keyword)
-    if (tag && tag !== '全部') p.set('tag', tag)
+    if (tag) p.set('tag', tag)
+    if (reason_tag) p.set('reason_tag', reason_tag)
     return request('GET', '/errors?' + p.toString())
   },
   getTags: () => request('GET', '/tags'),

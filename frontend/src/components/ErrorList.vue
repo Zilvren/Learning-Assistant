@@ -11,8 +11,8 @@ const emit = defineEmits(["snack"])
 const errors = ref([])
 const currentSubject = ref("全部")
 const keyword = ref("")
-const searchMode = ref("全部") // 全部 | 标签 | 题目
-const searchModes = ["全部", "标签", "题目"]
+const searchMode = ref("全部")
+const searchModes = ["全部", "题目", "题目标签", "错因标签"]
 const selectedId = ref(null)
 const editingError = ref(null)
 const editTab = ref("question")
@@ -58,10 +58,12 @@ async function refresh() {
   try {
     const s = currentSubject.value === "全部" ? null : currentSubject.value
     const k = keyword.value.trim() || null
-    const t = searchMode.value === "标签" ? k : null
-    const q = searchMode.value === "题目" ? k : null
-    const kw = searchMode.value === "全部" ? k : null
-    const r = await api.getErrors(s, q || kw, t)
+    const kwMode = searchMode.value
+    const q = kwMode === "题目" ? k : null
+    const t = kwMode === "题目标签" ? k : null
+    const rt = kwMode === "错因标签" ? k : null
+    const kw = kwMode === "全部" ? k : null
+    const r = await api.getErrors(s, q || kw, t, rt)
     errors.value = r.errors
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
@@ -312,13 +314,13 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             <td><div class="md-inline" v-html="renderMd(e.title || e.question?.slice(0,50) || '')"></div></td>
             <td>
               <span v-if="e.tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
-                <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='标签';keyword=t;refresh()">{{ t }}</span>
+                <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='题目标签';keyword=t;refresh()">{{ t }}</span>
               </span>
               <span v-else style="color:var(--text-muted);font-size:11px">-</span>
             </td>
             <td>
               <span v-if="e.reason_tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
-                <span v-for="t in e.reason_tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='标签';keyword=t;refresh()">{{ t }}</span>
+                <span v-for="t in e.reason_tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='错因标签';keyword=t;refresh()">{{ t }}</span>
               </span>
               <span v-else style="color:var(--text-muted);font-size:11px">-</span>
             </td>
