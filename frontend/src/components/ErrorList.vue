@@ -89,7 +89,7 @@ async function saveAdd(){
       correct: addForm.value.correct.trim()||"未记录",
       reason: addForm.value.reason.trim()||"未记录",
       tags: addForm.value.tags.trim()?addForm.value.tags.trim().split(/\s+/):[],
-      reason_tags: addForm.value.reason_tags.trim()?addForm.value.reason_tags.trim().split(/s+/):[],
+      reason_tags: addForm.value.reason_tags.trim()?addForm.value.reason_tags.trim().split(/\s+/):[],
     })
     showAddDlg.value = false
     addForm.value = { subject:subjects.value[1]||"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" }
@@ -189,7 +189,7 @@ async function saveEdit(){
       question: editForm.value.question.trim(),
       wrong: editForm.value.wrong.trim()||"未记录",
       correct: editForm.value.correct.trim()||"未记录",
-      reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/s+/):[],
+      reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/\s+/):[],
       reason: editForm.value.reason.trim()||"未记录",
       tags: editForm.value.tags.trim()?editForm.value.tags.trim().split(/\s+/):[],
     })
@@ -202,7 +202,7 @@ async function saveEdit(){
         title: editForm.value.title.trim(),
         question: editForm.value.question.trim(),
         wrong: editForm.value.wrong.trim()||"未记录",
-        reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/s+/):[],
+        reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/\s+/):[],
         correct: editForm.value.correct.trim()||"未记录",
         reason: editForm.value.reason.trim()||"未记录",
         tags: editForm.value.tags.trim()?editForm.value.tags.trim().split(/\s+/):[],
@@ -309,10 +309,16 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             <td>
               <span class="badge" :style="{ background: subjectColor(e.subject) }">{{ e.subject }}</span>
             </td>
-            <td>{{ e.title || e.question?.slice(0,50) }}</td>
+            <td><div class="md-inline" v-html="renderMd(e.title || e.question?.slice(0,50) || '')"></div></td>
             <td>
               <span v-if="e.tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
                 <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='标签';keyword=t;refresh()">{{ t }}</span>
+              </span>
+              <span v-else style="color:var(--text-muted);font-size:11px">-</span>
+            </td>
+            <td>
+              <span v-if="e.reason_tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
+                <span v-for="t in e.reason_tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='标签';keyword=t;refresh()">{{ t }}</span>
               </span>
               <span v-else style="color:var(--text-muted);font-size:11px">-</span>
             </td>
@@ -403,10 +409,10 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
                 <MarkdownEditor ref="addEditor" v-model="addForm.reason" :fill="true" :editOnly="true" />
               </div>
               <div v-if="addTab === 'tags'" class="form-group">
+                <input v-model="addForm.tags" class="form-input" placeholder="用空格分隔" />
+              </div>
               <div v-if="addTab === 'reason_tags'" class="form-group">
                 <input v-model="addForm.reason_tags" class="form-input" placeholder="空格分隔，如 概念混淆 计算错误" />
-              </div>
-                <input v-model="addForm.tags" class="form-input" placeholder="用空格分隔" />
               </div>
               <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
                 <input type="file" accept="image/*" style="display:none" ref="ocrInputAdd" @change="onOcrFileAdd" />
@@ -490,10 +496,10 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
                 <MarkdownEditor ref="editEditor" v-model="editForm.reason" :fill="true" :editOnly="true" />
               </div>
               <div v-if="editTab === 'tags'" class="form-group">
+                <input v-model="editForm.tags" class="form-input" placeholder="用空格分隔" />
+              </div>
               <div v-if="editTab === 'reason_tags'" class="form-group">
                 <input v-model="editForm.reason_tags" class="form-input" placeholder="空格分隔" />
-              </div>
-                <input v-model="editForm.tags" class="form-input" placeholder="用空格分隔" />
               </div>
 
               <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
