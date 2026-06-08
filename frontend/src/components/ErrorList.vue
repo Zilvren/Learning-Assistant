@@ -119,7 +119,8 @@ async function doOcr(blob, targetForm, targetTab) {
   ocrLoading.value = true
   try {
     const result = await api.ocrImage(new File([blob], "clipboard.png", {type: blob.type || "image/png"}))
-    targetForm.value[targetTab.value] = result.markdown || ""
+    const prev = targetForm.value[targetTab.value] || ""
+    targetForm.value[targetTab.value] = prev ? prev + "\n\n" + (result.markdown || "") : (result.markdown || "")
     emit("snack", "OCR 识别完成")
   } catch (err) { emit("snack", err.message, "#ef4444") }
   finally { ocrLoading.value = false }
