@@ -287,6 +287,7 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             <th style="width:50px">编号</th>
             <th style="width:100px">科目</th>
             <th>题目摘要</th>
+            <th style="width:120px">标签</th>
           </tr>
         </thead>
         <tbody>
@@ -298,9 +299,15 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
               <span class="badge" :style="{ background: subjectColor(e.subject) }">{{ e.subject }}</span>
             </td>
             <td><div class="md-inline" v-html="renderMd(e.question || '')"></div></td>
+            <td>
+              <span v-if="e.tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
+                <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="currentTag=t;refresh()">{{ t }}</span>
+              </span>
+              <span v-else style="color:var(--text-muted);font-size:11px">-</span>
+            </td>
           </tr>
           <tr v-if="!errors.length">
-            <td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted)">暂无错题数据</td>
+            <td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">暂无错题数据</td>
           </tr>
         </tbody>
       </table>
