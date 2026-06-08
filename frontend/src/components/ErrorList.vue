@@ -11,6 +11,8 @@ const emit = defineEmits(["snack"])
 const errors = ref([])
 const currentSubject = ref("全部")
 const keyword = ref("")
+const currentTag = ref("全部")
+const allTags = ref([])
 const selectedId = ref(null)
 const editingError = ref(null)
 const editTab = ref("question")
@@ -46,6 +48,8 @@ onMounted(async () => {
   try {
     const r = await api.getSubjects()
     subjects.value = ["全部", ...r.subjects]
+    const t = await api.getTags()
+    allTags.value = ["全部", ...t.tags]
   } catch (e) { emit("snack", e.message, "#ef4444") }
   await refresh()
 })
@@ -54,7 +58,8 @@ async function refresh() {
   try {
     const s = currentSubject.value === "全部" ? null : currentSubject.value
     const k = keyword.value.trim() || null
-    const r = await api.getErrors(s, k)
+    const t = currentTag.value === "全部" ? null : currentTag.value
+    const r = await api.getErrors(s, k, t)
     errors.value = r.errors
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
@@ -255,6 +260,9 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input v-model="keyword" class="form-input" style="width:180px" placeholder="搜索关键词..."
                @keyup.enter="refresh" />
+        <select v-model="currentTag" @change="refresh" class="form-select" style="width:100px" v-if="allTags.length > 1">
+          <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
+        </select>
         <button class="btn btn-ghost" @click="refresh">🔍 查询</button>
         <button class="btn btn-ghost" style="color:var(--danger);background:rgba(239,68,68,.1)" @click="confirmDelete">
           🗑️ 删除

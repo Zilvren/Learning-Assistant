@@ -12,7 +12,7 @@ from typing import Optional
 
 from utils.error_manager import (
     SUBJECTS, add_error, list_errors, review_error,
-    delete_error, format_error, load_subjects, save_subjects
+    delete_error, format_error, load_subjects, save_subjects, all_tags
 )
 from utils.stats import show_stats
 from utils.daily_push import daily_push, get_knowledge_base
@@ -91,9 +91,13 @@ def remove_subject(name: str):
 
 
 @app.get("/api/errors")
-def get_errors(subject: Optional[str] = None, keyword: Optional[str] = None):
-    errors = list_errors(subject=subject, keyword=keyword)
+def get_errors(subject: Optional[str] = None, keyword: Optional[str] = None, tag: Optional[str] = None):
+    errors = list_errors(subject=subject, keyword=keyword, tag=tag)
     return {"errors": errors, "total": len(errors)}
+
+@app.get("/api/tags")
+def get_tags():
+    return {"tags": all_tags()}
 
 
 @app.post("/api/errors")

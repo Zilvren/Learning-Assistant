@@ -32,14 +32,24 @@ def add_error(subject, question, wrong, correct, reason, tags=None):
     return True
 
 
-def list_errors(subject=None, keyword=None):
+def list_errors(subject=None, keyword=None, tag=None):
     data = load_json('errors.json', [])
     if subject:
         data = [e for e in data if e['subject'] == subject]
     if keyword:
         kw = keyword.lower()
         data = [e for e in data if kw in e['question'].lower() or kw in (e.get('reason') or '').lower()]
+    if tag:
+        data = [e for e in data if 'tags' in e and tag in e['tags']]
     return data
+
+def all_tags():
+    data = load_json('errors.json', [])
+    tags = set()
+    for e in data:
+        for t in e.get('tags', []):
+            tags.add(t)
+    return sorted(tags)
 
 
 def review_error(error_id):
