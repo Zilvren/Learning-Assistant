@@ -38,7 +38,7 @@ def list_errors(subject=None, keyword=None, tag=None):
         data = [e for e in data if e['subject'] == subject]
     if keyword:
         kw = keyword.lower()
-        data = [e for e in data if kw in e['question'].lower() or kw in (e.get('reason') or '').lower()]
+        data = [e for e in data if kw in e['question'].lower() or kw in (e.get('reason') or '').lower() or any(kw in t.lower() for t in e.get('tags', []))]
     if tag:
         data = [e for e in data if 'tags' in e and tag in e['tags']]
     return data

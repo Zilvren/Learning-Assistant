@@ -11,8 +11,8 @@ const emit = defineEmits(["snack"])
 const errors = ref([])
 const currentSubject = ref("全部")
 const keyword = ref("")
-const currentTag = ref("全部")
-const allTags = ref([])
+const searchMode = ref("全部") // 全部 | 标签 | 题目
+const searchModes = ["全部", "标签", "题目"]
 const selectedId = ref(null)
 const editingError = ref(null)
 const editTab = ref("question")
@@ -48,8 +48,6 @@ onMounted(async () => {
   try {
     const r = await api.getSubjects()
     subjects.value = ["全部", ...r.subjects]
-    const t = await api.getTags()
-    allTags.value = ["全部", ...t.tags]
   } catch (e) { emit("snack", e.message, "#ef4444") }
   await refresh()
 })
@@ -58,8 +56,10 @@ async function refresh() {
   try {
     const s = currentSubject.value === "全部" ? null : currentSubject.value
     const k = keyword.value.trim() || null
-    const t = currentTag.value === "全部" ? null : currentTag.value
-    const r = await api.getErrors(s, k, t)
+    const t = searchMode.value === "标签" ? k : null
+    const q = searchMode.value === "题目" ? k : null
+    const kw = searchMode.value === "全部" ? k : null
+    const r = await api.getErrors(s, q || kw, t)
     errors.value = r.errors
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
@@ -258,11 +258,11 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
               @click="currentSubject = s; refresh()">{{ s }}</span>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input v-model="keyword" class="form-input" style="width:180px" placeholder="搜索关键词..."
-               @keyup.enter="refresh" />
-        <select v-model="currentTag" @change="refresh" class="form-select" style="width:100px" v-if="allTags.length > 1">
-          <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
+        <select v-model="searchMode" class="form-select" style="width:70px">
+          <option v-for="m in searchModes" :key="m" :value="m">{{ m }}</option>
         </select>
+        <input v-model="keyword" class="form-input" style="width:160px" placeholder="搜索关键词..."
+               @keyup.enter="refresh" />
         <button class="btn btn-ghost" @click="refresh">🔍 查询</button>
         <button class="btn btn-ghost" style="color:var(--danger);background:rgba(239,68,68,.1)" @click="confirmDelete">
           🗑️ 删除
@@ -301,7 +301,7 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
             <td><div class="md-inline" v-html="renderMd(e.question || '')"></div></td>
             <td>
               <span v-if="e.tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
-                <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="currentTag=t;refresh()">{{ t }}</span>
+                <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='标签';keyword=t;refresh()">{{ t }}</span>
               </span>
               <span v-else style="color:var(--text-muted);font-size:11px">-</span>
             </td>
