@@ -71,6 +71,7 @@ const tools = [
   { icon: "$", title: "行内公式", action: () => insertText("$", "$") },
   { icon: "$$", title: "公式块", action: () => insertText("$$\n", "\n$$") },
 ]
+defineExpose({ insertText })
 </script>
 
 <template>

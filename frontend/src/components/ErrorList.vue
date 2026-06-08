@@ -28,6 +28,8 @@ const showEditDlg = ref(false)
 const ocrInputAdd = ref(null)
 const ocrInputEdit = ref(null)
 const ocrLoading = ref(false)
+const addEditor = ref(null)
+const editEditor = ref(null)
 const addForm = ref({ subject:"", question:"", wrong:"", correct:"", reason:"", tags:"" })
 const addTab = ref("question")
 const editForm = ref({ subject:"", question:"", wrong:"", correct:"", reason:"", tags:"" })
@@ -119,8 +121,13 @@ async function doOcr(blob, targetForm, targetTab) {
   ocrLoading.value = true
   try {
     const result = await api.ocrImage(new File([blob], "clipboard.png", {type: blob.type || "image/png"}))
-    const prev = targetForm.value[targetTab.value] || ""
-    targetForm.value[targetTab.value] = prev ? prev + "\n\n" + (result.markdown || "") : (result.markdown || "")
+    // Insert at cursor position if editor ref is available
+    const editor = targetForm === addForm ? addEditor.value : editEditor.value
+    if (editor && editor.insertText) {
+      editor.insertText(result.markdown || "")
+    } else {
+      targetForm.value[targetTab.value] = (targetForm.value[targetTab.value] || "") + "\n\n" + (result.markdown || "")
+    }
     emit("snack", "OCR 识别完成")
   } catch (err) { emit("snack", err.message, "#ef4444") }
   finally { ocrLoading.value = false }
@@ -355,16 +362,16 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
                 <button v-for="t in formTabs" :key="t.key" class="chip" :class="{ active: addTab === t.key }" @click="addTab = t.key" style="font-size:12px">{{ t.label }}</button>
               </div>
               <div v-if="addTab === 'question'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="addForm.question" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="addEditor" v-model="addForm.question" :fill="true" :editOnly="true" />
               </div>
               <div v-if="addTab === 'wrong'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="addForm.wrong" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="addEditor" v-model="addForm.wrong" :fill="true" :editOnly="true" />
               </div>
               <div v-if="addTab === 'correct'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="addForm.correct" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="addEditor" v-model="addForm.correct" :fill="true" :editOnly="true" />
               </div>
               <div v-if="addTab === 'reason'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="addForm.reason" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="addEditor" v-model="addForm.reason" :fill="true" :editOnly="true" />
               </div>
               <div v-if="addTab === 'tags'" class="form-group">
                 <input v-model="addForm.tags" class="form-input" placeholder="用空格分隔" />
@@ -436,16 +443,16 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
               </div>
 
               <div v-if="editTab === 'question'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="editForm.question" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="editEditor" v-model="editForm.question" :fill="true" :editOnly="true" />
               </div>
               <div v-if="editTab === 'wrong'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="editForm.wrong" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="editEditor" v-model="editForm.wrong" :fill="true" :editOnly="true" />
               </div>
               <div v-if="editTab === 'correct'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="editForm.correct" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="editEditor" v-model="editForm.correct" :fill="true" :editOnly="true" />
               </div>
               <div v-if="editTab === 'reason'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor v-model="editForm.reason" :fill="true" :editOnly="true" />
+                <MarkdownEditor ref="editEditor" v-model="editForm.reason" :fill="true" :editOnly="true" />
               </div>
               <div v-if="editTab === 'tags'" class="form-group">
                 <input v-model="editForm.tags" class="form-input" placeholder="用空格分隔" />
