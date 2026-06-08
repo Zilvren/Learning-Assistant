@@ -96,7 +96,7 @@ function buildHtml(errors){
   .md pre code{background:none;padding:0;color:inherit}
   .md mark{background:#fef08a;color:#1e293b;padding:1px 3px;border-radius:2px;font-weight:600;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
   .md blockquote{border-left:3px solid #6366f1;padding:2px 8px;margin:3px 0;color:#64748b;background:#f8fafc;border-radius:0 3px 3px 0;font-size:.95em}
-  .md img{max-width:100%;border-radius:4px;margin:4px 0}
+  .md img{max-width:100%!important;width:auto!important;max-height:240px;border-radius:4px;margin:4px 0;object-fit:contain}
   .wrong{flex:1;padding:6px 8px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444}
   .correct{flex:1;padding:6px 8px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15);border-left:3px solid #10b981}
   .wrong .label{color:#ef4444}.correct .label{color:#16a34a}
