@@ -133,8 +133,7 @@ def ocr_image(image_bytes: bytes, file_name: str = "question.png") -> str:
     if up.status_code not in (200, 201):
         raise Exception(f"Upload failed: HTTP {up.status_code}")
 
-    # Step 3: Poll for results (try extract-results endpoint first)
-    import sys
+    # Step 3: Poll for results
     start = time.time()
     timeout_val = 300
     task_id = None
@@ -165,25 +164,7 @@ def ocr_image(image_bytes: bytes, file_name: str = "question.png") -> str:
                     if tid and not task_id:
                         task_id = tid
         except requests.exceptions.RequestException:
-            pass  # retry on network error
-
-        # Fallback: query file-urls endpoint for task_id
-        if not task_id:
-            try:
-                fr = requests.get(
-                    f"https://mineru.net/api/v4/file-urls/batch/{batch_id}",
-                    headers={"Authorization": f"Bearer {get_token()}"},
-                    timeout=10
-                )
-                if fr.status_code == 200:
-                    data = fr.json().get("data", {})
-                    extract_result = data.get("extract_result", [])
-                    if extract_result:
-                        tid = extract_result[0].get("task_id")
-                        if tid:
-                            task_id = tid
-            except requests.exceptions.RequestException:
-                pass
+            pass
 
         # If we have a task ID, poll it directly (most reliable)
         if task_id:
@@ -198,7 +179,9 @@ def ocr_image(image_bytes: bytes, file_name: str = "question.png") -> str:
                     if td.get("state") == "done":
                         zip_url = td.get("full_zip_url", "")
                         if zip_url:
-                            return download_and_extract_md(zip_url)
+                            md = download_and_extract_md(zip_url)
+                            print(f"[OCR] Returned {len(md)} chars of markdown")
+                            return md
                     elif td.get("state") == "failed":
                         raise Exception(f"MinerU failed: {td.get('err_msg')}")
             except requests.exceptions.RequestException:
@@ -206,17 +189,26 @@ def ocr_image(image_bytes: bytes, file_name: str = "question.png") -> str:
 
     raise TimeoutError(f"MinerU OCR timed out after {timeout_val}s")
 
+class MinerUDownloadError(Exception):
+    pass
+
 def download_and_extract_md(zip_url: str) -> str:
     """Download MinerU result zip, extract full.md with images as base64 data URIs."""
     import base64, re
 
-    resp = requests.get(zip_url, timeout=60)
-    if resp.status_code != 200:
-        raise Exception(f"Failed to download result zip: HTTP {resp.status_code}")
+    import urllib3
+    try:
+        http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+        resp = http.request('GET', zip_url, timeout=60, retries=False)
+        if resp.status != 200:
+            raise MinerUDownloadError(f"Failed to download result zip: HTTP {resp.status}")
+        content = resp.data
+    except Exception as e:
+        raise MinerUDownloadError(f"Failed to download result zip: {e}") from e
 
     zip_path = os.path.join(TEMP_DIR, "result.zip")
     with open(zip_path, "wb") as f:
-        f.write(resp.content)
+        f.write(content)
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:

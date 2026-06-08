@@ -216,13 +216,16 @@ def export_pdf():
 
 
 @app.post("/api/ocr")
-async def ocr_endpoint(file: UploadFile = File(None)):
+async def ocr_endpoint(request: Request):
     """Convert uploaded image to Markdown using MinerU."""
-    if not file or not file.filename:
-        raise HTTPException(400, "No file uploaded")
+    import asyncio, concurrent.futures
     try:
-        contents = await file.read()
-        md_content = ocr_image(contents, file.filename or "ocr_upload.png")
+        body = await request.body()
+        if not body:
+            raise HTTPException(400, "No file uploaded")
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            md_content = await loop.run_in_executor(pool, ocr_image, body, "ocr_upload.png")
         return {"markdown": md_content}
     except ValueError as e:
         raise HTTPException(400, str(e))

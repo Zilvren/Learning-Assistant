@@ -23,9 +23,8 @@ export const api = {
   addSubject: (name) => request('POST', '/subjects', { name }),
   deleteSubject: (name) => request('DELETE', '/subjects/' + encodeURIComponent(name)),
   ocrImage: async (file) => {
-    const form = new FormData()
-    form.append('file', file)
-    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: form })
+    const blob = file instanceof Blob ? file : new Blob([file])
+    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob })
     if (!resp.ok) throw new Error((await resp.json()).detail || 'OCR failed')
     return resp.json()
   },
