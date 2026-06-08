@@ -79,7 +79,7 @@ function buildHtml(errors){
 <style>
   @page{size:A4;margin:1.2cm}
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:"Noto Sans SC",-apple-system,sans-serif;color:#1e293b;font-size:10px;line-height:1.45;max-width:100%;margin:0 auto}
+  body{font-family:"Noto Sans SC",-apple-system,sans-serif;color:#1e293b;font-size:11px;line-height:1.5;max-width:100%;margin:0 auto}
   .header{text-align:center;padding:12px 0 10px;border-bottom:1.5px solid #f1f5f9;margin-bottom:14px}
   .header h1{font-size:15px;font-weight:700;color:#0f172a;margin-bottom:1px;letter-spacing:.5px}
   .header p{font-size:9px;color:#94a3b8}
@@ -87,7 +87,7 @@ function buildHtml(errors){
   .subject{page-break-after:avoid}
   .card{page-break-inside:avoid}
   .label{font-size:7.5px;font-weight:600;color:#64748b;display:inline-block;margin-right:4px;text-transform:uppercase;letter-spacing:.3px}
-  .md{font-size:10.5px;line-height:1.5;color:#1e293b;word-wrap:break-word}
+  .md{font-size:11.5px;line-height:1.55;color:#1e293b;word-wrap:break-word}
   .md p{margin:2px 0}
   .md h1,.md h2,.md h3,.md h4{margin-top:3px;margin-bottom:2px;font-weight:600;font-size:1.05em}
   .md ul,.md ol{padding-left:16px;margin:2px 0}
@@ -100,9 +100,9 @@ function buildHtml(errors){
   .wrong{flex:1;padding:6px 8px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444}
   .correct{flex:1;padding:6px 8px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15);border-left:3px solid #10b981}
   .wrong .label{color:#ef4444}.correct .label{color:#16a34a}
-  .katex{font-size:1.25em}.katex-display{font-size:1.35em;margin:4px 0;overflow-x:auto}
-  .wrong .katex,.correct .katex{font-size:1.3em}
-  .wrong .katex-display,.correct .katex-display{font-size:1.4em}
+  .katex{font-size:1.4em}.katex-display{font-size:1.55em;margin:4px 0;overflow-x:auto}
+  .wrong .katex,.correct .katex{font-size:1.45em}
+  .wrong .katex-display,.correct .katex-display{font-size:1.6em}
 </style></head><body>
 
 <div class="header">
