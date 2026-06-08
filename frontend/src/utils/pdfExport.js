@@ -100,9 +100,9 @@ function buildHtml(errors){
   .wrong{flex:1;padding:6px 8px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444}
   .correct{flex:1;padding:6px 8px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15);border-left:3px solid #10b981}
   .wrong .label{color:#ef4444}.correct .label{color:#16a34a}
-  .katex{font-size:1.05em}.katex-display{font-size:1.1em;margin:3px 0;overflow-x:auto}
-  .wrong .katex,.correct .katex{font-size:1.1em}
-  .wrong .katex-display,.correct .katex-display{font-size:1.15em}
+  .katex{font-size:1.25em}.katex-display{font-size:1.35em;margin:4px 0;overflow-x:auto}
+  .wrong .katex,.correct .katex{font-size:1.3em}
+  .wrong .katex-display,.correct .katex-display{font-size:1.4em}
 </style></head><body>
 
 <div class="header">
