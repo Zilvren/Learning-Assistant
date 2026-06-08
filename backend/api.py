@@ -39,12 +39,14 @@ app.add_middleware(
 class AddErrorRequest(BaseModel):
     subject: str
     question: str
+    title: str = ""
     wrong: str = "未记录"
     correct: str = "未记录"
     reason: str = "未记录"
     tags: list[str] = []
 class UpdateErrorRequest(BaseModel):
     subject: Optional[str] = None
+    title: Optional[str] = None
     question: Optional[str] = None
     wrong: Optional[str] = None
     correct: Optional[str] = None
@@ -106,7 +108,7 @@ def create_error(req: AddErrorRequest):
         raise HTTPException(400, f"无效科目，可选：{', '.join(SUBJECTS)}")
     if not req.question.strip():
         raise HTTPException(400, "题目不能为空")
-    ok = add_error(req.subject, req.question, req.wrong, req.correct, req.reason, req.tags)
+    ok = add_error(req.subject, req.question, req.wrong, req.correct, req.reason, req.tags, req.title)
     if ok:
         errors = load_json("errors.json", [])
         return {"id": errors[-1]["id"], "message": "添加成功"}
@@ -132,6 +134,8 @@ def update_error(error_id: int, req: UpdateErrorRequest):
                 if req.subject not in SUBJECTS:
                     raise HTTPException(400, f"无效科目")
                 e["subject"] = req.subject
+            if req.title is not None:
+                e["title"] = req.title
             if req.question is not None:
                 if not req.question.strip():
                     raise HTTPException(400, "题目不能为空")

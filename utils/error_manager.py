@@ -9,7 +9,7 @@ def save_subjects(data):
 SUBJECTS = load_subjects()
 
 
-def add_error(subject, question, wrong, correct, reason, tags=None):
+def add_error(subject, question, wrong, correct, reason, tags=None, title=None):
     if subject not in SUBJECTS:
         print(f'未知科目，可选：{", ".join(SUBJECTS)}')
         return False
@@ -17,6 +17,7 @@ def add_error(subject, question, wrong, correct, reason, tags=None):
     entry = {
         'id': len(data) + 1,
         'subject': subject,
+        'title': title or question[:40],
         'question': question,
         'wrong': wrong,
         'correct': correct,
@@ -38,9 +39,9 @@ def list_errors(subject=None, keyword=None, tag=None):
         data = [e for e in data if e['subject'] == subject]
     if keyword:
         kw = keyword.lower()
-        data = [e for e in data if kw in e['question'].lower() or kw in (e.get('reason') or '').lower() or any(kw in t.lower() for t in e.get('tags', []))]
+        data = [e for e in data if kw in e['question'].lower() or kw in (e.get('title') or '').lower() or kw in (e.get('reason') or '').lower() or any(kw in t.lower() for t in e.get('tags', []))]
     if tag:
-        data = [e for e in data if 'tags' in e and tag in e['tags']]
+        data = [e for e in data if any(tag.lower() in t.lower() for t in e.get('tags', []))]
     return data
 
 def all_tags():

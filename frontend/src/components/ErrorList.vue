@@ -17,6 +17,7 @@ const selectedId = ref(null)
 const editingError = ref(null)
 const editTab = ref("question")
 const formTabs = [
+  { key: "title", label: "标题" },
   { key: "question", label: "题目" },
   { key: "wrong", label: "错答" },
   { key: "correct", label: "正解" },
@@ -32,9 +33,9 @@ const ocrInputEdit = ref(null)
 const ocrLoading = ref(false)
 const addEditor = ref(null)
 const editEditor = ref(null)
-const addForm = ref({ subject:"", question:"", wrong:"", correct:"", reason:"", tags:"" })
+const addForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"" })
 const addTab = ref("question")
-const editForm = ref({ subject:"", question:"", wrong:"", correct:"", reason:"", tags:"" })
+const editForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"" })
 const { subjectRef } = useSubjects()
 const subjects = subjectRef
 
@@ -82,13 +83,14 @@ async function saveAdd(){
     await api.addError({
       subject: addForm.value.subject,
       question: addForm.value.question.trim(),
+      title: addForm.value.title.trim(),
       wrong: addForm.value.wrong.trim()||"未记录",
       correct: addForm.value.correct.trim()||"未记录",
       reason: addForm.value.reason.trim()||"未记录",
       tags: addForm.value.tags.trim()?addForm.value.tags.trim().split(/\s+/):[],
     })
     showAddDlg.value = false
-    addForm.value = { subject:subjects.value[1]||"", question:"", wrong:"", correct:"", reason:"", tags:"" }
+    addForm.value = { subject:subjects.value[1]||"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"" }
     addTab.value = "question"
     emit("snack","错题已添加")
     await refresh()
@@ -102,6 +104,7 @@ function doEdit(){
   editForm.value = {
     subject: e.subject,
     question: e.question,
+    title: e.title || e.question?.slice(0,40) || "",
     wrong: e.wrong || "",
     correct: e.correct || "",
     reason: e.reason || "",
@@ -179,6 +182,7 @@ async function saveEdit(){
   try{
     await api.updateError(selectedId.value,{
       subject: editForm.value.subject,
+      title: editForm.value.title.trim(),
       question: editForm.value.question.trim(),
       wrong: editForm.value.wrong.trim()||"未记录",
       correct: editForm.value.correct.trim()||"未记录",
@@ -191,6 +195,7 @@ async function saveEdit(){
       errors.value[idx] = {
         ...errors.value[idx],
         subject: editForm.value.subject,
+        title: editForm.value.title.trim(),
         question: editForm.value.question.trim(),
         wrong: editForm.value.wrong.trim()||"未记录",
         correct: editForm.value.correct.trim()||"未记录",
@@ -286,7 +291,7 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
           <tr>
             <th style="width:50px">编号</th>
             <th style="width:100px">科目</th>
-            <th>题目摘要</th>
+            <th>标题</th>
             <th style="width:120px">标签</th>
           </tr>
         </thead>
@@ -376,6 +381,9 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
               <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">
                 <button v-for="t in formTabs" :key="t.key" class="chip" :class="{ active: addTab === t.key }" @click="addTab = t.key" style="font-size:12px">{{ t.label }}</button>
               </div>
+              <div v-if="addTab === 'title'" style="flex:1;display:flex;flex-direction:column;min-height:0">
+                <MarkdownEditor ref="addEditor" v-model="addForm.title" :fill="true" :editOnly="true" />
+              </div>
               <div v-if="addTab === 'question'" style="flex:1;display:flex;flex-direction:column;min-height:0">
                 <MarkdownEditor ref="addEditor" v-model="addForm.question" :fill="true" :editOnly="true" />
               </div>
@@ -457,6 +465,9 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
                         @click="editTab = t.key" style="font-size:12px">{{ t.label }}</button>
               </div>
 
+              <div v-if="editTab === 'title'" style="flex:1;display:flex;flex-direction:column;min-height:0">
+                <MarkdownEditor ref="editEditor" v-model="editForm.title" :fill="true" :editOnly="true" />
+              </div>
               <div v-if="editTab === 'question'" style="flex:1;display:flex;flex-direction:column;min-height:0">
                 <MarkdownEditor ref="editEditor" v-model="editForm.question" :fill="true" :editOnly="true" />
               </div>
