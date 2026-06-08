@@ -63,6 +63,7 @@ function insertText(before, after = "") {
 const tools = [
   { icon: "B", title: "加粗", action: () => insertText("**", "**") },
   { icon: "I", title: "斜体", action: () => insertText("*", "*") },
+  { icon: "S̶", title: "删除线", action: () => insertText("~~", "~~") },
   { icon: "H", title: "标题", action: () => insertText("## ") },
   { icon: "•", title: "列表", action: () => insertText("- ") },
   { icon: "🔗", title: "链接", action: () => insertText("[", "](url)") },
