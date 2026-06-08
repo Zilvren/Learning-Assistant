@@ -71,6 +71,7 @@ const tools = [
   { icon: "```", title: "代码块", action: () => insertText("```\n", "\n```") },
   { icon: "$", title: "行内公式", action: () => insertText("$", "$") },
   { icon: "$$", title: "公式块", action: () => insertText("$$\n", "\n$$") },
+  { icon: "∅", title: "公式删除线", action: () => insertText("\\cancel{", "}") },
 ]
 defineExpose({ insertText })
 </script>
