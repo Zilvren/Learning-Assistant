@@ -48,15 +48,9 @@ function onInput(e) {
 function insertText(before, after = "") {
   const ta = textarea.value
   if (!ta) return
-  const start = ta.selectionStart
-  const end = ta.selectionEnd
-  const selected = props.modelValue.slice(start, end)
-  const newVal = props.modelValue.slice(0, start) + before + selected + after + props.modelValue.slice(end)
-  emit("update:modelValue", newVal)
-  requestAnimationFrame(() => {
-    ta.focus()
-    ta.setSelectionRange(start + before.length, start + before.length + selected.length)
-  })
+  ta.focus()
+  const selected = props.modelValue.slice(ta.selectionStart, ta.selectionEnd)
+  document.execCommand('insertText', false, before + selected + after)
 }
 
 const tools = [

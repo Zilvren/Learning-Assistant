@@ -134,6 +134,8 @@ async function doOcr(blob, targetForm, targetTab) {
   ocrLoading.value = true
   try {
     const result = await api.ocrImage(new File([blob], "clipboard.png", {type: blob.type || "image/png"}))
+    // Convert $$ block formulas to $ inline
+    if (result.markdown) result.markdown = result.markdown.replace(/\$\$([^$]+)\$\$/g, '$$$1$$')
     // Insert at cursor position if editor ref is available
     const editor = targetForm === addForm ? addEditor.value : editEditor.value
     if (editor && editor.insertText) {
