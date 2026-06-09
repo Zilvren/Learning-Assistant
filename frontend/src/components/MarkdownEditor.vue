@@ -46,7 +46,6 @@ function onInput(e) {
 }
 
 function insertText(before, after = "") {
-  if (!expandImgs.value && hasBase64.value) return  // avoid cursor confusion when collapsed
   const ta = textarea.value
   if (!ta) return
   const start = ta.selectionStart
