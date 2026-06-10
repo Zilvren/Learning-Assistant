@@ -30,6 +30,7 @@ export const api = {
   },
   saveToken: (token) => request('PUT', '/settings/token', { token }),
   getToken: () => request('GET', '/settings/token'),
+  saveUsername: (name) => request('PUT', '/settings/username', { name }),
   getErrors: (subject, keyword, tag, reason_tag) => {
     const p = new URLSearchParams()
     if (subject && subject !== '全部') p.set('subject', subject)

@@ -247,14 +247,14 @@ async def ocr_endpoint(request: Request):
 
 @app.get("/api/settings/token")
 def get_settings_token():
-    """Get current MinerU token (masked)."""
+    """Get current MinerU token (masked) and username."""
     try:
         config = load_json("config.json", default={})
         token = config.get("mineru_token", "").strip()
         masked = token[:8] + "***" + token[-4:] if len(token) > 12 else "***"
-        return {"token": masked, "configured": bool(token)}
+        return {"token": masked, "configured": bool(token), "username": config.get("username", "考研人")}
     except:
-        return {"token": "", "configured": False}
+        return {"token": "", "configured": False, "username": "考研人"}
 
 
 @app.put("/api/settings/token")
@@ -266,6 +266,13 @@ def set_settings_token(data: dict):
     save_json("config.json", config)
     return {"message": "Token saved"}
 
+@app.put("/api/settings/username")
+def set_username(data: dict):
+    name = data.get("name", "").strip()
+    config = load_json("config.json", default={})
+    config["username"] = name
+    save_json("config.json", config)
+    return {"message": "Username saved"}
 
 # ── SPA 静态文件（放在 API 路由之后，避免拦截 /api/*）──
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")

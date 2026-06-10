@@ -12,9 +12,10 @@ const subjectList = ref([])
 const newSubject = ref("")
 const mineruToken = ref("")
 const tokenSaved = ref(false)
+const username = ref("考研人")
 
 onMounted(async () => {
-  try { const t = await api.getToken(); mineruToken.value = t.configured ? t.token : "" }
+  try { const t = await api.getToken(); mineruToken.value = t.configured ? t.token : ""; username.value = t.username || "考研人" }
   catch(e){/*ignore*/}
 })
 
@@ -27,6 +28,9 @@ onMounted(async () => {
   subjectList.value = subjectRef.value
 })
 
+async function saveUsername() {
+  try { await api.saveUsername(username.value) } catch(e) { alert('保存失败') }
+}
 async function saveToken() {
   try {
     await api.saveToken(mineruToken.value)
@@ -68,6 +72,11 @@ const items = [
             <h3 style="font-weight:600;font-size:15px">⚙️ 设置</h3>
             <button class="btn" style="font-size:18px;padding:4px 8px" @click="showSettingsDlg = false">✕</button>
           </div>
+          <label class="form-label" style="font-size:12px;margin-bottom:4px">用户名</label>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input v-model="username" class="form-input" placeholder="设置用户名" style="font-size:12px" />
+            <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveUsername">保存</button>
+          </div>
           <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
           <div style="display:flex;gap:8px">
             <input v-model="mineruToken" class="form-input" placeholder="粘贴 Token" style="font-size:12px" />
@@ -105,7 +114,7 @@ const items = [
         <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
       </div>
       <h1 style="font-size:24px">错题本</h1>
-      <p style="font-size:12.5px">错题追踪器</p>
+      <p style="font-size:12.5px">{{ username }}</p>
     </div>
     <nav class="sidebar-nav">
       <div v-for="item in items" :key="item.key"
