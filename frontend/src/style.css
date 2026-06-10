@@ -219,7 +219,9 @@ body {
   position: fixed; inset:0; background: rgba(0,0,0,.3);
   display: flex; align-items: center; justify-content: center;
   z-index: 9998; backdrop-filter: blur(2px);
+  animation: overlayIn .2s ease;
 }
+@keyframes overlayIn { from { opacity: 0 } to { opacity: 1 } }
 .dialog {
   background: var(--surface); border-radius: var(--radius);
   padding: 24px; min-width: 320px; box-shadow: var(--shadow-lg);
