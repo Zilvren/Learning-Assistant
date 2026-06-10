@@ -74,8 +74,9 @@ const items = [
   <aside class="sidebar">
     <!-- Settings Dialog -->
     <Teleport to="body">
-      <div v-if="showSettingsDlg" class="dialog-overlay" @click.self="showSettingsDlg = false">
-        <div class="dialog" style="width:400px;animation:fadeInUp .2s">
+      <Transition name="dialog">
+      <div v-if="showSettingsDlg" class="dialog-overlay">
+        <div class="dialog" style="width:400px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h3 style="font-weight:600;font-size:15px">⚙️ 设置</h3>
             <button class="btn" style="font-size:18px;padding:4px 8px" @click="showSettingsDlg = false">✕</button>
@@ -93,12 +94,14 @@ const items = [
           <p v-if="mineruToken" style="font-size:10px;color:var(--text-muted);margin-top:4px">Token 已配置，OCR 可用</p>
         </div>
       </div>
+      </Transition>
     </Teleport>
 
     <!-- Subject Dialog -->
     <Teleport to="body">
-      <div v-if="showSubDlg" class="dialog-overlay" @click.self="showSubDlg = false">
-        <div class="dialog" style="width:420px;animation:fadeInUp .2s">
+      <Transition name="dialog">
+      <div v-if="showSubDlg" class="dialog-overlay">
+        <div class="dialog" style="width:420px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h3 style="font-weight:600;font-size:15px">管理科目</h3>
             <button class="btn" style="font-size:18px;padding:4px 8px" @click="showSubDlg = false">✕</button>
@@ -116,6 +119,7 @@ const items = [
           </div>
         </div>
       </div>
+      </Transition>
     </Teleport>
     <div class="sidebar-brand">
       <div class="logo">
