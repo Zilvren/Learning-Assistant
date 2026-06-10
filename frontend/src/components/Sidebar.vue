@@ -12,10 +12,10 @@ const subjectList = ref([])
 const newSubject = ref("")
 const mineruToken = ref("")
 const tokenSaved = ref(false)
-const username = ref("考研人")
+const username = ref("")
 
 onMounted(async () => {
-  try { const t = await api.getToken(); mineruToken.value = t.configured ? t.token : ""; username.value = t.username || "考研人" }
+  try { const t = await api.getToken(); mineruToken.value = t.configured ? t.token : ""; username.value = t.username || "" }
   catch(e){/*ignore*/}
 })
 

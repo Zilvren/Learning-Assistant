@@ -252,9 +252,9 @@ def get_settings_token():
         config = load_json("config.json", default={})
         token = config.get("mineru_token", "").strip()
         masked = token[:8] + "***" + token[-4:] if len(token) > 12 else "***"
-        return {"token": masked, "configured": bool(token), "username": config.get("username", "考研人")}
+        return {"token": masked, "configured": bool(token), "username": config.get("username", "")}
     except:
-        return {"token": "", "configured": False, "username": "考研人"}
+        return {"token": "", "configured": False, "username": ""}
 
 
 @app.put("/api/settings/token")

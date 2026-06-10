@@ -39,7 +39,7 @@ const date = new Date().toISOString().slice(0, 10)
     <div class="card" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:24px 28px;margin-bottom:24px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
         <div>
-          <h2 style="font-size:24px;margin-bottom:6px">{{ greeting }}，{{ username || '同学' }}</h2>
+          <h2 style="font-size:24px;margin-bottom:6px">{{ greeting }}<template v-if="username">，{{ username }}</template></h2>
           <p style="font-size:14px;opacity:.6">{{ date }} · 今日学习推送</p>
         </div>
         <div style="display:flex;gap:10px">
