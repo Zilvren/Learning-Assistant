@@ -28,8 +28,13 @@ onMounted(async () => {
   subjectList.value = subjectRef.value
 })
 
+const usernameSaved = ref(false)
 async function saveUsername() {
-  try { await api.saveUsername(username.value) } catch(e) { alert('保存失败') }
+  try {
+    await api.saveUsername(username.value)
+    usernameSaved.value = true
+    setTimeout(() => usernameSaved.value = false, 2000)
+  } catch(e) { alert('保存失败: ' + e.message) }
 }
 async function saveToken() {
   try {
@@ -75,7 +80,7 @@ const items = [
           <label class="form-label" style="font-size:12px;margin-bottom:4px">用户名</label>
           <div style="display:flex;gap:8px;margin-bottom:12px">
             <input v-model="username" class="form-input" placeholder="设置用户名" style="font-size:12px" />
-            <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveUsername">保存</button>
+            <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveUsername" :style="usernameSaved ? 'color:#10b981' : ''">{{ usernameSaved ? '已保存' : '保存' }}</button>
           </div>
           <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
           <div style="display:flex;gap:8px">
