@@ -7,6 +7,7 @@ defineProps({ active: String })
 
 const emit = defineEmits(["navigate"])
 const showSubDlg = ref(false)
+const showSettingsDlg = ref(false)
 const subjectList = ref([])
 const newSubject = ref("")
 const mineruToken = ref("")
@@ -59,6 +60,25 @@ const items = [
 
 <template>
   <aside class="sidebar">
+    <!-- Settings Dialog -->
+    <Teleport to="body">
+      <div v-if="showSettingsDlg" class="dialog-overlay" @click.self="showSettingsDlg = false">
+        <div class="dialog" style="width:400px;animation:fadeInUp .2s">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="font-weight:600;font-size:15px">⚙️ 设置</h3>
+            <button class="btn" style="font-size:18px;padding:4px 8px" @click="showSettingsDlg = false">✕</button>
+          </div>
+          <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
+          <div style="display:flex;gap:8px">
+            <input v-model="mineruToken" class="form-input" placeholder="粘贴 Token" style="font-size:12px" />
+            <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveToken" :style="tokenSaved ? 'color:#10b981' : ''">{{ tokenSaved ? '已保存' : '保存' }}</button>
+          </div>
+          <p v-if="mineruToken" style="font-size:10px;color:var(--text-muted);margin-top:4px">Token 已配置，OCR 可用</p>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Subject Dialog -->
     <Teleport to="body">
       <div v-if="showSubDlg" class="dialog-overlay" @click.self="showSubDlg = false">
         <div class="dialog" style="width:420px;animation:fadeInUp .2s">
@@ -76,14 +96,6 @@ const items = [
           <div style="display:flex;gap:8px;margin-bottom:16px">
             <input v-model="newSubject" class="form-input" placeholder="输入新科目名称" @keyup.enter="addSubject" />
             <button class="btn btn-primary" style="white-space:nowrap;font-size:12px" @click="addSubject">添加</button>
-          </div>
-          <div style="border-top:1px solid var(--border);padding-top:12px">
-            <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
-            <div style="display:flex;gap:8px">
-              <input v-model="mineruToken" class="form-input" placeholder="粘贴 Token" style="font-size:12px" />
-              <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveToken" :style="tokenSaved ? 'color:#10b981' : ''">{{ tokenSaved ? '✅ 已保存' : '保存' }}</button>
-            </div>
-            <p v-if="mineruToken" style="font-size:10px;color:var(--text-muted);margin-top:4px">已配置 Token · 双击可编辑</p>
           </div>
         </div>
       </div>
@@ -105,8 +117,12 @@ const items = [
     </nav>
     <div class="sidebar-footer">
       <button class="btn btn-ghost" style="color:rgba(255,255,255,.55);font-size:13.5px"
+              @click="showSettingsDlg = true">
+        ⚙️ 设置
+      </button>
+      <button class="btn btn-ghost" style="color:rgba(255,255,255,.55);font-size:13.5px"
               @click="openSubjectDialog">
-        ⚙️ 管理科目
+        📚 管理科目
       </button>
       <button class="btn btn-ghost" style="color:rgba(255,255,255,.55);font-size:13.5px"
               @click="$emit('navigate', 'home')">

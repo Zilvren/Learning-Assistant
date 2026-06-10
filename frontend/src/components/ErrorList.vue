@@ -132,6 +132,11 @@ function triggerOcrAdd() { ocrInputAdd.value?.click() }
 function triggerOcrEdit() { ocrInputEdit.value?.click() }
 
 async function doOcr(blob, targetForm, targetTab) {
+  // Check token first
+  let tokenOk = false
+  try { const t = await api.getToken(); tokenOk = t.configured } catch(e) {}
+  if (!tokenOk) { emit("snack","请先在设置中配置 MinerU Token 再使用 OCR","#f59e0b"); return }
+
   ocrLoading.value = true
   try {
     const result = await api.ocrImage(new File([blob], "clipboard.png", {type: blob.type || "image/png"}))
