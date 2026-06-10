@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue"
 import { useSubjects } from "../store/subjects.js"
+import { useSettings } from "../store/settings.js"
 import { api } from "../api/index.js"
 
 defineProps({ active: String })
@@ -10,12 +11,13 @@ const showSubDlg = ref(false)
 const showSettingsDlg = ref(false)
 const subjectList = ref([])
 const newSubject = ref("")
+const { username, setUsername, load: loadSettings } = useSettings()
+
 const mineruToken = ref("")
 const tokenSaved = ref(false)
-const username = ref("")
 
 onMounted(async () => {
-  try { const t = await api.getToken(); mineruToken.value = t.configured ? t.token : ""; username.value = t.username || "" }
+  try { await loadSettings(); const t = await api.getToken(); mineruToken.value = t.configured ? t.token : "" }
   catch(e){/*ignore*/}
 })
 
@@ -32,6 +34,7 @@ const usernameSaved = ref(false)
 async function saveUsername() {
   try {
     await api.saveUsername(username.value)
+    setUsername(username.value)
     usernameSaved.value = true
     setTimeout(() => usernameSaved.value = false, 2000)
   } catch(e) { alert('保存失败: ' + e.message) }

@@ -2,13 +2,14 @@
 import { ref, onMounted } from "vue"
 import { api } from "../api/index.js"
 import { useSubjects } from "../store/subjects.js"
+import { useSettings } from "../store/settings.js"
 
 const emit = defineEmits(["snack"])
 const data = ref({ knowledge: {}, weak_errors: [], total_errors: 0, reviewed: 0, advice: "" })
 const loading = ref(true)
 
 onMounted(async () => {
-  try { const { subjectRef } = useSubjects()
+  try { await useSettings().load(); const { subjectRef } = useSubjects()
       await useSubjects().load()
       subjectList.value = subjectRef.value
       data.value = await api.getDailyPush() } catch (e) { emit("snack", e.message, "#ef4444") }
@@ -23,13 +24,9 @@ function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 
 function subjectColor(name) { return colors[name] || colorPool[Math.abs(hashCode(name)) % colorPool.length] }
 const icons = {}
 
-const username = ref("")
+const { username } = useSettings()
 const hour = new Date().getHours()
 const greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好"
-
-onMounted(async () => {
-  try { const t = await api.getToken(); username.value = t.username || "" } catch(e){}
-})
 const date = new Date().toISOString().slice(0, 10)
 </script>
 
