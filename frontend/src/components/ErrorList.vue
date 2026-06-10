@@ -81,6 +81,7 @@ function selectError(e) {
 }
 
 async function saveAdd(){
+  if(!addForm.value.subject){emit("snack","请先添加并选择科目","#f59e0b");return}
   if(!addForm.value.question.trim()){emit("snack","题目不能为空","#f59e0b");return}
   try{
     await api.addError({
@@ -281,7 +282,7 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
         <button class="btn btn-ghost" style="color:var(--danger);background:rgba(239,68,68,.1)" @click="confirmDelete">
           🗑️ 删除
         </button>
-        <button class="btn btn-ghost" @click="showAddDlg = true" style="color:var(--accent);background:var(--accent)12">
+        <button class="btn btn-ghost" @click="showAddDlg = true; addForm.subject = addForm.subject || subjectRef[0] || ''" style="color:var(--accent);background:var(--accent)12">
           ➕ 添加
         </button>
         <button class="btn btn-ghost" @click="doEdit" :style="{ color: selectedId ? `var(--accent)` : `var(--text-muted)`, background: selectedId ? `var(--accent)12` : `transparent` }">
