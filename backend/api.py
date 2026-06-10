@@ -10,10 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
+from utils import error_manager
 from utils.error_manager import (
-    SUBJECTS, add_error, list_errors, review_error,
+    add_error, list_errors, review_error,
     delete_error, format_error, load_subjects, save_subjects, all_tags
 )
+
 from utils.stats import show_stats
 from utils.daily_push import daily_push, get_knowledge_base
 from utils.pdf_export import generate_pdf
@@ -63,8 +65,8 @@ class UpdateErrorRequest(BaseModel):
 # ============================================================
 
 @app.get("/api/subjects")
-def get_subjects():
-    return {"subjects": load_subjects()}
+def api_get_subjects():
+    return {"subjects": error_manager.SUBJECTS}
 
 
 @app.post("/api/subjects")
@@ -72,25 +74,23 @@ def add_subject(data: dict):
     name = data.get("name", "").strip()
     if not name:
         raise HTTPException(400, "科目名称不能为空")
-    subjects = load_subjects()
+    subjects = error_manager.SUBJECTS[:]
     if name in subjects:
         raise HTTPException(400, "科目已存在")
     subjects.append(name)
     save_subjects(subjects)
-    global SUBJECTS
-    SUBJECTS = subjects
+    error_manager.SUBJECTS = subjects
     return {"subjects": subjects}
 
 
 @app.delete("/api/subjects/{name}")
 def remove_subject(name: str):
-    subjects = load_subjects()
+    subjects = error_manager.SUBJECTS[:]
     if name not in subjects:
         raise HTTPException(404, "科目不存在")
     subjects.remove(name)
     save_subjects(subjects)
-    global SUBJECTS
-    SUBJECTS = subjects
+    error_manager.SUBJECTS = subjects
     return {"subjects": subjects}
 
 
@@ -106,8 +106,8 @@ def get_tags():
 
 @app.post("/api/errors")
 def create_error(req: AddErrorRequest):
-    if req.subject not in SUBJECTS:
-        raise HTTPException(400, f"无效科目，可选：{', '.join(SUBJECTS)}")
+    if req.subject not in error_manager.SUBJECTS:
+        raise HTTPException(400, f"无效科目，可选：{', '.join(error_manager.SUBJECTS)}")
     if not req.question.strip():
         raise HTTPException(400, "题目不能为空")
     ok = add_error(req.subject, req.question, req.wrong, req.correct, req.reason, req.tags, req.title, req.reason_tags)
@@ -133,7 +133,7 @@ def update_error(error_id: int, req: UpdateErrorRequest):
     for e in errors:
         if e["id"] == error_id:
             if req.subject is not None:
-                if req.subject not in SUBJECTS:
+                if req.subject not in error_manager.SUBJECTS:
                     raise HTTPException(400, f"无效科目")
                 e["subject"] = req.subject
             if req.title is not None:
@@ -170,7 +170,7 @@ def get_stats():
     total = len(errors)
     reviewed = sum(1 for e in errors if e.get("review_count", 0) >= 2)
     review_rate = int(reviewed / max(total, 1) * 100)
-    subject_counts = {s: 0 for s in SUBJECTS}
+    subject_counts = {s: 0 for s in error_manager.SUBJECTS}
     for e in errors:
         subject_counts[e["subject"]] = subject_counts.get(e["subject"], 0) + 1
     weak = [{"id": e["id"], "subject": e["subject"],
@@ -193,7 +193,7 @@ def get_daily_push():
     import random
     # Pick one tip per subject
     knowledge = {}
-    for s in SUBJECTS:
+    for s in error_manager.SUBJECTS:
         if s in kb and kb[s]:
             knowledge[s] = random.choice(kb[s])
     weak = [{"id": e["id"], "subject": e["subject"],
