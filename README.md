@@ -41,21 +41,9 @@
 
 ### 方式二：源码运行
 
-```bash
-# 1. 安装依赖
-pip install fastapi uvicorn pydantic requests
+右键 `start.ps1` → 使用 PowerShell 运行，自动安装依赖、构建前端并启动服务。浏览器打开 http://127.0.0.1:8000
 
-# 2. 构建前端
-cd frontend
-npm install
-npm run build
-cd ..
-
-# 3. 启动
-python backend/api.py
-```
-
-浏览器打开 http://127.0.0.1:8000
+> 需要已安装 Python 3.10+ 和 Node.js。
 
 ## 🔧 MinerU OCR 配置
 
