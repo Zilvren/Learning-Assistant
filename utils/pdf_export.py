@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PDF export module for 11408 study tracker.
+PDF export module for 错题追踪器 study tracker.
 Uses fpdf2 + Microsoft YaHei TTF font for Chinese PDF generation.
 """
 
@@ -35,7 +35,7 @@ class StudyReport(FPDF):
         if self.page_no() > 1:
             self.set_font("YaHei", "", 8)
             self.set_text_color(150, 150, 150)
-            self.cell(0, 6, "11408 考研学习追踪器", align='R')
+            self.cell(0, 6, "错题追踪器 考研学习追踪器", align='R')
             self.ln(8)
 
     def footer(self):
@@ -102,7 +102,7 @@ def generate_pdf(save_path):
 
     pdf.set_font("YaHei", "B", 28)
     pdf.set_text_color(30, 41, 59)
-    pdf.cell(0, 16, "11408 考研学习追踪器", align='C')
+    pdf.cell(0, 16, "错题追踪器 考研学习追踪器", align='C')
     pdf.ln(22)
 
     pdf.set_font("YaHei", "B", 16)

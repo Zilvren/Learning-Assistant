@@ -1,27 +1,23 @@
-# 11408 考研学习追踪器 - 一键启动脚本
+# 错题追踪器 - 一键启动脚本
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$backend = "$root\backend"
-$frontend = "$root\frontend"
 
-Write-Host "🚀 启动 11408 考研学习追踪器..." -ForegroundColor Cyan
-
-# 启动后端
-Write-Host "📡 启动后端 API (端口 8000)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root'; python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000"
-
-# 启动前端
-Write-Host "🎨 启动前端 Vue (端口 5173)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$frontend'; node_modules\.bin\vite.cmd --host"
-
-# 等待启动
-Start-Sleep -Seconds 5
-
-# 打开浏览器
-Write-Host "🌐 打开浏览器..." -ForegroundColor Green
-Start-Process "http://localhost:5173"
-
+Write-Host "Starting server..." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "✅ 启动完成！后端 http://localhost:8000 | 前端 http://localhost:5173" -ForegroundColor Green
-Write-Host "按任意键退出此窗口（不会关闭后端和前端）..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
+# Check if built frontend exists
+if (-not (Test-Path "$root\frontend\dist")) {
+    Write-Host "Building frontend first..." -ForegroundColor Yellow
+    Set-Location "$root\frontend"
+    npm install 2>&1 | Out-Null
+    npm run build 2>&1 | Out-Null
+    Set-Location $root
+    Write-Host ""
+}
+
+Write-Host "Server: http://127.0.0.1:8000" -ForegroundColor Green
+Write-Host "Press Ctrl+C to stop" -ForegroundColor Gray
+Write-Host ""
+
+Set-Location $root
+python backend/api.py

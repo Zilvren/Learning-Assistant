@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-11408 考研学习追踪器
+错题追踪器
 功能：错题记录、薄弱点分析、每日知识点推送
 """
 
@@ -22,7 +22,7 @@ from utils.daily_push import daily_push
 def print_menu():
     print("""
 ╔══════════════════════════════════════╗
-║      📚 11408 考研学习追踪器 📚       ║
+║      📚 错题追踪器 📚       ║
 ╠══════════════════════════════════════╣
 ║  1. 🌟 每日学习推送                   ║
 ║  2. ➕ 添加错题                       ║
@@ -112,7 +112,7 @@ def do_delete():
 
 
 def main():
-    print('\n🎓 欢迎来到 11408 考研学习追踪器！')
+    print('\n🎓 欢迎来到 错题追踪器！')
     print('   数据保存在 study_tracker/data/ 目录下\n')
 
     while True:
@@ -132,7 +132,7 @@ def main():
         elif choice == '6':
             do_delete()
         elif choice == '0':
-            print('\n👋 祝你考研顺利，上岸浙工大！')
+            print('\n👋 感谢使用！')
             break
         else:
             print('\n❌ 无效选择，请重新输入')
