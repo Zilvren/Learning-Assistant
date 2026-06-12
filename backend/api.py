@@ -3,22 +3,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
 from utils import error_manager
 from utils.error_manager import (
     add_error, list_errors, review_error,
-    delete_error, format_error, load_subjects, save_subjects, all_tags
+    delete_error, save_subjects, all_tags
 )
 
-from utils.stats import show_stats
-from utils.daily_push import daily_push, get_knowledge_base
-from utils.pdf_export import generate_pdf
+from utils.daily_push import get_knowledge_base
 from utils.data_store import load_json, save_json, today_str
 from backend.mineru import ocr_image
 
@@ -164,28 +161,6 @@ def remove_error(error_id: int):
     raise HTTPException(404, f"未找到错题 #{error_id}")
 
 
-@app.get("/api/stats")
-def get_stats():
-    errors = load_json("errors.json", [])
-    total = len(errors)
-    reviewed = sum(1 for e in errors if e.get("review_count", 0) >= 2)
-    review_rate = int(reviewed / max(total, 1) * 100)
-    subject_counts = {s: 0 for s in error_manager.SUBJECTS}
-    for e in errors:
-        subject_counts[e["subject"]] = subject_counts.get(e["subject"], 0) + 1
-    weak = [{"id": e["id"], "subject": e["subject"],
-             "question": e["question"][:60],
-             "review_count": e.get("review_count", 0)}
-            for e in errors if e.get("review_count", 0) < 2]
-    return {
-        "total": total,
-        "reviewed": reviewed,
-        "review_rate": review_rate,
-        "subject_counts": subject_counts,
-        "weak_errors": weak,
-    }
-
-
 @app.get("/api/daily-push")
 def get_daily_push():
     kb = get_knowledge_base()
@@ -196,10 +171,19 @@ def get_daily_push():
     for s in error_manager.SUBJECTS:
         if s in kb and kb[s]:
             knowledge[s] = random.choice(kb[s])
-    weak = [{"id": e["id"], "subject": e["subject"],
-             "question": e["question"][:60],
-             "review_count": e.get("review_count", 0)}
-            for e in errors if e.get("review_count", 0) < 2]
+    weak = [{
+        "id": e["id"],
+        "subject": e["subject"],
+        "title": e.get("title") or f"未命名错题 #{e['id']}",
+        "question": e.get("question", ""),
+        "wrong": e.get("wrong", "未记录"),
+        "correct": e.get("correct", "未记录"),
+        "reason": e.get("reason", "未记录"),
+        "tags": e.get("tags", []),
+        "reason_tags": e.get("reason_tags", []),
+        "created": e.get("created"),
+        "review_count": e.get("review_count", 0),
+    } for e in errors if e.get("review_count", 0) < 2]
     total = len(errors)
     advice = ("当前错题量较少，保持刷题节奏，注意归纳总结" if total < 20 else
               "错题量适中，重点复习标记为概念不清的题目" if total < 50 else
@@ -212,19 +196,6 @@ def get_daily_push():
         "weak_errors": weak,
         "advice": advice,
     }
-
-
-@app.post("/api/export-pdf")
-def export_pdf():
-    errors = load_json("errors.json", [])
-    if not errors:
-        raise HTTPException(400, "暂无错题数据")
-    pdf_path = os.path.join(os.path.dirname(__file__), "temp_report.pdf")
-    ok = generate_pdf(pdf_path)
-    if not ok:
-        raise HTTPException(500, "PDF 生成失败")
-    return FileResponse(pdf_path, media_type="application/pdf",
-                        filename=f"错题报告_{today_str()}.pdf")
 
 
 @app.post("/api/ocr")
@@ -259,12 +230,21 @@ def get_settings_token():
 
 @app.put("/api/settings/token")
 def set_settings_token(data: dict):
-    """Set MinerU token."""
+    """Set MinerU token. Empty values keep the current token unchanged."""
     token = data.get("token", "").strip()
+    if not token:
+        return {"message": "Token unchanged"}
     config = load_json("config.json", default={})
     config["mineru_token"] = token
     save_json("config.json", config)
     return {"message": "Token saved"}
+
+@app.delete("/api/settings/token")
+def clear_settings_token():
+    config = load_json("config.json", default={})
+    config["mineru_token"] = ""
+    save_json("config.json", config)
+    return {"message": "Token cleared"}
 
 @app.put("/api/settings/username")
 def set_username(data: dict):

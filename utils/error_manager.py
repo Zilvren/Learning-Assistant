@@ -79,18 +79,3 @@ def delete_error(error_id):
     save_json('errors.json', new_data)
     print(f'✅ 已删除错题 #{error_id}')
     return True
-
-
-def format_error(e):
-    lines = [
-        f'\n━━━━━━━━━━━━━━━━━━━━━━',
-        f'📚 科目：{e["subject"]}  |  #{e["id"]}',
-        f'📝 题目：{e["question"]}',
-        f'❌ 错答：{e["wrong"]}',
-        f'✅ 正解：{e["correct"]}',
-        f'🔍 错因：{e["reason"]}',
-    ]
-    if e.get('tags'):
-        lines.append(f'🏷️ 标签：{", ".join(e["tags"])}')
-    lines.append(f'💡 复习：{e.get("review_count", 0)} 次  |  创建于 {e["created"][:10]}')
-    return '\n'.join(lines)

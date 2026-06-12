@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue"
+import { computed, ref, onMounted } from "vue"
 import { api } from "../api/index.js"
 import MarkdownRenderer from "./MarkdownRenderer.vue"
 import MarkdownEditor from "./MarkdownEditor.vue"
@@ -14,17 +14,6 @@ const keyword = ref("")
 const searchMode = ref("全部")
 const searchModes = ["全部", "题目", "题目标签", "错因标签"]
 const selectedId = ref(null)
-const editingError = ref(null)
-const editTab = ref("question")
-const formTabs = [
-  { key: "title", label: "标题" },
-  { key: "question", label: "题目" },
-  { key: "wrong", label: "错答" },
-  { key: "correct", label: "正解" },
-  { key: "reason", label: "错因" },
-  { key: "tags", label: "题目标签" },
-  { key: "reason_tags", label: "错因标签" },
-]
 const detail = ref(null)
 const showDeleteDlg = ref(false)
 const showAddDlg = ref(false)
@@ -32,24 +21,38 @@ const showEditDlg = ref(false)
 const ocrInputAdd = ref(null)
 const ocrInputEdit = ref(null)
 const ocrLoading = ref(false)
-const addEditor = ref(null)
-const editEditor = ref(null)
-const addForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" })
-const addTab = ref("question")
-const editForm = ref({ subject:"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" })
+const addActiveField = ref("question")
+const editActiveField = ref("question")
+const splitLayout = ref(null)
+const leftPane = ref(Number(localStorage.getItem("errorListLeftPane") || 42))
+const editorLayoutAdd = ref(null)
+const editorLayoutEdit = ref(null)
+const editorLeftPane = ref(Number(localStorage.getItem("editorLeftPane") || 56))
+const addForm = ref(emptyForm())
+const editForm = ref(emptyForm())
 const { subjectRef } = useSubjects()
-const subjects = subjectRef
+const filterSubjects = computed(() => ["全部", ...subjectRef.value])
+const selectedError = computed(() => errors.value.find(e => e.id === selectedId.value) || detail.value)
+const pendingReviews = computed(() => errors.value.filter(e => (e.review_count || 0) < 2).length)
 
-const colors = {}
 const colorPool = ["#0EA5E9","#8B5CF6","#10B981","#F97316","#EC4899","#F59E0B","#6366F1","#14B8A6","#F43F5E","#EAB308"]
-function subjectColor(name) { return colors[name] || colorPool[Math.abs(hashCode(name)) % colorPool.length] }
+const editorFields = [
+  { key: "question", label: "题目" },
+  { key: "wrong", label: "错答" },
+  { key: "correct", label: "正解" },
+  { key: "reason", label: "错因" },
+]
 function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return h }
-function showText(v) { const t = (v || '').trim(); return t && t !== '未记录' }
+function subjectColor(name) { return colorPool[Math.abs(hashCode(name || "")) % colorPool.length] }
+function emptyForm(subject = "") { return { subject, question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" } }
+function showText(v) { const t = (v || "").trim(); return t && t !== "未记录" }
+function fieldLabel(key) { return editorFields.find(f => f.key === key)?.label || "题目" }
 
 onMounted(async () => {
   try {
     const r = await api.getSubjects()
-    subjects.value = ["全部", ...r.subjects]
+    subjectRef.value = r.subjects
+    addForm.value.subject = r.subjects[0] || ""
   } catch (e) { emit("snack", e.message, "#ef4444") }
   await refresh()
 })
@@ -58,25 +61,57 @@ async function refresh() {
   try {
     const s = currentSubject.value === "全部" ? null : currentSubject.value
     const k = keyword.value.trim() || null
-    const kwMode = searchMode.value
-    const q = kwMode === "题目" ? k : null
-    const t = kwMode === "题目标签" ? k : null
-    const rt = kwMode === "错因标签" ? k : null
-    const kw = kwMode === "全部" ? k : null
+    const q = searchMode.value === "题目" ? k : null
+    const t = searchMode.value === "题目标签" ? k : null
+    const rt = searchMode.value === "错因标签" ? k : null
+    const kw = searchMode.value === "全部" ? k : null
     const r = await api.getErrors(s, q || kw, t, rt)
     errors.value = r.errors
+    if (selectedId.value) {
+      detail.value = errors.value.find(e => e.id === selectedId.value) || null
+      if (!detail.value) selectedId.value = null
+    }
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
 
 function selectError(e) {
-  if (selectedId.value === e.id && detail.value) {
-    detail.value = null
-    selectedId.value = null
-    editingError.value = null
-  } else {
-    selectedId.value = e.id
-    editingError.value = e
-    detail.value = e
+  selectedId.value = e.id
+  detail.value = e
+}
+
+function openAddDialog() {
+  addForm.value = emptyForm(subjectRef.value[0] || "")
+  addActiveField.value = "question"
+  showAddDlg.value = true
+}
+
+function openEditDialog() {
+  const e = selectedError.value
+  if (!e) { emit("snack", "请先选择一道错题", "#f59e0b"); return }
+  editForm.value = {
+    subject: e.subject,
+    title: e.title || e.question?.slice(0, 40) || "",
+    question: e.question || "",
+    wrong: e.wrong || "",
+    correct: e.correct || "",
+    reason: e.reason || "",
+    tags: (e.tags || []).join(" "),
+    reason_tags: (e.reason_tags || []).join(" "),
+  }
+  editActiveField.value = "question"
+  showEditDlg.value = true
+}
+
+function payloadFromForm(form) {
+  return {
+    subject: form.subject,
+    title: form.title.trim(),
+    question: form.question.trim(),
+    wrong: form.wrong.trim() || "未记录",
+    correct: form.correct.trim() || "未记录",
+    reason: form.reason.trim() || "未记录",
+    tags: form.tags.trim() ? form.tags.trim().split(/\s+/) : [],
+    reason_tags: form.reason_tags.trim() ? form.reason_tags.trim().split(/\s+/) : [],
   }
 }
 
@@ -84,38 +119,23 @@ async function saveAdd(){
   if(!addForm.value.subject){emit("snack","请先添加并选择科目","#f59e0b");return}
   if(!addForm.value.question.trim()){emit("snack","题目不能为空","#f59e0b");return}
   try{
-    await api.addError({
-      subject: addForm.value.subject,
-      question: addForm.value.question.trim(),
-      title: addForm.value.title.trim(),
-      wrong: addForm.value.wrong.trim()||"未记录",
-      correct: addForm.value.correct.trim()||"未记录",
-      reason: addForm.value.reason.trim()||"未记录",
-      tags: addForm.value.tags.trim()?addForm.value.tags.trim().split(/\s+/):[],
-      reason_tags: addForm.value.reason_tags.trim()?addForm.value.reason_tags.trim().split(/\s+/):[],
-    })
+    const r = await api.addError(payloadFromForm(addForm.value))
     showAddDlg.value = false
-    addForm.value = { subject:subjects.value[1]||"", question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" }
-    addTab.value = "question"
     emit("snack","错题已添加")
     await refresh()
+    const created = errors.value.find(e => e.id === r.id)
+    if (created) selectError(created)
   }catch(e){emit("snack",e.message,"#ef4444")}
 }
 
-function doEdit(){
-  const e = editingError.value
-  if(!e){emit("snack","请先选择一道错题","#f59e0b");return}
-  showEditDlg.value = true
-  editForm.value = {
-    subject: e.subject,
-    question: e.question,
-    title: e.title || e.question?.slice(0,40) || "",
-    wrong: e.wrong || "",
-    correct: e.correct || "",
-    reason: e.reason || "",
-    reason_tags: (e.reason_tags||[]).join(" "),
-    tags: (e.tags||[]).join(" "),
-  }
+async function saveEdit(){
+  if(!editForm.value.question.trim()){emit("snack","题目不能为空","#f59e0b");return}
+  try{
+    await api.updateError(selectedId.value, payloadFromForm(editForm.value))
+    showEditDlg.value = false
+    emit("snack",`错题 #${selectedId.value} 已更新`)
+    await refresh()
+  }catch(e){emit("snack",e.message,"#ef4444")}
 }
 
 async function doReview() {
@@ -124,107 +144,7 @@ async function doReview() {
     await api.reviewError(selectedId.value)
     emit("snack", `已标记复习 #${selectedId.value}`)
     await refresh()
-    detail.value = null; selectedId.value = null
   } catch (e) { emit("snack", e.message, "#ef4444") }
-}
-
-function triggerOcrAdd() { ocrInputAdd.value?.click() }
-function triggerOcrEdit() { ocrInputEdit.value?.click() }
-
-async function doOcr(blob, targetForm, targetTab) {
-  // Check token first
-  let tokenOk = false
-  try { const t = await api.getToken(); tokenOk = t.configured } catch(e) {}
-  if (!tokenOk) { emit("snack","请先在设置中配置 MinerU Token 再使用 OCR","#f59e0b"); return }
-
-  ocrLoading.value = true
-  try {
-    const result = await api.ocrImage(new File([blob], "clipboard.png", {type: blob.type || "image/png"}))
-    // Convert $$ block formulas to $ inline
-    if (result.markdown) result.markdown = result.markdown.replace(/\$\$([^$]+)\$\$/g, (_, m) => '$' + m.replace(/\n\s*/g, ' ') + '$')
-    // Insert at cursor position if editor ref is available
-    const editor = targetForm === addForm ? addEditor.value : editEditor.value
-    if (editor && editor.insertText) {
-      editor.insertText(result.markdown || "")
-    } else {
-      targetForm.value[targetTab.value] = (targetForm.value[targetTab.value] || "") + "\n\n" + (result.markdown || "")
-    }
-    emit("snack", "OCR 识别完成")
-  } catch (err) { emit("snack", err.message, "#ef4444") }
-  finally { ocrLoading.value = false }
-}
-
-function onPasteAdd(e) {
-  const items = e.clipboardData?.items || []
-  for (const item of items) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault()
-      doOcr(item.getAsFile(), addForm, addTab)
-      return
-    }
-  }
-}
-
-function onPasteEdit(e) {
-  const items = e.clipboardData?.items || []
-  for (const item of items) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault()
-      doOcr(item.getAsFile(), editForm, editTab)
-      return
-    }
-  }
-}
-
-async function onOcrFileAdd(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  e.target.value = ""
-  doOcr(file, addForm, addTab)
-}
-
-async function onOcrFileEdit(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  e.target.value = ""
-  doOcr(file, editForm, editTab)
-}
-
-async function saveEdit(){
-  if(!editForm.value.question.trim()){emit("snack","题目不能为空","#f59e0b");return}
-  try{
-    await api.updateError(selectedId.value,{
-      subject: editForm.value.subject,
-      title: editForm.value.title.trim(),
-      question: editForm.value.question.trim(),
-      wrong: editForm.value.wrong.trim()||"未记录",
-      correct: editForm.value.correct.trim()||"未记录",
-      reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/\s+/):[],
-      reason: editForm.value.reason.trim()||"未记录",
-      tags: editForm.value.tags.trim()?editForm.value.tags.trim().split(/\s+/):[],
-    })
-    // Update local array directly
-    const idx = errors.value.findIndex(e=>e.id===selectedId.value)
-    if(idx>=0){
-      errors.value[idx] = {
-        ...errors.value[idx],
-        subject: editForm.value.subject,
-        title: editForm.value.title.trim(),
-        question: editForm.value.question.trim(),
-        wrong: editForm.value.wrong.trim()||"未记录",
-        reason_tags: editForm.value.reason_tags.trim()?editForm.value.reason_tags.trim().split(/\s+/):[],
-        correct: editForm.value.correct.trim()||"未记录",
-        reason: editForm.value.reason.trim()||"未记录",
-        tags: editForm.value.tags.trim()?editForm.value.tags.trim().split(/\s+/):[],
-      }
-      errors.value = [...errors.value]
-    }
-    showEditDlg.value = false
-    detail.value = null
-    emit("snack",`错题 #${selectedId.value} 已更新`)
-    selectedId.value = null
-    editingError.value = null
-  }catch(e){emit("snack",e.message,"#ef4444")}
 }
 
 function confirmDelete() {
@@ -234,9 +154,12 @@ function confirmDelete() {
 
 async function doDelete() {
   try {
-    await api.deleteError(selectedId.value)
-    emit("snack", `已删除 #${selectedId.value}`, "#ef4444")
-    showDeleteDlg.value = false; selectedId.value = null; detail.value = null
+    const id = selectedId.value
+    await api.deleteError(id)
+    emit("snack", `已删除 #${id}`, "#ef4444")
+    showDeleteDlg.value = false
+    selectedId.value = null
+    detail.value = null
     await refresh()
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
@@ -250,320 +173,308 @@ async function exportPdf() {
   }
 }
 
-// Strip markdown for table summary display
-function stripMd(s) {
-  if (!s) return ""
-  return s.replace(/\*\*(.+?)\*\*/g, "$1")
-          .replace(/\*(.+?)\*/g, "$1")
-          .replace(/`(.+?)`/g, "$1")
-          .replace(/~~(.+?)~~/g, "$1")
-          .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-          .replace(/#{1,6}\s/g, "")
-          .replace(/\$\$(.+?)\$\$/gs, "$1")
-          .replace(/\$(.+?)\$/g, "$1")
-          .replace(/\n/g, " ")
-          .trim()
+async function doOcr(blob, formRef, targetRef) {
+  let tokenOk = false
+  try { const t = await api.getToken(); tokenOk = t.configured } catch(e) {}
+  if (!tokenOk) { emit("snack","请先在设置中配置 MinerU Token 再使用 OCR","#f59e0b"); return }
+  ocrLoading.value = true
+  try {
+    const result = await api.ocrImage(new File([blob], "clipboard.png", {type: blob.type || "image/png"}))
+    const text = (result.markdown || "").replace(/\$\$([^$]+)\$\$/g, (_, m) => "$" + m.replace(/\n\s*/g, " ") + "$")
+    const key = targetRef.value
+    formRef.value[key] = (formRef.value[key] || "") + (formRef.value[key] ? "\n\n" : "") + text
+    emit("snack", "OCR 识别完成")
+  } catch (err) { emit("snack", err.message, "#ef4444") }
+  finally { ocrLoading.value = false }
 }
-function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
+
+function onPasteAdd(e) {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/"))
+  if (item) { e.preventDefault(); doOcr(item.getAsFile(), addForm, addActiveField) }
+}
+function onPasteEdit(e) {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/"))
+  if (item) { e.preventDefault(); doOcr(item.getAsFile(), editForm, editActiveField) }
+}
+function onOcrFileAdd(e) {
+  const file = e.target.files[0]
+  if (file) doOcr(file, addForm, addActiveField)
+  e.target.value = ""
+}
+function onOcrFileEdit(e) {
+  const file = e.target.files[0]
+  if (file) doOcr(file, editForm, editActiveField)
+  e.target.value = ""
+}
+function setTagSearch(mode, tag) {
+  searchMode.value = mode
+  keyword.value = tag
+  refresh()
+}
+
+function startResize(e) {
+  if (window.innerWidth <= 1060) return
+  e.preventDefault()
+  const el = splitLayout.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const onMove = (ev) => {
+    const x = ev.clientX ?? ev.touches?.[0]?.clientX
+    if (x == null) return
+    const percent = Math.min(65, Math.max(28, ((x - rect.left) / rect.width) * 100))
+    leftPane.value = Math.round(percent * 10) / 10
+  }
+  const onUp = () => {
+    localStorage.setItem("errorListLeftPane", String(leftPane.value))
+    window.removeEventListener("mousemove", onMove)
+    window.removeEventListener("mouseup", onUp)
+    window.removeEventListener("touchmove", onMove)
+    window.removeEventListener("touchend", onUp)
+    document.body.classList.remove("resizing-pane")
+  }
+  document.body.classList.add("resizing-pane")
+  window.addEventListener("mousemove", onMove)
+  window.addEventListener("mouseup", onUp)
+  window.addEventListener("touchmove", onMove, { passive: false })
+  window.addEventListener("touchend", onUp)
+}
+
+function startEditorResize(e, layoutEl) {
+  if (window.innerWidth <= 1060) return
+  e.preventDefault()
+  const el = layoutEl?.value || layoutEl
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const onMove = (ev) => {
+    const x = ev.clientX ?? ev.touches?.[0]?.clientX
+    if (x == null) return
+    const percent = Math.min(72, Math.max(42, ((x - rect.left) / rect.width) * 100))
+    editorLeftPane.value = Math.round(percent * 10) / 10
+  }
+  const onUp = () => {
+    localStorage.setItem("editorLeftPane", String(editorLeftPane.value))
+    window.removeEventListener("mousemove", onMove)
+    window.removeEventListener("mouseup", onUp)
+    window.removeEventListener("touchmove", onMove)
+    window.removeEventListener("touchend", onUp)
+    document.body.classList.remove("resizing-pane")
+  }
+  document.body.classList.add("resizing-pane")
+  window.addEventListener("mousemove", onMove)
+  window.addEventListener("mouseup", onUp)
+  window.addEventListener("touchmove", onMove, { passive: false })
+  window.addEventListener("touchend", onUp)
+}
+
 </script>
 
 <template>
-  <div>
-    <h2 style="font-size:22px;font-weight:600;margin-bottom:16px">错题列表</h2>
-
-    <!-- Filters + Actions -->
-    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:14px;justify-content:space-between">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <span v-for="s in subjects" :key="s" class="chip" :class="{ active: currentSubject === s }"
-              @click="currentSubject = s; refresh()">{{ s }}</span>
+  <div class="errors-workbench">
+    <header class="page-head">
+      <div>
+        <h2>错题复习</h2>
+        <p>{{ errors.length }} 道当前结果 · {{ pendingReviews }} 道待复习</p>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select v-model="searchMode" class="form-select" style="width:70px">
+      <div class="page-actions">
+        <button class="btn btn-ghost" @click="exportPdf">导出</button>
+        <button class="btn btn-primary" @click="openAddDialog">添加错题</button>
+      </div>
+    </header>
+
+    <section class="filters-panel">
+      <div class="subject-filter">
+        <button v-for="s in filterSubjects" :key="s" class="chip" :class="{ active: currentSubject === s }" @click="currentSubject = s; refresh()">{{ s }}</button>
+      </div>
+      <div class="search-filter">
+        <select v-model="searchMode" class="form-select">
           <option v-for="m in searchModes" :key="m" :value="m">{{ m }}</option>
         </select>
-        <input v-model="keyword" class="form-input" style="width:160px" placeholder="搜索关键词..."
-               @keyup.enter="refresh" />
-        <button class="btn btn-ghost" @click="refresh">🔍 查询</button>
-        <button class="btn btn-ghost" style="color:var(--danger);background:rgba(239,68,68,.1)" @click="confirmDelete">
-          🗑️ 删除
-        </button>
-        <button class="btn btn-ghost" @click="showAddDlg = true; addForm.subject = addForm.subject || subjectRef[0] || ''" style="color:var(--accent);background:var(--accent)12">
-          ➕ 添加
-        </button>
-        <button class="btn btn-ghost" @click="doEdit" :style="{ color: selectedId ? `var(--accent)` : `var(--text-muted)`, background: selectedId ? `var(--accent)12` : `transparent` }">
-          ✏️ 编辑
-        </button>
-        <button class="btn btn-ghost" style="color:var(--accent);background:var(--accent)12" @click="exportPdf">
-          📄 导出 PDF
-        </button>
+        <input v-model="keyword" class="form-input" placeholder="搜索标题、题目、标签或错因" @keyup.enter="refresh" />
+        <button class="btn btn-ghost" @click="refresh">查询</button>
       </div>
-    </div>
+    </section>
 
-    <!-- Table -->
-    <div class="card" style="padding:8px">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th style="width:50px">编号</th>
-            <th style="width:100px">科目</th>
-            <th>标题</th>
-            <th style="width:120px">题目标签</th>
-            <th style="width:120px">错因标签</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="e in errors" :key="e.id"
-              :style="{ cursor:'pointer', background: selectedId === e.id ? 'rgba(99,102,241,.08)' : '' }"
-              @click="selectError(e)">
-            <td style="color:var(--text-sec)">{{ e.id }}</td>
-            <td>
-              <span class="badge" :style="{ background: subjectColor(e.subject) }">{{ e.subject }}</span>
-            </td>
-            <td><div class="md-inline" v-html="renderMd(e.title || e.question?.slice(0,50) || '')"></div></td>
-            <td>
-              <span v-if="e.tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
-                <span v-for="t in e.tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='题目标签';keyword=t;refresh()">{{ t }}</span>
-              </span>
-              <span v-else style="color:var(--text-muted);font-size:11px">-</span>
-            </td>
-            <td>
-              <span v-if="e.reason_tags?.length" style="display:flex;gap:3px;flex-wrap:wrap">
-                <span v-for="t in e.reason_tags" :key="t" class="chip" style="font-size:10px;padding:2px 6px;cursor:pointer" @click.stop="searchMode='错因标签';keyword=t;refresh()">{{ t }}</span>
-              </span>
-              <span v-else style="color:var(--text-muted);font-size:11px">-</span>
-            </td>
-          </tr>
-          <tr v-if="!errors.length">
-            <td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">暂无错题数据</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Detail with Markdown rendering -->
-    <Transition name="detail">
-    <div v-if="detail" class="card" style="margin-top:12px;padding:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="display:flex;gap:6px;align-items:center">
-          <span style="font-size:14px">ℹ️</span>
-          <span style="font-size:14px;font-weight:600">详情 · #{{ detail.id }}</span>
-        </div>
-        <span class="badge" :style="{ background: colors[detail.subject] || '#6366f1' }">{{ detail.subject }}</span>
-      </div>
-
-      <!-- Question -->
-      <div style="margin-bottom:12px">
-        <div style="font-size:13.5px;font-weight:600;color:var(--text-sec);margin-bottom:4px">📝 题目</div>
-        <MarkdownRenderer :content="detail.question" />
-      </div>
-
-      <!-- Wrong / Correct side by side -->
-      <div v-if="detail.wrong && detail.wrong !== '未记录' || detail.correct && detail.correct !== '未记录'" style="margin-bottom:12px">
-        <div v-if="detail.wrong && detail.wrong !== '未记录'" class="wrong-card" style="padding:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-left:4px solid #ef4444;border-radius:8px;margin-bottom:8px">
-          <div style="font-size:13.5px;font-weight:600;color:#ef4444;margin-bottom:4px">❌ 错答</div>
-          <MarkdownRenderer :content="detail.wrong" />
-        </div>
-        <div v-if="detail.correct && detail.correct !== '未记录'" class="correct-card" style="padding:12px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-left:4px solid #10b981;border-radius:8px">
-          <div style="font-size:13.5px;font-weight:600;color:#10b981;margin-bottom:4px">✅ 正解</div>
-          <MarkdownRenderer :content="detail.correct" />
-      </div>
-      </div>
-
-      <!-- Reason -->
-      <div v-if="detail.reason && detail.reason !== '未记录'" style="margin-bottom:8px">
-        <div style="font-size:13.5px;font-weight:600;color:var(--text-sec);margin-bottom:4px">🔍 错因</div>
-        <MarkdownRenderer :content="detail.reason" />
-      </div>
-
-      <!-- Meta -->
-      <div style="display:flex;gap:16px;font-size:12.5px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-        <span v-if="detail.tags?.length">🏷️ {{ detail.tags.join(", ") }}</span>
-        <span>💡 复习：{{ detail.review_count || 0 }} 次</span>
-        <span>📅 {{ detail.created?.slice(0,10) }}</span>
-      </div>
-    </div>
-    </Transition>
-
-    <!-- Add Dialog -->
-    <Teleport to="body">
-      <div v-if="showAddDlg" class="dialog-overlay" @paste="onPasteAdd">
-        <div class="dialog" style="width:94vw;height:92vh;display:flex;flex-direction:column;animation:fadeInUp .2s;border-radius:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 20px 0">
-            <h3 style="font-weight:600;font-size:16px">➕ 添加错题</h3>
-            <button class="btn" style="font-size:18px;padding:4px 8px" @click="showAddDlg = false">✕</button>
+    <section ref="splitLayout" class="split-layout" :style="{ '--left-pane': leftPane + '%' }">
+      <div class="error-list-panel">
+        <article v-for="e in errors" :key="e.id" class="error-row" :class="{ active: selectedId === e.id }" @click="selectError(e)">
+          <div class="row-top">
+            <span class="row-id">#{{ e.id }}</span>
+            <span class="badge" :style="{ background: subjectColor(e.subject) }">{{ e.subject }}</span>
+            <span class="review-count">复习 {{ e.review_count || 0 }}</span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;flex:1;overflow:hidden;padding:16px 24px 24px">
-            <div style="overflow-y:auto;padding-right:12px;display:flex;flex-direction:column;min-height:0">
-              <div class="form-group">
-                <label class="form-label">科目</label>
-                <select v-model="addForm.subject" class="form-select">
-                  <option v-for="s in subjectRef" :key="s" :value="s">{{ s }}</option>
-                </select>
-              </div>
-              <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">
-                <button v-for="t in formTabs" :key="t.key" class="chip" :class="{ active: addTab === t.key }" @click="addTab = t.key" style="font-size:12px">{{ t.label }}</button>
-              </div>
-              <div v-if="addTab === 'title'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="addEditor" v-model="addForm.title" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="addTab === 'question'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="addEditor" v-model="addForm.question" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="addTab === 'wrong'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="addEditor" v-model="addForm.wrong" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="addTab === 'correct'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="addEditor" v-model="addForm.correct" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="addTab === 'reason'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="addEditor" v-model="addForm.reason" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="addTab === 'tags'" class="form-group">
-                <input v-model="addForm.tags" class="form-input" placeholder="用空格分隔" />
-              </div>
-              <div v-if="addTab === 'reason_tags'" class="form-group">
-                <input v-model="addForm.reason_tags" class="form-input" placeholder="空格分隔，如 概念混淆 计算错误" />
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
-                <input type="file" accept="image/*" style="display:none" ref="ocrInputAdd" @change="onOcrFileAdd" />
-                <button class="btn btn-ghost" style="font-size:11px;color:var(--accent)" @click="triggerOcrAdd" :disabled="ocrLoading">📷 OCR 导入</button>
-                <span v-if="ocrLoading" style="font-size:11px;color:var(--text-muted)">识别中...</span>
-                <span v-else style="font-size:10px;color:var(--text-muted)">或 Ctrl+V 粘贴图片</span>
-                <div style="flex:1"></div>
-                <button class="btn" @click="showAddDlg = false">取消</button>
-                <button class="btn btn-primary" style="padding:8px 16px" @click="saveAdd">提交</button>
-              </div>
+          <div class="row-title" v-html="renderMd(e.title || e.question?.slice(0, 50) || '')"></div>
+          <div class="row-tags">
+            <button v-for="t in e.tags || []" :key="t" class="mini-chip" @click.stop="setTagSearch('题目标签', t)">{{ t }}</button>
+            <button v-for="t in e.reason_tags || []" :key="t" class="mini-chip reason" @click.stop="setTagSearch('错因标签', t)">{{ t }}</button>
+          </div>
+        </article>
+        <div v-if="!errors.length" class="empty-state">暂无错题数据</div>
+      </div>
+
+      <div class="pane-resizer" title="拖动调整列表和详情宽度" @mousedown="startResize" @touchstart="startResize">
+        <span></span>
+      </div>
+
+      <aside class="detail-panel">
+        <template v-if="selectedError">
+          <div class="detail-head">
+            <div>
+              <span class="row-id">#{{ selectedError.id }}</span>
+              <h3>{{ selectedError.title || selectedError.question?.slice(0, 40) }}</h3>
+              <p>{{ selectedError.subject }} · {{ selectedError.created?.slice(0,10) }} · 复习 {{ selectedError.review_count || 0 }} 次</p>
             </div>
-            <div style="overflow-y:auto;padding-left:12px;border-left:1px solid var(--border)">
-              <div class="form-label" style="margin-bottom:8px">实时预览</div>
-              <template v-if="!showText(addForm.question) && !showText(addForm.wrong) && !showText(addForm.correct) && !showText(addForm.reason)">
-                <p style="color:var(--text-muted);font-size:13px">在左侧输入后将在此处显示预览</p>
-              </template>
+            <span class="badge" :style="{ background: subjectColor(selectedError.subject) }">{{ selectedError.subject }}</span>
+          </div>
+          <div class="detail-actions">
+            <button class="btn btn-primary" @click="doReview">标记已复习</button>
+            <button class="btn btn-ghost" @click="openEditDialog">编辑</button>
+            <button class="btn btn-ghost danger-action" @click="confirmDelete">删除</button>
+          </div>
+
+          <div class="detail-scroll">
+            <section class="detail-section">
+              <h4>题目</h4>
+              <MarkdownRenderer :content="selectedError.question" />
+            </section>
+            <section v-if="showText(selectedError.wrong)" class="detail-section wrong-block">
+              <h4>错答</h4>
+              <MarkdownRenderer :content="selectedError.wrong" />
+            </section>
+            <section v-if="showText(selectedError.correct)" class="detail-section correct-block">
+              <h4>正解</h4>
+              <MarkdownRenderer :content="selectedError.correct" />
+            </section>
+            <section v-if="showText(selectedError.reason)" class="detail-section">
+              <h4>错因</h4>
+              <MarkdownRenderer :content="selectedError.reason" />
+            </section>
+            <div class="detail-tags">
+              <span v-for="t in selectedError.tags || []" :key="t" class="mini-chip">{{ t }}</span>
+              <span v-for="t in selectedError.reason_tags || []" :key="t" class="mini-chip reason">{{ t }}</span>
+            </div>
+          </div>
+        </template>
+        <div v-else class="empty-detail">
+          <h3>选择一道错题</h3>
+          <p>详情、复习、编辑和删除操作会固定显示在这里。</p>
+        </div>
+      </aside>
+    </section>
+
+    <Teleport to="body">
+      <div v-if="showAddDlg" class="dialog-overlay editor-overlay" @paste="onPasteAdd">
+        <div class="editor-dialog">
+          <div class="editor-head">
+            <h3>添加错题</h3>
+            <button class="btn icon-btn" @click="showAddDlg = false">×</button>
+          </div>
+          <div ref="editorLayoutAdd" class="editor-body" :style="{ '--editor-left-pane': editorLeftPane + '%' }">
+            <div class="form-stack">
+              <div class="meta-grid">
+                <label><span>科目</span><select v-model="addForm.subject" class="form-select"><option v-for="s in subjectRef" :key="s" :value="s">{{ s }}</option></select></label>
+                <label><span>标题</span><input v-model="addForm.title" class="form-input" placeholder="列表中显示的标题" /></label>
+                <label><span>题目标签</span><input v-model="addForm.tags" class="form-input" placeholder="空格分隔" /></label>
+                <label><span>错因标签</span><input v-model="addForm.reason_tags" class="form-input" placeholder="空格分隔" /></label>
+              </div>
+              <div class="ocr-strip">
+                <div class="field-tabs">
+                  <button v-for="f in editorFields" :key="f.key" class="field-tab" :class="{ active: addActiveField === f.key }" @click="addActiveField = f.key">{{ f.label }}</button>
+                </div>
+                <button class="btn btn-ghost" :disabled="ocrLoading" @click="ocrInputAdd?.click()">OCR 插入</button>
+              </div>
+              <section class="single-editor">
+                <h4>{{ fieldLabel(addActiveField) }}</h4>
+                <MarkdownEditor v-if="addActiveField === 'question'" v-model="addForm.question" :fill="true" />
+                <MarkdownEditor v-else-if="addActiveField === 'wrong'" v-model="addForm.wrong" :fill="true" />
+                <MarkdownEditor v-else-if="addActiveField === 'correct'" v-model="addForm.correct" :fill="true" />
+                <MarkdownEditor v-else v-model="addForm.reason" :fill="true" />
+              </section>
+            </div>
+            <div class="editor-resizer" title="拖动调整编辑和预览宽度" @mousedown="startEditorResize($event, $refs.editorLayoutAdd)" @touchstart="startEditorResize($event, $refs.editorLayoutAdd)">
+              <span></span>
+            </div>
+            <aside class="preview-panel">
+              <div class="preview-head"><h4>实时预览</h4><span>{{ addForm.subject }}</span></div>
+              <div v-if="!showText(addForm.question) && !showText(addForm.wrong) && !showText(addForm.correct) && !showText(addForm.reason)" class="empty-state">输入后显示预览</div>
               <template v-else>
-                <div v-if="showText(addForm.question)" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-                  <div style="font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:6px">题目</div>
-                  <MarkdownRenderer :content="addForm.question" />
-                </div>
-                <div v-if="showText(addForm.wrong) || showText(addForm.correct)" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-                  <div v-if="showText(addForm.wrong)" style="padding:8px;background:rgba(239,68,68,.04);border-radius:8px;border:1px solid rgba(239,68,68,.1)">
-                    <div style="font-size:11px;font-weight:600;color:var(--danger);margin-bottom:4px">错答</div>
-                    <MarkdownRenderer :content="addForm.wrong" />
-                  </div>
-                  <div v-if="showText(addForm.correct)" style="padding:8px;background:rgba(16,185,129,.04);border-radius:8px;border:1px solid rgba(16,185,129,.1)">
-                    <div style="font-size:11px;font-weight:600;color:var(--success);margin-bottom:4px">正解</div>
-                    <MarkdownRenderer :content="addForm.correct" />
-                  </div>
-                </div>
-                <div v-if="showText(addForm.reason)">
-                  <div style="font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:4px">错因</div>
-                  <MarkdownRenderer :content="addForm.reason" />
-                </div>
+                <section v-if="showText(addForm.question)"><h5>题目</h5><MarkdownRenderer :content="addForm.question" /></section>
+                <section v-if="showText(addForm.wrong)" class="wrong-block"><h5>错答</h5><MarkdownRenderer :content="addForm.wrong" /></section>
+                <section v-if="showText(addForm.correct)" class="correct-block"><h5>正解</h5><MarkdownRenderer :content="addForm.correct" /></section>
+                <section v-if="showText(addForm.reason)"><h5>错因</h5><MarkdownRenderer :content="addForm.reason" /></section>
               </template>
-            </div>
+            </aside>
+          </div>
+          <div class="editor-footer">
+            <input type="file" accept="image/*" hidden ref="ocrInputAdd" @change="onOcrFileAdd" />
+            <span>{{ ocrLoading ? "识别中..." : `OCR 和粘贴图片会插入到「${fieldLabel(addActiveField)}」` }}</span>
+            <button class="btn" @click="showAddDlg = false">取消</button>
+            <button class="btn btn-primary" @click="saveAdd">提交</button>
           </div>
         </div>
       </div>
     </Teleport>
 
-    <!-- Edit Dialog -->
     <Teleport to="body">
-      <div v-if="showEditDlg" class="dialog-overlay" @paste="onPasteEdit">
-        <div class="dialog" style="width:94vw;height:92vh;display:flex;flex-direction:column;animation:fadeInUp .2s;border-radius:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 20px 0">
-            <h3 style="font-weight:600;font-size:16px">编辑错题 #{{ selectedId }}</h3>
-            <button class="btn" style="font-size:18px;padding:4px 8px" @click="showEditDlg = false">✕</button>
+      <div v-if="showEditDlg" class="dialog-overlay editor-overlay" @paste="onPasteEdit">
+        <div class="editor-dialog">
+          <div class="editor-head">
+            <h3>编辑错题 #{{ selectedId }}</h3>
+            <button class="btn icon-btn" @click="showEditDlg = false">×</button>
           </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;flex:1;overflow:hidden;padding:16px 24px 24px">
-            <!-- Left: Form -->
-            <div style="overflow-y:auto;padding-right:12px;display:flex;flex-direction:column;min-height:0">
-              <div class="form-group">
-                <label class="form-label">科目</label>
-                <select v-model="editForm.subject" class="form-select">
-                  <option v-for="s in subjectRef" :key="s" :value="s">{{ s }}</option>
-                </select>
+          <div ref="editorLayoutEdit" class="editor-body" :style="{ '--editor-left-pane': editorLeftPane + '%' }">
+            <div class="form-stack">
+              <div class="meta-grid">
+                <label><span>科目</span><select v-model="editForm.subject" class="form-select"><option v-for="s in subjectRef" :key="s" :value="s">{{ s }}</option></select></label>
+                <label><span>标题</span><input v-model="editForm.title" class="form-input" placeholder="列表中显示的标题" /></label>
+                <label><span>题目标签</span><input v-model="editForm.tags" class="form-input" placeholder="空格分隔" /></label>
+                <label><span>错因标签</span><input v-model="editForm.reason_tags" class="form-input" placeholder="空格分隔" /></label>
               </div>
-
-              <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap">
-                <button v-for="t in formTabs" :key="t.key"
-                        class="chip" :class="{ active: editTab === t.key }"
-                        @click="editTab = t.key" style="font-size:12px">{{ t.label }}</button>
+              <div class="ocr-strip">
+                <div class="field-tabs">
+                  <button v-for="f in editorFields" :key="f.key" class="field-tab" :class="{ active: editActiveField === f.key }" @click="editActiveField = f.key">{{ f.label }}</button>
+                </div>
+                <button class="btn btn-ghost" :disabled="ocrLoading" @click="ocrInputEdit?.click()">OCR 插入</button>
               </div>
-
-              <div v-if="editTab === 'title'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="editEditor" v-model="editForm.title" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="editTab === 'question'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="editEditor" v-model="editForm.question" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="editTab === 'wrong'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="editEditor" v-model="editForm.wrong" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="editTab === 'correct'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="editEditor" v-model="editForm.correct" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="editTab === 'reason'" style="flex:1;display:flex;flex-direction:column;min-height:0">
-                <MarkdownEditor ref="editEditor" v-model="editForm.reason" :fill="true" :editOnly="true" />
-              </div>
-              <div v-if="editTab === 'tags'" class="form-group">
-                <input v-model="editForm.tags" class="form-input" placeholder="用空格分隔" />
-              </div>
-              <div v-if="editTab === 'reason_tags'" class="form-group">
-                <input v-model="editForm.reason_tags" class="form-input" placeholder="空格分隔" />
-              </div>
-
-              <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
-                <input type="file" accept="image/*" style="display:none" ref="ocrInputEdit" @change="onOcrFileEdit" />
-                <button class="btn btn-ghost" style="font-size:11px;color:var(--accent)" @click="triggerOcrEdit" :disabled="ocrLoading">📷 OCR 导入</button>
-                <span v-if="ocrLoading" style="font-size:11px;color:var(--text-muted)">识别中...</span>
-                <span v-else style="font-size:10px;color:var(--text-muted)">或 Ctrl+V 粘贴图片</span>
-                <div style="flex:1"></div>
-                <button class="btn" @click="showEditDlg = false">取消</button>
-                <button class="btn btn-primary" style="padding:8px 16px" @click="saveEdit">保存</button>
-              </div>
+              <section class="single-editor">
+                <h4>{{ fieldLabel(editActiveField) }}</h4>
+                <MarkdownEditor v-if="editActiveField === 'question'" v-model="editForm.question" :fill="true" />
+                <MarkdownEditor v-else-if="editActiveField === 'wrong'" v-model="editForm.wrong" :fill="true" />
+                <MarkdownEditor v-else-if="editActiveField === 'correct'" v-model="editForm.correct" :fill="true" />
+                <MarkdownEditor v-else v-model="editForm.reason" :fill="true" />
+              </section>
             </div>
-
-            <!-- Right: Live Preview -->
-            <div style="overflow-y:auto;padding-left:12px;border-left:1px solid var(--border)">
-              <div class="form-label" style="margin-bottom:8px">实时预览</div>
-              <template v-if="!showText(editForm.question) && !showText(editForm.wrong) && !showText(editForm.correct) && !showText(editForm.reason)">
-                <p style="color:var(--text-muted);font-size:13px">在左侧输入后将在此处显示预览</p>
-              </template>
+            <div class="editor-resizer" title="拖动调整编辑和预览宽度" @mousedown="startEditorResize($event, $refs.editorLayoutEdit)" @touchstart="startEditorResize($event, $refs.editorLayoutEdit)">
+              <span></span>
+            </div>
+            <aside class="preview-panel">
+              <div class="preview-head"><h4>实时预览</h4><span>{{ editForm.subject }}</span></div>
+              <div v-if="!showText(editForm.question) && !showText(editForm.wrong) && !showText(editForm.correct) && !showText(editForm.reason)" class="empty-state">输入后显示预览</div>
               <template v-else>
-                <div v-if="showText(editForm.question)" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-                  <div style="font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:6px">题目</div>
-                  <MarkdownRenderer :content="editForm.question" />
-                </div>
-                <div v-if="showText(editForm.wrong) || showText(editForm.correct)" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-                  <div v-if="showText(editForm.wrong)" style="padding:8px;background:rgba(239,68,68,.04);border-radius:8px;border:1px solid rgba(239,68,68,.1)">
-                    <div style="font-size:11px;font-weight:600;color:var(--danger);margin-bottom:4px">错答</div>
-                    <MarkdownRenderer :content="editForm.wrong" />
-                  </div>
-                  <div v-if="showText(editForm.correct)" style="padding:8px;background:rgba(16,185,129,.04);border-radius:8px;border:1px solid rgba(16,185,129,.1)">
-                    <div style="font-size:11px;font-weight:600;color:var(--success);margin-bottom:4px">正解</div>
-                    <MarkdownRenderer :content="editForm.correct" />
-                  </div>
-                </div>
-                <div v-if="showText(editForm.reason)">
-                  <div style="font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:4px">错因</div>
-                  <MarkdownRenderer :content="editForm.reason" />
-                </div>
+                <section v-if="showText(editForm.question)"><h5>题目</h5><MarkdownRenderer :content="editForm.question" /></section>
+                <section v-if="showText(editForm.wrong)" class="wrong-block"><h5>错答</h5><MarkdownRenderer :content="editForm.wrong" /></section>
+                <section v-if="showText(editForm.correct)" class="correct-block"><h5>正解</h5><MarkdownRenderer :content="editForm.correct" /></section>
+                <section v-if="showText(editForm.reason)"><h5>错因</h5><MarkdownRenderer :content="editForm.reason" /></section>
               </template>
-            </div>
+            </aside>
+          </div>
+          <div class="editor-footer">
+            <input type="file" accept="image/*" hidden ref="ocrInputEdit" @change="onOcrFileEdit" />
+            <span>{{ ocrLoading ? "识别中..." : `OCR 和粘贴图片会插入到「${fieldLabel(editActiveField)}」` }}</span>
+            <button class="btn" @click="showEditDlg = false">取消</button>
+            <button class="btn btn-primary" @click="saveEdit">保存</button>
           </div>
         </div>
       </div>
     </Teleport>
 
-    <!-- Delete Dialog -->
     <Teleport to="body">
       <div v-if="showDeleteDlg" class="dialog-overlay" @click.self="showDeleteDlg = false">
-        <div class="dialog" style="animation:fadeInUp .2s">
-          <h3 style="margin-bottom:12px;font-weight:600;font-size:16px">确认删除</h3>
-          <p style="font-size:14.5px;color:var(--text-sec);margin-bottom:20px">确定要删除错题 #{{ selectedId }} 吗？此操作不可撤销。</p>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
+        <div class="dialog confirm-dialog">
+          <h3>确认删除</h3>
+          <p>确定要删除错题 #{{ selectedId }} 吗？此操作不可撤销。</p>
+          <div>
             <button class="btn" @click="showDeleteDlg = false">取消</button>
-            <button class="btn btn-danger" style="padding:8px 16px" @click="doDelete">删除</button>
+            <button class="btn btn-danger" @click="doDelete">删除</button>
           </div>
         </div>
       </div>
@@ -571,24 +482,117 @@ function truncate(s, n = 50) { return stripMd(s).slice(0, n) }
   </div>
 </template>
 
-<style scoped>
-.detail-enter-active { transition: all .25s ease-out; }
-.detail-leave-active { transition: all .2s ease-in; }
-.detail-enter-from { opacity: 0; transform: translateY(-12px); max-height: 0; }
-.detail-leave-to { opacity: 0; transform: translateY(-8px); max-height: 0; overflow: hidden; }
-
-.dialog-overlay {
-  position: fixed; inset:0; background: rgba(0,0,0,.3);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 9998; backdrop-filter: blur(2px);
+<style>
+.errors-workbench { display: flex; flex-direction: column; gap: 14px; height: calc(100vh - 56px); min-height: 0; }
+.page-head, .filters-panel { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.page-head h2 { font-size: 22px; margin-bottom: 3px; }
+.page-head p { color: var(--text-muted); font-size: 13px; }
+.page-actions, .search-filter, .subject-filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.search-filter .form-select { width: 96px; }
+.search-filter .form-input { width: 260px; }
+.filters-panel { padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.split-layout { display: grid; grid-template-columns: minmax(300px, var(--left-pane, 42%)) 10px minmax(360px, 1fr); gap: 8px; min-height: 0; flex: 1; }
+.error-list-panel, .detail-panel { min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.error-list-panel { padding: 8px; }
+.pane-resizer { display: flex; align-items: center; justify-content: center; cursor: col-resize; user-select: none; border-radius: 8px; }
+.pane-resizer:hover { background: #eaf1fb; }
+.pane-resizer span { width: 3px; height: 42px; border-radius: 2px; background: var(--border); transition: background .15s, height .15s; }
+.pane-resizer:hover span, .resizing-pane .pane-resizer span { height: 72px; background: var(--accent); }
+.resizing-pane { cursor: col-resize; user-select: none; }
+.error-row { padding: 12px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; transition: background .15s, border-color .15s; }
+.error-row + .error-row { margin-top: 6px; }
+.error-row:hover { background: #f8fafc; }
+.error-row.active { background: rgba(99,102,241,.08); border-color: rgba(99,102,241,.24); }
+.row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.row-id { font-weight: 700; color: var(--accent); font-size: 13px; }
+.review-count { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.row-title { font-size: 13.5px; line-height: 1.5; max-height: 3em; overflow: hidden; color: var(--text); }
+.row-title :deep(p) { margin: 0; display: inline; }
+.row-tags, .detail-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 9px; }
+.mini-chip { border: 1px solid var(--border); background: #f8fafc; color: var(--text-sec); border-radius: 6px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
+.mini-chip.reason { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.detail-panel { display: flex; flex-direction: column; padding: 16px; }
+.detail-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.detail-head h3 { font-size: 18px; line-height: 1.4; margin: 4px 0; }
+.detail-head p { color: var(--text-muted); font-size: 12px; }
+.detail-actions { display: flex; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.danger-action { color: var(--danger); background: rgba(239,68,68,.08); }
+.detail-scroll { overflow: auto; padding-top: 12px; }
+.detail-section { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.detail-section h4 { font-size: 13px; color: var(--text-sec); margin-bottom: 8px; }
+.wrong-block, .correct-block { border-radius: 10px; padding: 12px; margin: 10px 0; border: 1px solid; }
+.wrong-block { background: rgba(239,68,68,.04); border-color: rgba(239,68,68,.18); }
+.correct-block { background: rgba(16,185,129,.04); border-color: rgba(16,185,129,.16); }
+.empty-detail, .empty-state { margin: auto; text-align: center; color: var(--text-muted); font-size: 13px; padding: 28px; }
+.empty-detail h3 { color: var(--text); margin-bottom: 6px; }
+.editor-overlay { align-items: center; }
+.editor-dialog { width: 94vw; height: 92vh; display: flex; flex-direction: column; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-lg); overflow: hidden; }
+.editor-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.editor-head h3 { font-size: 17px; }
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 9px;
+  border-color: var(--border);
+  background: #f8fafc;
+  color: var(--text-sec);
+  font-size: 26px;
+  line-height: 1;
 }
-.md-inline { font-size: 13px; line-height: 1.4; max-height: 2.8em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.md-inline :deep(p) { display: inline; margin: 0; }
-.md-inline :deep(hl), .md-inline :deep(h2), .md-inline :deep(h3), .md-inline :deep(blockquote), .md-inline :deep(pre), .md-inline :deep(ul), .md-inline :deep(ol), .md-inline :deep(table) { display: none; }
-.md-inline :deep(code) { font-size: .9em; padding: 0 3px; }
-
-.dialog {
-  background: var(--surface); border-radius: var(--radius);
-  padding: 24px; min-width: 320px; box-shadow: var(--shadow-lg);
+.icon-btn:hover {
+  background: #eef4ff;
+  color: var(--accent);
+  filter: none;
+}
+.editor-body { display: grid; grid-template-columns: minmax(420px, var(--editor-left-pane, 58%)) 10px minmax(360px, 1fr); gap: 0; min-height: 0; flex: 1; }
+.form-stack { overflow: hidden; padding: 18px; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.form-stack section { margin-top: 14px; }
+.form-stack h4 { font-size: 13px; margin-bottom: 6px; color: var(--text-sec); }
+.meta-grid { display: grid; grid-template-columns: 140px 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; flex-shrink: 0; }
+.meta-grid span { display: block; margin-bottom: 5px; font-size: 12px; color: var(--text-sec); font-weight: 600; }
+.ocr-strip { display: flex; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: #f8fafc; }
+.field-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.field-tab { border: 1px solid transparent; background: transparent; color: var(--text-sec); border-radius: 7px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 12px; }
+.field-tab:hover { background: #eef4ff; color: var(--accent); }
+.field-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.single-editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.single-editor .md-editor { flex: 1; min-height: 0; }
+.editor-resizer { display: flex; align-items: center; justify-content: center; cursor: col-resize; user-select: none; background: #f8fafc; border-right: 1px solid var(--border); }
+.editor-resizer:hover { background: #eaf1fb; }
+.editor-resizer span { width: 3px; height: 54px; border-radius: 2px; background: var(--border); transition: background .15s, height .15s; }
+.editor-resizer:hover span, .resizing-pane .editor-resizer span { height: 84px; background: var(--accent); }
+.preview-panel { overflow: auto; padding: 18px; background: #fbfcfe; }
+.preview-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.preview-head h4 { font-size: 14px; }
+.preview-head span { color: var(--text-muted); font-size: 12px; }
+.preview-panel section { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.preview-panel h5 { font-size: 12px; color: var(--text-sec); margin-bottom: 8px; }
+.editor-footer { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--border); }
+.editor-footer span { margin-right: auto; color: var(--text-muted); font-size: 12px; }
+.editor-footer .btn {
+  min-width: 96px;
+  height: 42px;
+  justify-content: center;
+  padding: 0 20px;
+  border-radius: 9px;
+  font-size: 14.5px;
+}
+.editor-footer .btn-primary {
+  min-width: 108px;
+  font-weight: 700;
+}
+.confirm-dialog h3 { margin-bottom: 10px; }
+.confirm-dialog p { color: var(--text-sec); margin-bottom: 18px; }
+.confirm-dialog div { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 1060px) {
+  .errors-workbench { height: auto; }
+  .split-layout, .editor-body { grid-template-columns: 1fr; }
+  .pane-resizer { display: none; }
+  .editor-resizer { display: none; }
+  .detail-panel { min-height: 520px; }
+  .form-stack { border-right: none; border-bottom: 1px solid var(--border); }
+  .meta-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>

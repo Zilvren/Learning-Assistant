@@ -1,6 +1,4 @@
-import random
-from .data_store import load_json, today_str
-from .error_manager import SUBJECTS
+from .data_store import load_json
 
 
 def get_knowledge_base():
@@ -37,48 +35,3 @@ def get_knowledge_base():
             '论证方法：举例论证、道理论证、对比论证、比喻论证',
         ],
     })
-
-
-def daily_push():
-    kb = get_knowledge_base()
-    errors = load_json('errors.json', [])
-
-    print(f'\n🌟 ========== 今日学习推送 ({today_str()}) ==========')
-
-    # 1. 推送 408 知识点（各科各一道）
-    print('\n📚 【知识点】')
-    for s in SUBJECTS:
-        if s in kb and kb[s]:
-            tip = random.choice(kb[s])
-            print(f'  [{s}] {tip}')
-
-    # 2. 推送数学/英语各一
-    print('\n📐 【数学技巧】')
-    if '数学' in kb:
-        print(f'  {random.choice(kb["数学"])}')
-
-    print('\n🔤 【英语单词】')
-    if '英语' in kb:
-        print(f'  {random.choice(kb["英语"])}')
-
-    # 3. 推荐复习错题
-    print('\n🔄 【今日错题复习推荐】')
-    weak_errors = [e for e in errors if e.get('review_count', 0) < 2]
-    if weak_errors:
-        random.shuffle(weak_errors)
-        for e in weak_errors[:3]:
-            print(f'  #{e["id"]} [{e["subject"]}] {e["question"][:40]}...')
-        print(f'  共 {len(weak_errors)} 道待复习错题，建议每天复习 3-5 道')
-    else:
-        print('  🎉 错题都复习得不错！今天可以刷新题了')
-
-    # 4. 学习建议
-    total = len(errors)
-    if total < 20:
-        print('\n💡 建议：当前错题量较少，保持当前刷题量，注意归纳总结')
-    elif total < 50:
-        print('\n💡 建议：错题量适中，重点复习标记为"概念不清"的题目')
-    else:
-        print('\n💡 建议：错题量较大，建议暂停刷新题，集中复习旧错题')
-
-    print('=========================================\n')

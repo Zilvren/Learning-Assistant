@@ -237,8 +237,7 @@ def download_and_extract_md(zip_url: str) -> str:
 
             # Replace image references with HTML img tags (default width 400)
             def replace_img(m):
-                src = m.group(1)
-                alt = m.group(0)  # fallback
+                src = m.group(2)
                 if src in img_map:
                     return f'<img src="{img_map[src]}" width="400">'
                 basename = os.path.basename(src)

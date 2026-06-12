@@ -14,10 +14,18 @@ const newSubject = ref("")
 const { username, setUsername, load: loadSettings } = useSettings()
 
 const mineruToken = ref("")
+const tokenConfigured = ref(false)
+const tokenMasked = ref("")
 const tokenSaved = ref(false)
 
 onMounted(async () => {
-  try { await loadSettings(); const t = await api.getToken(); mineruToken.value = t.configured ? t.token : "" }
+  try {
+    await loadSettings()
+    const t = await api.getToken()
+    tokenConfigured.value = t.configured
+    tokenMasked.value = t.configured ? t.token : ""
+    mineruToken.value = ""
+  }
   catch(e){/*ignore*/}
 })
 
@@ -42,9 +50,24 @@ async function saveUsername() {
 async function saveToken() {
   try {
     await api.saveToken(mineruToken.value)
+    const t = await api.getToken()
+    tokenConfigured.value = t.configured
+    tokenMasked.value = t.configured ? t.token : ""
+    mineruToken.value = ""
     tokenSaved.value = true
     setTimeout(() => tokenSaved.value = false, 2000)
   } catch(e) { alert('保存失败: ' + e.message) }
+}
+
+async function clearToken() {
+  try {
+    await api.clearToken()
+    tokenConfigured.value = false
+    tokenMasked.value = ""
+    mineruToken.value = ""
+    tokenSaved.value = true
+    setTimeout(() => tokenSaved.value = false, 2000)
+  } catch(e) { alert('清除失败: ' + e.message) }
 }
 
 async function addSubject() {
@@ -87,11 +110,15 @@ const items = [
             <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveUsername" :style="usernameSaved ? 'color:#10b981' : ''">{{ usernameSaved ? '已保存' : '保存' }}</button>
           </div>
           <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
-          <div style="display:flex;gap:8px">
-            <input v-model="mineruToken" class="form-input" placeholder="粘贴 Token" style="font-size:12px" />
-            <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveToken" :style="tokenSaved ? 'color:#10b981' : ''">{{ tokenSaved ? '已保存' : '保存' }}</button>
+          <div v-if="tokenConfigured" style="font-size:11px;color:var(--text-sec);margin-bottom:6px">
+            当前已配置：{{ tokenMasked }}。留空保存不会覆盖现有 Token。
           </div>
-          <p v-if="mineruToken" style="font-size:10px;color:var(--text-muted);margin-top:4px">Token 已配置，OCR 可用</p>
+          <div style="display:flex;gap:8px">
+            <input v-model="mineruToken" class="form-input" :placeholder="tokenConfigured ? '粘贴新 Token，留空则不修改' : '粘贴 Token'" style="font-size:12px" />
+            <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveToken" :style="tokenSaved ? 'color:#10b981' : ''">{{ tokenSaved ? '已保存' : '保存' }}</button>
+            <button v-if="tokenConfigured" class="btn btn-ghost" style="white-space:nowrap;font-size:11px;color:var(--danger);background:rgba(239,68,68,.08)" @click="clearToken">清除</button>
+          </div>
+          <p style="font-size:10px;color:var(--text-muted);margin-top:4px">{{ tokenConfigured ? 'OCR 可用' : '配置 Token 后可使用 OCR' }}</p>
         </div>
       </Transition>
       </div>

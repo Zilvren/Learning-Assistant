@@ -29,6 +29,7 @@ export const api = {
     return resp.json()
   },
   saveToken: (token) => request('PUT', '/settings/token', { token }),
+  clearToken: () => request('DELETE', '/settings/token'),
   getToken: () => request('GET', '/settings/token'),
   saveUsername: (name) => request('PUT', '/settings/username', { name }),
   getErrors: (subject, keyword, tag, reason_tag) => {
@@ -44,6 +45,5 @@ export const api = {
   reviewError: (id) => request('PUT', `/errors/${id}/review`),
   deleteError: (id) => request('DELETE', `/errors/${id}`),
   updateError: (id, data) => request('PUT', `/errors/${id}`, data),
-  getStats: () => request('GET', '/stats'),
   getDailyPush: () => request('GET', '/daily-push'),
 }

@@ -25,14 +25,38 @@ function renderKatex(text, isBlock) {
   }
 }
 
+function normalizeMathDelimiters(src) {
+  const blockMatches = src.match(/\$\$/g) || []
+  const singleDollarCount = (src.match(/(?<!\$)\$(?!\$)/g) || []).length
+  let normalized = src
+
+  if (blockMatches.length % 2 !== 0) {
+    normalized += "$$"
+  }
+
+  if (singleDollarCount % 2 !== 0) {
+    normalized += "$"
+  }
+
+  return normalized
+}
+
+function removeLooseDollars(html) {
+  return html
+    .replace(/(^|[\s>])\$([\s<.,，。；;:：!?！？)]|$)/g, "$1$2")
+    .replace(/([\s(（])\$([\s<]|$)/g, "$1$2")
+}
+
 export function renderMd(src) {
   if (!src) return ""
+  const normalized = normalizeMathDelimiters(src)
   // Process block math first
-  let result = src.replace(blockRegex, (_, code) => renderKatex(code.trim(), true))
+  let result = normalized.replace(blockRegex, (_, code) => renderKatex(code.trim(), true))
   // Then process inline math
   result = result.replace(inlineRegex, (_, code) => renderKatex(code.trim(), false))
   // Finally render markdown
   let html = md.render(result)
+  html = removeLooseDollars(html)
   // Add default width to base64 data URI images that don't already have width/height
   html = html.replace(/<img\s+src="(data:image\/[^"]+)"(?![^>]*\bwidth\b)(?![^>]*\bheight\b)([^>]*)>/g,
     '<img src="$1" width="400"$2>')
