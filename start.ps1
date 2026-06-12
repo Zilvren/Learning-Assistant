@@ -9,4 +9,4 @@ if (-not (Test-Path "frontend\dist")) {
     Set-Location ..
 }
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$pwd'; python backend/api.py"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$pwd'; python run.py"
