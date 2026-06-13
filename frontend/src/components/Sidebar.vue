@@ -11,7 +11,7 @@ const showSubDlg = ref(false)
 const showSettingsDlg = ref(false)
 const subjectList = ref([])
 const newSubject = ref("")
-const { username, setUsername, load: loadSettings } = useSettings()
+const { username, darkMode, setUsername, setDarkMode, load: loadSettings } = useSettings()
 
 const mineruToken = ref("")
 const tokenConfigured = ref(false)
@@ -70,6 +70,10 @@ async function clearToken() {
   } catch(e) { alert('清除失败: ' + e.message) }
 }
 
+function toggleDarkMode() {
+  setDarkMode(!darkMode.value)
+}
+
 async function addSubject() {
   const name = newSubject.value.trim()
   if (!name) return
@@ -108,6 +112,15 @@ const items = [
           <div style="display:flex;gap:8px;margin-bottom:12px">
             <input v-model="username" class="form-input" placeholder="设置用户名" style="font-size:12px" />
             <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" @click="saveUsername" :style="usernameSaved ? 'color:#10b981' : ''">{{ usernameSaved ? '已保存' : '保存' }}</button>
+          </div>
+          <div class="setting-row">
+            <div>
+              <strong>夜间模式</strong>
+              <span>切换为更暗的界面配色</span>
+            </div>
+            <button type="button" class="theme-switch" :class="{ active: darkMode }" :aria-pressed="darkMode" @click="toggleDarkMode">
+              <span></span>
+            </button>
           </div>
           <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
           <div v-if="tokenConfigured" style="font-size:11px;color:var(--text-sec);margin-bottom:6px">

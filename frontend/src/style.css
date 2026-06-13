@@ -7,6 +7,9 @@
 :root {
   --bg: #f6f7f9;
   --surface: #ffffff;
+  --surface-soft: #fbfcfe;
+  --surface-muted: #f8fafc;
+  --surface-hover: #eaf1fb;
   --sidebar-start: #111827;
   --sidebar-end: #172033;
   --accent: #2563eb;
@@ -21,6 +24,27 @@
   --radius: 8px;
   --shadow: 0 1px 2px rgba(15,23,42,.06);
   --shadow-lg: 0 12px 28px rgba(15,23,42,.14);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0f17;
+  --surface: #111827;
+  --surface-soft: #151f2e;
+  --surface-muted: #182333;
+  --surface-hover: #213047;
+  --sidebar-start: #050812;
+  --sidebar-end: #0d1422;
+  --accent: #60a5fa;
+  --accent-light: #93c5fd;
+  --text: #e5edf7;
+  --text-sec: #a8b4c7;
+  --text-muted: #718096;
+  --border: #273449;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --shadow: 0 1px 2px rgba(0,0,0,.26);
+  --shadow-lg: 0 18px 38px rgba(0,0,0,.45);
 }
 
 body {
@@ -144,8 +168,8 @@ body {
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-success { background: var(--success); color: #fff; }
 .btn-danger { background: var(--danger); color: #fff; }
-.btn-ghost { background: #f1f5f9; color: var(--text-sec); border-color: var(--border); }
-.btn-ghost:hover { background: #eaf1fb; color: var(--accent); }
+.btn-ghost { background: var(--surface-muted); color: var(--text-sec); border-color: var(--border); }
+.btn-ghost:hover { background: var(--surface-hover); color: var(--accent); }
 
 /* Form */
 .form-group { margin-bottom: 16px; }
@@ -180,7 +204,7 @@ body {
 }
 .data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .data-table tr:hover td { background: rgba(99,102,241,.04); }
-.data-table tr:nth-child(even) td { background: #fafbfc; }
+.data-table tr:nth-child(even) td { background: var(--surface-soft); }
 .data-table tr:nth-child(even):hover td { background: rgba(99,102,241,.06); }
 
 /* Badge */
@@ -202,7 +226,7 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: all .15s;
-  background: var(--bg);
+  background: var(--surface-muted);
   color: var(--text-sec);
   user-select: none;
 }
@@ -230,7 +254,7 @@ body {
 
 /* Dialog overlay */
 .dialog-overlay {
-  position: fixed; inset:0; background: rgba(0,0,0,.3);
+  position: fixed; inset:0; background: rgba(0,0,0,.42);
   display: flex; align-items: center; justify-content: center;
   z-index: 9998; backdrop-filter: blur(2px);
   animation: overlayIn .2s ease;
@@ -239,6 +263,57 @@ body {
 .dialog {
   background: var(--surface); border-radius: var(--radius);
   padding: 24px; min-width: 320px; box-shadow: var(--shadow-lg);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0 14px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.setting-row strong {
+  display: block;
+  color: var(--text);
+  font-size: 12.5px;
+  margin-bottom: 3px;
+}
+.setting-row span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.theme-switch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  cursor: pointer;
+  transition: background .18s, border-color .18s;
+}
+.theme-switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 2px 6px rgba(15,23,42,.22);
+  transition: transform .18s, background .18s;
+}
+.theme-switch.active {
+  background: rgba(96,165,250,.22);
+  border-color: rgba(96,165,250,.45);
+}
+.theme-switch.active span {
+  transform: translateX(22px);
+  background: var(--accent-light);
 }
 /* Dialog transition */
 .dialog-enter-active { transition: all .2s ease-out; }
@@ -267,11 +342,11 @@ body {
 .markdown-body code { font-size: 14px;
   padding: 2px 6px; border-radius: 4px;
   font-family: "Consolas", "Courier New", monospace;
-  font-size: .9em; background: rgba(0,0,0,.05);
+  font-size: .9em; background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .markdown-body pre {
   padding: 12px; border-radius: 8px; overflow-x: auto;
-  background: #1e293b; color: #e2e8f0;
+  background: #101827; color: #e2e8f0;
   font-size: 12px; line-height: 1.5; margin: 8px 0;
 }
 .markdown-body pre code { background: none; padding: 0; color: inherit; }

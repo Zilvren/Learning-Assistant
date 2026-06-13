@@ -14,8 +14,9 @@ def add_error(subject, question, wrong, correct, reason, tags=None, title=None, 
         print(f'未知科目，可选：{", ".join(SUBJECTS)}')
         return False
     data = load_json('errors.json', [])
+    next_id = max((e.get('id', 0) for e in data), default=0) + 1
     entry = {
-        'id': len(data) + 1,
+        'id': next_id,
         'subject': subject,
         'title': title or question[:40],
         'question': question,

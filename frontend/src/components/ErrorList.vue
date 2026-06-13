@@ -18,6 +18,8 @@ const detail = ref(null)
 const showDeleteDlg = ref(false)
 const showAddDlg = ref(false)
 const showEditDlg = ref(false)
+const showExportDlg = ref(false)
+const exportStyle = ref("detailed")
 const ocrInputAdd = ref(null)
 const ocrInputEdit = ref(null)
 const ocrLoading = ref(false)
@@ -41,6 +43,11 @@ const editorFields = [
   { key: "wrong", label: "错答" },
   { key: "correct", label: "正解" },
   { key: "reason", label: "错因" },
+]
+const exportStyles = [
+  { key: "detailed", title: "详细复盘", desc: "题目、错答、正解、错因完整展开，适合整理归档。" },
+  { key: "compact", title: "紧凑打印", desc: "缩小间距和字号，适合一次打印大量错题。" },
+  { key: "practice", title: "练习自测", desc: "先出题并留答题区，答案解析集中放在后面。" },
 ]
 function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return h }
 function subjectColor(name) { return colorPool[Math.abs(hashCode(name || "")) % colorPool.length] }
@@ -164,10 +171,17 @@ async function doDelete() {
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
 
-async function exportPdf() {
+function openExportDialog() {
+  exportStyle.value = localStorage.getItem("pdfExportStyle") || "detailed"
+  showExportDlg.value = true
+}
+
+async function exportPdf(style = exportStyle.value) {
   try {
+    localStorage.setItem("pdfExportStyle", style)
     const all = await api.getErrors()
-    await exportPdfReport(all.errors)
+    showExportDlg.value = false
+    await exportPdfReport(all.errors, { style })
   } catch (e) {
     emit("snack", e.message || "导出失败", "#ef4444")
   }
@@ -276,7 +290,7 @@ function startEditorResize(e, layoutEl) {
         <p>{{ errors.length }} 道当前结果 · {{ pendingReviews }} 道待复习</p>
       </div>
       <div class="page-actions">
-        <button class="btn btn-ghost" @click="exportPdf">导出</button>
+        <button class="btn btn-ghost" @click="openExportDialog">导出</button>
         <button class="btn btn-primary" @click="openAddDialog">添加错题</button>
       </div>
     </header>
@@ -468,6 +482,38 @@ function startEditorResize(e, layoutEl) {
     </Teleport>
 
     <Teleport to="body">
+      <div v-if="showExportDlg" class="dialog-overlay" @click.self="showExportDlg = false">
+        <div class="dialog export-dialog">
+          <div class="export-head">
+            <div>
+              <h3>选择导出样式</h3>
+              <p>导出会包含全部错题；当前列表显示 {{ errors.length }} 道。</p>
+            </div>
+            <button class="btn icon-btn" @click="showExportDlg = false">×</button>
+          </div>
+          <div class="export-options">
+            <button
+              v-for="style in exportStyles"
+              :key="style.key"
+              type="button"
+              class="export-option"
+              :class="{ active: exportStyle === style.key }"
+              @click="exportStyle = style.key"
+            >
+              <span class="export-check"></span>
+              <strong>{{ style.title }}</strong>
+              <small>{{ style.desc }}</small>
+            </button>
+          </div>
+          <div class="export-footer">
+            <button class="btn" @click="showExportDlg = false">取消</button>
+            <button class="btn btn-primary" @click="exportPdf()">导出 PDF</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
       <div v-if="showDeleteDlg" class="dialog-overlay" @click.self="showDeleteDlg = false">
         <div class="dialog confirm-dialog">
           <h3>确认删除</h3>
@@ -495,13 +541,13 @@ function startEditorResize(e, layoutEl) {
 .error-list-panel, .detail-panel { min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .error-list-panel { padding: 8px; }
 .pane-resizer { display: flex; align-items: center; justify-content: center; cursor: col-resize; user-select: none; border-radius: 8px; }
-.pane-resizer:hover { background: #eaf1fb; }
+.pane-resizer:hover { background: var(--surface-hover); }
 .pane-resizer span { width: 3px; height: 42px; border-radius: 2px; background: var(--border); transition: background .15s, height .15s; }
 .pane-resizer:hover span, .resizing-pane .pane-resizer span { height: 72px; background: var(--accent); }
 .resizing-pane { cursor: col-resize; user-select: none; }
 .error-row { padding: 12px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; transition: background .15s, border-color .15s; }
 .error-row + .error-row { margin-top: 6px; }
-.error-row:hover { background: #f8fafc; }
+.error-row:hover { background: var(--surface-muted); }
 .error-row.active { background: rgba(99,102,241,.08); border-color: rgba(99,102,241,.24); }
 .row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .row-id { font-weight: 700; color: var(--accent); font-size: 13px; }
@@ -509,7 +555,7 @@ function startEditorResize(e, layoutEl) {
 .row-title { font-size: 13.5px; line-height: 1.5; max-height: 3em; overflow: hidden; color: var(--text); }
 .row-title :deep(p) { margin: 0; display: inline; }
 .row-tags, .detail-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 9px; }
-.mini-chip { border: 1px solid var(--border); background: #f8fafc; color: var(--text-sec); border-radius: 6px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
+.mini-chip { border: 1px solid var(--border); background: var(--surface-muted); color: var(--text-sec); border-radius: 6px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
 .mini-chip.reason { color: #b45309; background: #fffbeb; border-color: #fde68a; }
 .detail-panel { display: flex; flex-direction: column; padding: 16px; }
 .detail-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
@@ -536,13 +582,13 @@ function startEditorResize(e, layoutEl) {
   padding: 0;
   border-radius: 9px;
   border-color: var(--border);
-  background: #f8fafc;
+  background: var(--surface-muted);
   color: var(--text-sec);
   font-size: 26px;
   line-height: 1;
 }
 .icon-btn:hover {
-  background: #eef4ff;
+  background: var(--surface-hover);
   color: var(--accent);
   filter: none;
 }
@@ -552,18 +598,18 @@ function startEditorResize(e, layoutEl) {
 .form-stack h4 { font-size: 13px; margin-bottom: 6px; color: var(--text-sec); }
 .meta-grid { display: grid; grid-template-columns: 140px 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; flex-shrink: 0; }
 .meta-grid span { display: block; margin-bottom: 5px; font-size: 12px; color: var(--text-sec); font-weight: 600; }
-.ocr-strip { display: flex; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: #f8fafc; }
+.ocr-strip { display: flex; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); }
 .field-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; }
 .field-tab { border: 1px solid transparent; background: transparent; color: var(--text-sec); border-radius: 7px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 12px; }
-.field-tab:hover { background: #eef4ff; color: var(--accent); }
+.field-tab:hover { background: var(--surface-hover); color: var(--accent); }
 .field-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .single-editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .single-editor .md-editor { flex: 1; min-height: 0; }
-.editor-resizer { display: flex; align-items: center; justify-content: center; cursor: col-resize; user-select: none; background: #f8fafc; border-right: 1px solid var(--border); }
-.editor-resizer:hover { background: #eaf1fb; }
+.editor-resizer { display: flex; align-items: center; justify-content: center; cursor: col-resize; user-select: none; background: var(--surface-muted); border-right: 1px solid var(--border); }
+.editor-resizer:hover { background: var(--surface-hover); }
 .editor-resizer span { width: 3px; height: 54px; border-radius: 2px; background: var(--border); transition: background .15s, height .15s; }
 .editor-resizer:hover span, .resizing-pane .editor-resizer span { height: 84px; background: var(--accent); }
-.preview-panel { overflow: auto; padding: 18px; background: #fbfcfe; }
+.preview-panel { overflow: auto; padding: 18px; background: var(--surface-soft); }
 .preview-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .preview-head h4 { font-size: 14px; }
 .preview-head span { color: var(--text-muted); font-size: 12px; }
@@ -583,6 +629,95 @@ function startEditorResize(e, layoutEl) {
   min-width: 108px;
   font-weight: 700;
 }
+.export-dialog {
+  width: min(620px, 92vw);
+  padding: 0;
+  overflow: hidden;
+}
+.export-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.export-head h3 {
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+.export-head p {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.export-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 20px;
+}
+.export-option {
+  min-height: 138px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s, transform .15s;
+}
+.export-option:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--surface-muted);
+}
+.export-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.export-option.active .export-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.export-option.active .export-check::after {
+  opacity: 1;
+}
+.export-check {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  position: relative;
+}
+.export-check::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+}
+.export-option strong {
+  font-size: 14px;
+}
+.export-option small {
+  color: var(--text-sec);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.export-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+}
 .confirm-dialog h3 { margin-bottom: 10px; }
 .confirm-dialog p { color: var(--text-sec); margin-bottom: 18px; }
 .confirm-dialog div { display: flex; justify-content: flex-end; gap: 8px; }
@@ -594,5 +729,7 @@ function startEditorResize(e, layoutEl) {
   .detail-panel { min-height: 520px; }
   .form-stack { border-right: none; border-bottom: 1px solid var(--border); }
   .meta-grid { grid-template-columns: 1fr 1fr; }
+  .export-options { grid-template-columns: 1fr; }
+  .export-option { min-height: auto; }
 }
 </style>

@@ -102,7 +102,7 @@ defineExpose({ insertText })
 .md-editor-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 12px; border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--surface-muted);
 }
 .md-editor-tabs { display: flex; gap: 4px; }
 .md-editor-tabs button {
@@ -111,11 +111,11 @@ defineExpose({ insertText })
   color: var(--text-muted); transition: all .15s;
 }
 .md-editor-tabs button.active { background: var(--accent); color: #fff; }
-.md-editor-tabs button:not(.active):hover { background: rgba(0,0,0,.05); }
+.md-editor-tabs button:not(.active):hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
 
 .md-toolbar {
   display: flex; gap: 2px; padding: 4px 6px;
-  border-bottom: 1px solid var(--border); background: var(--bg);
+  border-bottom: 1px solid var(--border); background: var(--surface-muted);
   flex-wrap: wrap;
 }
 .md-tool {
@@ -124,7 +124,7 @@ defineExpose({ insertText })
   background: transparent; cursor: pointer; font-size: 12px;
   color: var(--text-sec); transition: all .12s;
 }
-.md-tool:hover { background: rgba(0,0,0,.06); color: var(--text); }
+.md-tool:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
 
 .md-textarea {
   width: 100%; border: none; resize: vertical; padding: 12px;
