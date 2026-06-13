@@ -119,8 +119,12 @@ def mark_review(error_id: int):
     errors = load_json("errors.json", [])
     for e in errors:
         if e["id"] == error_id:
-            review_error(error_id)
-            return {"message": f"错题 #{error_id} 已标记复习"}
+            updated = review_error(error_id)
+            return {
+                "message": f"错题 #{error_id} 已标记复习",
+                "next_review": updated.get("next_review") if updated else None,
+                "review_count": updated.get("review_count") if updated else None,
+            }
     raise HTTPException(404, f"未找到错题 #{error_id}")
 
 
@@ -164,13 +168,16 @@ def remove_error(error_id: int):
 @app.get("/api/daily-push")
 def get_daily_push():
     kb = get_knowledge_base()
-    errors = load_json("errors.json", [])
+    errors = list_errors()
     import random
     # Pick one tip per subject
     knowledge = {}
     for s in error_manager.SUBJECTS:
         if s in kb and kb[s]:
             knowledge[s] = random.choice(kb[s])
+    today = today_str()
+    due_errors = [e for e in errors if (e.get("next_review") or e.get("created", today)[:10]) <= today]
+    due_errors.sort(key=lambda e: ((e.get("next_review") or e.get("created", today)[:10]), e.get("id", 0)))
     weak = [{
         "id": e["id"],
         "subject": e["subject"],
@@ -183,15 +190,22 @@ def get_daily_push():
         "reason_tags": e.get("reason_tags", []),
         "created": e.get("created"),
         "review_count": e.get("review_count", 0),
-    } for e in errors if e.get("review_count", 0) < 2]
+        "last_review": e.get("last_review"),
+        "review_stage": e.get("review_stage", e.get("review_count", 0)),
+        "next_review": e.get("next_review"),
+    } for e in due_errors]
     total = len(errors)
-    advice = ("当前错题量较少，保持刷题节奏，注意归纳总结" if total < 20 else
-              "错题量适中，重点复习标记为概念不清的题目" if total < 50 else
-              "错题量较大，建议暂停刷新题，集中复习旧错题")
+    overdue = sum(1 for e in due_errors if (e.get("next_review") or today) < today)
+    if due_errors:
+        advice = f"今天有 {len(due_errors)} 道错题到期复习，其中 {overdue} 道已逾期，建议先清空复习队列"
+    else:
+        advice = "今天没有到期错题，可以新增整理或轻量回看近期内容"
     return {
         "date": today_str(),
         "total_errors": total,
-        "reviewed": sum(1 for e in errors if e.get("review_count", 0) >= 2),
+        "reviewed": sum(1 for e in errors if e.get("review_count", 0) > 0),
+        "due_count": len(due_errors),
+        "overdue_count": overdue,
         "knowledge": knowledge,
         "weak_errors": weak,
         "advice": advice,

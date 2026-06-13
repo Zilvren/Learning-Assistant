@@ -1,4 +1,21 @@
-from .data_store import load_json, save_json, now_str
+from datetime import datetime, timedelta
+
+from .data_store import load_json, save_json, now_str, today_str
+
+REVIEW_INTERVALS = [0, 1, 2, 4, 7, 15, 30, 60]
+
+
+def next_review_date(review_count=0):
+    index = min(max(review_count, 0), len(REVIEW_INTERVALS) - 1)
+    return (datetime.now() + timedelta(days=REVIEW_INTERVALS[index])).strftime('%Y-%m-%d')
+
+
+def normalize_review_fields(entry):
+    entry.setdefault('review_count', 0)
+    entry.setdefault('last_review', None)
+    entry.setdefault('review_stage', entry.get('review_count', 0))
+    entry.setdefault('next_review', entry.get('created', today_str())[:10])
+    return entry
 
 def load_subjects():
     return load_json("subjects.json", [])
@@ -27,7 +44,9 @@ def add_error(subject, question, wrong, correct, reason, tags=None, title=None, 
         'reason_tags': reason_tags or [],
         'created': now_str(),
         'review_count': 0,
-        'last_review': None
+        'last_review': None,
+        'review_stage': 0,
+        'next_review': today_str()
     }
     data.append(entry)
     save_json('errors.json', data)
@@ -37,6 +56,7 @@ def add_error(subject, question, wrong, correct, reason, tags=None, title=None, 
 
 def list_errors(subject=None, keyword=None, tag=None, reason_tag=None):
     data = load_json('errors.json', [])
+    data = [normalize_review_fields(e) for e in data]
     if subject:
         data = [e for e in data if e['subject'] == subject]
     if keyword:
@@ -65,9 +85,11 @@ def review_error(error_id):
         if e['id'] == error_id:
             e['review_count'] = e.get('review_count', 0) + 1
             e['last_review'] = now_str()
+            e['review_stage'] = e['review_count']
+            e['next_review'] = next_review_date(e['review_count'])
             save_json('errors.json', data)
-            print(f'✅ 错题 #{error_id} 复习次数 +1（共 {e["review_count"]} 次）')
-            return
+            print(f'✅ 错题 #{error_id} 复习次数 +1（共 {e["review_count"]} 次，下次 {e["next_review"]}）')
+            return e
     print(f'❌ 未找到错题 #{error_id}')
 
 

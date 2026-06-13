@@ -14,7 +14,6 @@ const hour = new Date().getHours()
 const greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好"
 const date = new Date().toISOString().slice(0, 10)
 
-const reviewRate = computed(() => data.value.total_errors ? Math.round(data.value.reviewed / data.value.total_errors * 100) : 0)
 const dueReviews = computed(() => data.value.weak_errors)
 const knowledgeItems = computed(() => Object.entries(data.value.knowledge || {}).slice(0, 6))
 const topSubject = computed(() => {
@@ -30,6 +29,14 @@ function reviewTitle(e) {
 function showText(v) {
   const t = (v || "").trim()
   return t && t !== "未记录"
+}
+
+function reviewPlanText(e) {
+  const count = e.review_count || 0
+  if (!e.next_review) return `第 ${count + 1} 轮复习`
+  if (e.next_review < date) return `已逾期 · 第 ${count + 1} 轮`
+  if (e.next_review === date) return `今日到期 · 第 ${count + 1} 轮`
+  return `下次 ${e.next_review} · 第 ${count + 1} 轮`
 }
 
 function closeReviewDetail() {
@@ -50,8 +57,8 @@ async function loadHomeData() {
 
 async function markReviewed(e) {
   try {
-    await api.reviewError(e.id)
-    emit("snack", `已标记复习 #${e.id}`)
+    const result = await api.reviewError(e.id)
+    emit("snack", result.next_review ? `已复习 #${e.id}，下次 ${result.next_review}` : `已标记复习 #${e.id}`)
     if (selectedReview.value?.id === e.id) {
       closeReviewDetail()
     }
@@ -87,8 +94,12 @@ onMounted(async () => {
           <span>错题总数</span>
         </div>
         <div>
-          <strong>{{ reviewRate }}%</strong>
-          <span>复习完成</span>
+          <strong>{{ data.due_count || data.weak_errors.length }}</strong>
+          <span>今日到期</span>
+        </div>
+        <div>
+          <strong>{{ data.overdue_count || 0 }}</strong>
+          <span>逾期复习</span>
         </div>
         <div>
           <strong>{{ topSubject }}</strong>
@@ -105,7 +116,7 @@ onMounted(async () => {
           <div class="panel-head">
             <div>
               <h3>今日优先复习</h3>
-              <p>{{ data.weak_errors.length }} 道复习次数不足 2 次</p>
+              <p>{{ data.weak_errors.length }} 道按艾宾浩斯曲线到期</p>
             </div>
           </div>
           <div v-if="dueReviews.length" class="review-list">
@@ -116,7 +127,7 @@ onMounted(async () => {
                   <span class="review-subject">[{{ e.subject }}]</span>
                   <span>{{ reviewTitle(e) }}</span>
                 </div>
-                <div class="review-meta">已复习 {{ e.review_count || 0 }} 次</div>
+                <div class="review-meta">{{ reviewPlanText(e) }}</div>
               </div>
               <div class="review-actions">
                 <button type="button" class="review-link" @click="selectedReview = e">查看详情</button>
@@ -152,7 +163,7 @@ onMounted(async () => {
             <div>
               <span class="review-dialog-id">#{{ selectedReview.id }} · {{ selectedReview.subject }}</span>
               <h3>{{ reviewTitle(selectedReview) }}</h3>
-              <p>复习 {{ selectedReview.review_count || 0 }} 次<template v-if="selectedReview.created"> · {{ selectedReview.created.slice(0, 10) }}</template></p>
+              <p>{{ reviewPlanText(selectedReview) }}<template v-if="selectedReview.created"> · 创建 {{ selectedReview.created.slice(0, 10) }}</template></p>
             </div>
             <div class="review-dialog-actions">
               <button type="button" class="review-done review-done-hero" @click="markReviewed(selectedReview)">标记复习</button>
@@ -197,7 +208,7 @@ onMounted(async () => {
 .eyebrow { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
 .home-hero h2 { font-size: 26px; line-height: 1.25; margin-bottom: 8px; letter-spacing: 0; }
 .home-hero p { color: var(--text-sec); font-size: 14px; }
-.hero-stats { display: grid; grid-template-columns: repeat(3, minmax(96px, 1fr)); gap: 10px; min-width: 360px; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, minmax(88px, 1fr)); gap: 10px; min-width: 480px; }
 .hero-stats div { padding: 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); }
 .hero-stats strong { display: block; font-size: 22px; color: var(--text); margin-bottom: 4px; }
 .hero-stats span { color: var(--text-muted); font-size: 12px; }
@@ -325,7 +336,7 @@ onMounted(async () => {
 .mini-chip.reason { color: #b45309; background: #fffbeb; border-color: #fde68a; }
 @media (max-width: 980px) {
   .home-hero, .home-grid { grid-template-columns: 1fr; flex-direction: column; }
-  .hero-stats { min-width: 0; grid-template-columns: repeat(3, 1fr); }
+  .hero-stats { min-width: 0; grid-template-columns: repeat(2, 1fr); }
   .review-item { grid-template-columns: 48px minmax(0, 1fr); }
   .review-actions { grid-column: 2; justify-content: flex-start; }
   .review-dialog-head { flex-direction: column; }

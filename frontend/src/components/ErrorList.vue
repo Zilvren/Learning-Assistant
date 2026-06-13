@@ -35,7 +35,8 @@ const editForm = ref(emptyForm())
 const { subjectRef } = useSubjects()
 const filterSubjects = computed(() => ["全部", ...subjectRef.value])
 const selectedError = computed(() => errors.value.find(e => e.id === selectedId.value) || detail.value)
-const pendingReviews = computed(() => errors.value.filter(e => (e.review_count || 0) < 2).length)
+const today = new Date().toISOString().slice(0, 10)
+const pendingReviews = computed(() => errors.value.filter(e => isDue(e)).length)
 
 const colorPool = ["#0EA5E9","#8B5CF6","#10B981","#F97316","#EC4899","#F59E0B","#6366F1","#14B8A6","#F43F5E","#EAB308"]
 const editorFields = [
@@ -54,6 +55,15 @@ function subjectColor(name) { return colorPool[Math.abs(hashCode(name || "")) % 
 function emptyForm(subject = "") { return { subject, question:"", title:"", wrong:"", correct:"", reason:"", tags:"", reason_tags:"" } }
 function showText(v) { const t = (v || "").trim(); return t && t !== "未记录" }
 function fieldLabel(key) { return editorFields.find(f => f.key === key)?.label || "题目" }
+function isDue(e) { return (e.next_review || e.created?.slice(0, 10) || today) <= today }
+function reviewPlanText(e) {
+  const next = e.next_review || e.created?.slice(0, 10)
+  const round = (e.review_count || 0) + 1
+  if (!next) return `第 ${round} 轮复习`
+  if (next < today) return `逾期 ${next} · 第 ${round} 轮`
+  if (next === today) return `今日到期 · 第 ${round} 轮`
+  return `下次 ${next} · 第 ${round} 轮`
+}
 
 onMounted(async () => {
   try {
@@ -148,8 +158,8 @@ async function saveEdit(){
 async function doReview() {
   if (!selectedId.value) { emit("snack", "请先选择一道错题", "#f59e0b"); return }
   try {
-    await api.reviewError(selectedId.value)
-    emit("snack", `已标记复习 #${selectedId.value}`)
+    const result = await api.reviewError(selectedId.value)
+    emit("snack", result.next_review ? `已复习 #${selectedId.value}，下次 ${result.next_review}` : `已标记复习 #${selectedId.value}`)
     await refresh()
   } catch (e) { emit("snack", e.message, "#ef4444") }
 }
@@ -314,7 +324,7 @@ function startEditorResize(e, layoutEl) {
           <div class="row-top">
             <span class="row-id">#{{ e.id }}</span>
             <span class="badge" :style="{ background: subjectColor(e.subject) }">{{ e.subject }}</span>
-            <span class="review-count">复习 {{ e.review_count || 0 }}</span>
+            <span class="review-count" :class="{ due: isDue(e) }">{{ reviewPlanText(e) }}</span>
           </div>
           <div class="row-title" v-html="renderMd(e.title || e.question?.slice(0, 50) || '')"></div>
           <div class="row-tags">
@@ -335,7 +345,7 @@ function startEditorResize(e, layoutEl) {
             <div>
               <span class="row-id">#{{ selectedError.id }}</span>
               <h3>{{ selectedError.title || selectedError.question?.slice(0, 40) }}</h3>
-              <p>{{ selectedError.subject }} · {{ selectedError.created?.slice(0,10) }} · 复习 {{ selectedError.review_count || 0 }} 次</p>
+              <p>{{ selectedError.subject }} · {{ selectedError.created?.slice(0,10) }} · {{ reviewPlanText(selectedError) }}</p>
             </div>
             <span class="badge" :style="{ background: subjectColor(selectedError.subject) }">{{ selectedError.subject }}</span>
           </div>
@@ -552,6 +562,7 @@ function startEditorResize(e, layoutEl) {
 .row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .row-id { font-weight: 700; color: var(--accent); font-size: 13px; }
 .review-count { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.review-count.due { color: var(--warning); font-weight: 700; }
 .row-title { font-size: 13.5px; line-height: 1.5; max-height: 3em; overflow: hidden; color: var(--text); }
 .row-title :deep(p) { margin: 0; display: inline; }
 .row-tags, .detail-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 9px; }
