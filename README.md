@@ -48,6 +48,7 @@
 - 支持 MinerU Token 配置和清除。
 - 支持夜间模式，切换后会记住当前主题。
 - 支持数据备份和导入恢复，可在设置中下载或导入备份包。
+- 支持检查 GitHub Releases 新版本，打包版可自动下载、替换并重启。
 
 ## 快速开始
 
@@ -158,6 +159,9 @@ http://127.0.0.1:8000
 - `PUT /api/settings/username`
 - `GET /api/backup/export`
 - `POST /api/backup/import`
+- `GET /api/version`
+- `GET /api/update/check`
+- `POST /api/update/apply`
 
 ### 前端开发
 
@@ -198,8 +202,19 @@ python run.py
 该脚本会：
 
 1. 安装并构建前端。
-2. 使用 PyInstaller 构建 `Tracker.exe`。
-3. 生成发布目录和 `Tracker.zip`。
+2. 使用 PyInstaller 构建 `Tracker.exe` 和 `Updater.exe`。
+3. 写入发布包版本信息 `version.json`。
+4. 生成发布目录和 `Tracker.zip`。
+
+示例：
+
+```powershell
+.\scripts\build-release.ps1 -Version 1.0.0 -Upload
+```
+
+发布到 GitHub Releases 时，资源文件名保持为 `Tracker.zip`。应用会从 `Zilvren/Learning-Assitant` 的 latest release 检查该资源并执行自动更新。
+
+自动更新会在设置页显示当前版本和检查结果。打包版发现新版本后，点击“立即更新”会下载 `Tracker.zip` 到 `data/updates/`，生成 `data/backups/pre-update-*.zip`，启动 `Updater.exe` 替换程序文件并重启；`data/` 目录不会被更新包覆盖。
 
 ## 数据说明
 

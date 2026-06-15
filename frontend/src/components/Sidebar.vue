@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue"
+import { computed, ref, onMounted } from "vue"
 import { useSubjects } from "../store/subjects.js"
 import { useSettings } from "../store/settings.js"
 import { api } from "../api/index.js"
@@ -20,6 +20,16 @@ const tokenMasked = ref("")
 const tokenSaved = ref(false)
 const backupInput = ref(null)
 const backupBusy = ref(false)
+const versionInfo = ref({ version: "", can_auto_update: false })
+const updateInfo = ref(null)
+const updateBusy = ref(false)
+const updateApplying = ref(false)
+const updateStatus = ref("未检查更新")
+const LAST_UPDATE_CHECK_KEY = "studyTrackerLastUpdateCheck"
+
+const canApplyUpdate = computed(() => {
+  return !!updateInfo.value?.has_update && !!updateInfo.value?.asset_found && !!versionInfo.value.can_auto_update
+})
 
 onMounted(async () => {
   try {
@@ -30,6 +40,7 @@ onMounted(async () => {
     mineruToken.value = ""
   }
   catch(e){/*ignore*/}
+  await loadVersionAndMaybeCheck()
 })
 
 function openSubjectDialog() { showSubDlg.value = true }
@@ -129,6 +140,67 @@ async function importBackupFile(event) {
   }
 }
 
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+async function loadVersionAndMaybeCheck() {
+  try {
+    versionInfo.value = await api.getVersion()
+    updateStatus.value = versionInfo.value.can_auto_update ? "可检查更新" : "源码模式：仅支持检查更新"
+    const last = localStorage.getItem(LAST_UPDATE_CHECK_KEY)
+    if (last !== todayKey()) {
+      localStorage.setItem(LAST_UPDATE_CHECK_KEY, todayKey())
+      await checkForUpdate(false, true)
+    }
+  } catch (e) {
+    updateStatus.value = "版本信息读取失败"
+  }
+}
+
+async function checkForUpdate(force = true, silent = false) {
+  if (!silent) updateStatus.value = "检查中..."
+  updateBusy.value = true
+  try {
+    const result = await api.checkUpdate(force)
+    if (!result.ok) {
+      updateInfo.value = null
+      updateStatus.value = result.message || "检查失败"
+      return
+    }
+    updateInfo.value = result
+    if (result.has_update) {
+      updateStatus.value = result.asset_found
+        ? `发现新版本 v${result.latest_version}`
+        : `发现新版本 v${result.latest_version}，但缺少更新包`
+    } else {
+      updateStatus.value = "已是最新版本"
+    }
+  } catch (e) {
+    updateInfo.value = null
+    updateStatus.value = "检查失败: " + e.message
+  } finally {
+    updateBusy.value = false
+  }
+}
+
+async function applyUpdate() {
+  if (!canApplyUpdate.value) return
+  const ok = window.confirm("更新会自动备份数据并重启程序，确定立即更新吗？")
+  if (!ok) return
+  updateApplying.value = true
+  updateStatus.value = "下载更新中..."
+  try {
+    const result = await api.applyUpdate()
+    const snapshot = result.snapshot ? `\n更新前数据备份：data/backups/${result.snapshot}` : ""
+    updateStatus.value = "即将重启并安装更新"
+    alert((result.message || "程序即将重启并安装更新") + snapshot)
+  } catch (e) {
+    updateStatus.value = "更新失败: " + e.message
+    updateApplying.value = false
+  }
+}
+
 async function addSubject() {
   const name = newSubject.value.trim()
   if (!name) return
@@ -197,6 +269,23 @@ const items = [
               </button>
             </div>
             <input ref="backupInput" type="file" accept=".zip,application/zip" style="display:none" @change="importBackupFile" />
+          </div>
+          <div class="setting-row" style="align-items:flex-start;gap:12px">
+            <div style="min-width:0">
+              <strong>软件更新</strong>
+              <span>当前版本：{{ versionInfo.version || '读取中' }}</span>
+              <span>{{ updateStatus }}</span>
+              <span v-if="updateInfo?.published_at">发布时间：{{ updateInfo.published_at.slice(0, 10) }}</span>
+              <span v-if="updateInfo?.has_update && !versionInfo.can_auto_update">打包版才可自动替换，源码模式请手动更新。</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" :disabled="updateBusy || updateApplying" @click="checkForUpdate(true, false)">
+                {{ updateBusy ? '检查中' : '检查更新' }}
+              </button>
+              <button class="btn btn-ghost" style="white-space:nowrap;font-size:11px" :disabled="!canApplyUpdate || updateApplying" @click="applyUpdate">
+                {{ updateApplying ? '更新中' : '立即更新' }}
+              </button>
+            </div>
           </div>
           <label class="form-label" style="font-size:12px;margin-bottom:4px">MinerU Token</label>
           <div v-if="tokenConfigured" style="font-size:11px;color:var(--text-sec);margin-bottom:6px">

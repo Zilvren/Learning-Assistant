@@ -21,6 +21,7 @@ from utils.error_manager import (
 from utils.daily_push import get_knowledge_base
 from utils.data_store import DATA_DIR, load_json, save_json, today_str
 from backend.mineru import ocr_image
+from backend import update_service
 
 app = FastAPI(title="错题追踪器")
 
@@ -363,6 +364,24 @@ async def import_backup(request: Request):
         }
     except zipfile.BadZipFile:
         raise HTTPException(400, "请上传有效的 zip 备份文件")
+
+
+@app.get("/api/version")
+def get_version():
+    return update_service.get_version_response()
+
+
+@app.get("/api/update/check")
+def check_update(force: bool = False):
+    return update_service.check_update(force=force)
+
+
+@app.post("/api/update/apply")
+def apply_update():
+    try:
+        return update_service.apply_update()
+    except update_service.UpdateError as e:
+        raise HTTPException(400, str(e))
 
 # ── SPA 静态文件（放在 API 路由之后，避免拦截 /api/*）──
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")

@@ -52,6 +52,9 @@ export const api = {
   saveUsername: (name) => request('PUT', '/settings/username', { name }),
   exportBackup: () => requestBackupExport(),
   importBackup: (file) => requestBackupImport(file),
+  getVersion: () => request('GET', '/version'),
+  checkUpdate: (force = false) => request('GET', `/update/check?force=${force ? 'true' : 'false'}`),
+  applyUpdate: () => request('POST', '/update/apply'),
   getErrors: (subject, keyword, tag, reason_tag) => {
     const p = new URLSearchParams()
     if (subject && subject !== '全部') p.set('subject', subject)
