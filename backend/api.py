@@ -1,11 +1,14 @@
 import sys, os, io
+import json
+import zipfile
+from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -16,7 +19,7 @@ from utils.error_manager import (
 )
 
 from utils.daily_push import get_knowledge_base
-from utils.data_store import load_json, save_json, today_str
+from utils.data_store import DATA_DIR, load_json, save_json, today_str
 from backend.mineru import ocr_image
 
 app = FastAPI(title="错题追踪器")
@@ -28,6 +31,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+BACKUP_FILES = {"errors.json", "subjects.json", "config.json", "knowledge.json"}
+BACKUP_MAX_FILE_SIZE = 10 * 1024 * 1024
+
+
+def validate_backup_data(name: str, data):
+    if name == "errors.json" and not isinstance(data, list):
+        raise HTTPException(400, "errors.json 数据结构不正确")
+    if name == "errors.json" and any(not isinstance(item, dict) for item in data):
+        raise HTTPException(400, "errors.json 数据结构不正确")
+    if name == "subjects.json" and not isinstance(data, list):
+        raise HTTPException(400, "subjects.json 数据结构不正确")
+    if name == "subjects.json" and any(not isinstance(item, str) for item in data):
+        raise HTTPException(400, "subjects.json 数据结构不正确")
+    if name == "config.json" and not isinstance(data, dict):
+        raise HTTPException(400, "config.json 数据结构不正确")
+    if name == "knowledge.json" and not isinstance(data, dict):
+        raise HTTPException(400, "knowledge.json 数据结构不正确")
+
+
+def save_current_backup_snapshot(prefix: str = "pre-import"):
+    backup_dir = os.path.join(DATA_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    snapshot = os.path.join(backup_dir, f"{prefix}-{stamp}.zip")
+    with zipfile.ZipFile(snapshot, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename in sorted(BACKUP_FILES):
+            path = os.path.join(DATA_DIR, filename)
+            if os.path.isfile(path):
+                zf.write(path, arcname=filename)
+    return snapshot
 
 
 
@@ -267,6 +301,68 @@ def set_username(data: dict):
     config["username"] = name
     save_json("config.json", config)
     return {"message": "Username saved"}
+
+
+@app.get("/api/backup/export")
+def export_backup():
+    """Download local JSON data as a zip backup."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename in sorted(BACKUP_FILES):
+            path = os.path.join(DATA_DIR, filename)
+            if os.path.isfile(path):
+                zf.write(path, arcname=filename)
+    buffer.seek(0)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    headers = {"Content-Disposition": f'attachment; filename="study-tracker-backup-{stamp}.zip"'}
+    return StreamingResponse(buffer, media_type="application/zip", headers=headers)
+
+
+@app.post("/api/backup/import")
+async def import_backup(request: Request):
+    """Restore JSON data files from a zip backup."""
+    body = await request.body()
+    if not body:
+        raise HTTPException(400, "备份文件不能为空")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(body), "r") as zf:
+            candidates = []
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = os.path.basename(info.filename)
+                if name in BACKUP_FILES:
+                    candidates.append((name, info))
+                elif info.filename.endswith(".json"):
+                    raise HTTPException(400, f"备份包包含不支持的数据文件：{info.filename}")
+
+            if not candidates:
+                raise HTTPException(400, "备份包中没有可恢复的数据文件")
+
+            parsed = {}
+            for name, info in candidates:
+                if info.file_size > BACKUP_MAX_FILE_SIZE:
+                    raise HTTPException(400, f"{name} 文件过大")
+                try:
+                    parsed[name] = json.loads(zf.read(info).decode("utf-8"))
+                except json.JSONDecodeError:
+                    raise HTTPException(400, f"{name} 不是有效 JSON 文件")
+                validate_backup_data(name, parsed[name])
+
+            os.makedirs(DATA_DIR, exist_ok=True)
+            snapshot = save_current_backup_snapshot()
+            for name, data in parsed.items():
+                save_json(name, data)
+
+        error_manager.SUBJECTS = error_manager.load_subjects()
+        return {
+            "message": "备份导入成功",
+            "files": sorted(parsed.keys()),
+            "snapshot": os.path.basename(snapshot),
+        }
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "请上传有效的 zip 备份文件")
 
 # ── SPA 静态文件（放在 API 路由之后，避免拦截 /api/*）──
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")

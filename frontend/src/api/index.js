@@ -18,6 +18,24 @@ async function request(method, path, body) {
   return res.json()
 }
 
+async function requestBackupExport() {
+  const res = await fetch(BASE + '/backup/export')
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || '备份失败')
+  }
+  return res.blob()
+}
+
+async function requestBackupImport(file) {
+  const res = await fetch(BASE + '/backup/import', { method: 'POST', body: file })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || '导入失败')
+  }
+  return res.json()
+}
+
 export const api = {
   getSubjects: () => request('GET', '/subjects'),
   addSubject: (name) => request('POST', '/subjects', { name }),
@@ -32,6 +50,8 @@ export const api = {
   clearToken: () => request('DELETE', '/settings/token'),
   getToken: () => request('GET', '/settings/token'),
   saveUsername: (name) => request('PUT', '/settings/username', { name }),
+  exportBackup: () => requestBackupExport(),
+  importBackup: (file) => requestBackupImport(file),
   getErrors: (subject, keyword, tag, reason_tag) => {
     const p = new URLSearchParams()
     if (subject && subject !== '全部') p.set('subject', subject)

@@ -47,6 +47,7 @@
 - 支持用户名设置。
 - 支持 MinerU Token 配置和清除。
 - 支持夜间模式，切换后会记住当前主题。
+- 支持数据备份和导入恢复，可在设置中下载或导入备份包。
 
 ## 快速开始
 
@@ -69,7 +70,7 @@ data/
   config.json
 ```
 
-这些文件保存错题、科目和配置。备份或迁移数据时复制整个 `data/` 文件夹即可。
+这些文件保存错题、科目和配置。可以在“设置”中点击“备份数据”下载 zip 备份包，迁移到新设备时再通过“导入备份”恢复。导入前程序会自动把当前数据保存到 `data/backups/`，避免误覆盖后无法找回。
 
 ### 方式二：源码运行
 
@@ -155,6 +156,8 @@ http://127.0.0.1:8000
 - `PUT /api/settings/token`
 - `DELETE /api/settings/token`
 - `PUT /api/settings/username`
+- `GET /api/backup/export`
+- `POST /api/backup/import`
 
 ### 前端开发
 
@@ -206,6 +209,8 @@ python run.py
 - `subjects.json`：科目列表。
 - `config.json`：MinerU Token、用户名等配置。
 - `knowledge.json`：可选，自定义每日知识点；不存在时使用内置默认知识点。
+
+设置中的备份功能会把以上本地数据打包为 zip。导入备份会覆盖当前对应数据；覆盖前会自动生成一份 `data/backups/pre-import-*.zip` 恢复点。
 
 错题 ID 使用现有最大 ID 加 1 生成，删除旧错题后不会复用旧编号。
 每道错题会记录 `review_count`、`last_review`、`review_stage` 和 `next_review`，用于艾宾浩斯复习调度。
