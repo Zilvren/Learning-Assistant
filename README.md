@@ -189,119 +189,6 @@ data/updates/update.log
 - 程序目录下的 `version.json`
 - GitHub Release 中 `Tracker.zip` 内的 `version.json`
 
-## 开发说明
-
-项目采用 FastAPI + Vue 3。开发时 Vite 代理 `/api` 到后端，生产时 FastAPI 托管构建后的前端静态文件。
-
-```text
-.
-├── backend/
-│   ├── api.py             # FastAPI 接口和 SPA 托管
-│   ├── mineru.py          # MinerU OCR 调用
-│   └── update_service.py  # 自动更新检查、下载和启动 updater
-├── frontend/
-│   └── src/
-│       ├── api/           # 前端 API 封装
-│       ├── components/    # Vue 组件
-│       ├── store/         # 前端状态
-│       └── utils/         # Markdown、PDF 等工具
-├── utils/
-│   ├── data_store.py      # JSON 数据读写
-│   ├── error_manager.py   # 错题和科目逻辑
-│   └── daily_push.py      # 每日推送知识点
-├── run.py                 # 主程序入口
-├── updater.py             # 自动更新替换器入口
-├── version.json           # 当前版本和更新源信息
-├── start.ps1              # 源码启动脚本
-└── scripts/
-    └── build-release.ps1  # 发布打包脚本
-```
-
-### 后端接口
-
-主要接口：
-
-- `GET /api/subjects`
-- `POST /api/subjects`
-- `DELETE /api/subjects/{name}`
-- `GET /api/errors`
-- `POST /api/errors`
-- `PUT /api/errors/{id}`
-- `PUT /api/errors/{id}/review`
-- `DELETE /api/errors/{id}`
-- `GET /api/daily-push`
-- `POST /api/ocr`
-- `GET /api/settings/token`
-- `PUT /api/settings/token`
-- `DELETE /api/settings/token`
-- `PUT /api/settings/username`
-- `GET /api/backup/export`
-- `POST /api/backup/import`
-- `GET /api/version`
-- `GET /api/update/check`
-- `POST /api/update/apply`
-
-### 前端开发
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-Vite 默认地址：
-
-```text
-http://127.0.0.1:5173
-```
-
-同时启动后端：
-
-```powershell
-python run.py
-```
-
-## 打包发布
-
-本地打包：
-
-```powershell
-.\scripts\build-release.ps1
-```
-
-指定版本：
-
-```powershell
-.\scripts\build-release.ps1 -Version 2026.06.16-1223
-```
-
-打包并上传 GitHub Release：
-
-```powershell
-.\scripts\build-release.ps1 -Version 2026.06.16-1223 -Upload
-```
-
-脚本会：
-
-1. 安装并构建前端。
-2. 使用 PyInstaller 构建 `Tracker.exe`。
-3. 使用 PyInstaller 构建 `Updater.exe`。
-4. 写入发布包内的 `version.json`。
-5. 生成 `dist/release/Tracker.zip`。
-6. 如果传入 `-Upload`，创建或更新 GitHub Release。
-
-发布包内容：
-
-```text
-Tracker.exe
-Updater.exe
-version.json
-README.md
-README-release.txt
-```
-
-注意：自动更新依赖 `Tracker.zip` 这个资源名，不要改名上传。
-
 ## 常见问题
 
 ### 为什么设置页显示源码模式？
@@ -336,16 +223,16 @@ Update installed successfully
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|---|
-| 前端 | Vue 3 + Vite |
-| 后端 | FastAPI + Uvicorn |
-| Markdown | markdown-it |
-| 公式渲染 | KaTeX |
-| OCR | MinerU API v4 |
-| 数据存储 | 本地 JSON 文件 |
-| 打包 | PyInstaller |
-| 更新 | GitHub Releases + Updater.exe |
+| 层       | 技术                          |
+| -------- | ----------------------------- |
+| 前端     | Vue 3 + Vite                  |
+| 后端     | FastAPI + Uvicorn             |
+| Markdown | markdown-it                   |
+| 公式渲染 | KaTeX                         |
+| OCR      | MinerU API v4                 |
+| 数据存储 | 本地 JSON 文件                |
+| 打包     | PyInstaller                   |
+| 更新     | GitHub Releases + Updater.exe |
 
 ## License
 
