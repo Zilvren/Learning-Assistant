@@ -2,11 +2,12 @@ import { ref } from "vue"
 import { api } from "../api/index.js"
 
 const usernameRef = ref("")
-const THEME_KEY = "studyTrackerTheme"
+const THEME_KEY = "studyTrackerThemeV2"
 
 function initialDarkMode() {
   try {
-    return localStorage.getItem(THEME_KEY) === "dark"
+    const theme = localStorage.getItem(THEME_KEY)
+    return theme === "dark"
   } catch {
     return false
   }
