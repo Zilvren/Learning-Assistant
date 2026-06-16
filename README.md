@@ -1,68 +1,79 @@
 # 错题追踪器
 
-一个本地优先的 Web 版错题管理工具。它把错题录入、Markdown + LaTeX 编辑、OCR 识别、标签筛选、每日复习提醒和打印导出放在同一个工作台里，适合长期整理自己的错题本。
+本地优先的 Web 版错题管理工具，用来记录、复盘和定期复习错题。它把错题录入、Markdown/LaTeX 编辑、OCR 识别、标签筛选、艾宾浩斯复习提醒、PDF 导出、数据备份和自动更新放在同一个应用里。
 
-数据默认保存在程序目录下的 `data/` 文件夹中，不依赖账号系统。
-
-## 功能概览
-
-### 错题管理
-
-- 支持新增、编辑、删除错题。
-- 每道错题包含科目、标题、题目、错答、正解、错因。
-- 题目、错答、正解、错因均支持 Markdown 和 LaTeX。
-- 内置编辑工具栏，支持加粗、斜体、删除线、标题、列表、链接、图片、代码块、行内公式和公式块。
-- 支持 `\xcancel{}` 公式删除线，方便标记错误推导。
-- OCR 生成的 base64 图片可在编辑器中折叠，避免大段图片数据影响编辑。
-
-### 科目与标签
-
-- 支持自定义科目，可在侧边栏“管理科目”中增删。
-- 错题可设置题目标签和错因标签，标签用空格分隔。
-- 列表支持按科目、标题/题目、题目标签、错因标签筛选。
-- 点击错题卡片上的标签可快速切换到对应筛选。
-
-### OCR 识别
-
-- 基于 MinerU API v4，将截图或图片识别为 Markdown。
-- 支持公式识别和图片内嵌。
-- 可在添加或编辑错题时选择 OCR 插入目标字段。
-- 支持在编辑弹窗中直接粘贴截图，识别结果会追加到当前字段。
-
-### 复习与导出
-
-- 首页展示每日复习建议、错题总数、今日到期、逾期复习和当前薄弱科目。
-- 新增错题默认当天进入复习队列。
-- 标记已复习后，会按艾宾浩斯遗忘曲线间隔自动计算下一次复习日期。
-- 当前复习间隔为：当天、1 天、2 天、4 天、7 天、15 天、30 天、60 天。
-- 到期或逾期错题会进入“今日优先复习”。
-- 错题列表支持标记已复习，并显示下一次复习计划。
-- 导出时可选择 PDF 样式：
-  - `详细复盘`：完整展示题目、错答、正解、错因。
-  - `紧凑打印`：压缩间距，适合大量错题省纸打印。
-  - `练习自测`：先输出题目和答题区，答案解析集中放在后面。
-
-### 界面设置
-
-- 支持用户名设置。
-- 支持 MinerU Token 配置和清除。
-- 支持夜间模式，切换后会记住当前主题。
-- 支持数据备份和导入恢复，可在设置中下载或导入备份包。
-- 支持检查 GitHub Releases 新版本，打包版可自动下载、替换并重启。
-
-## 快速开始
-
-### 方式一：运行 EXE
-
-下载 Releases 中的 `Tracker.zip`，解压后运行 `Tracker.exe`。
-
-程序启动后会自动打开：
+应用默认运行在本机：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-首次运行会在 EXE 同级目录创建 `data/` 文件夹：
+数据保存在程序目录下的 `data/` 文件夹中，不需要账号系统，也不会把错题上传到远程服务器。
+
+## 主要功能
+
+### 错题管理
+
+- 新增、编辑、删除错题。
+- 每道错题包含科目、标题、题目、错答、正解、错因。
+- 支持 Markdown、LaTeX、代码块、图片和公式块。
+- 错题 ID 使用当前最大 ID 加 1 生成，删除旧错题后不会复用旧编号。
+- 首次启动时如果没有科目，会自动引导创建科目。
+
+### 标签与筛选
+
+- 自定义科目，可在侧边栏“管理科目”中增删。
+- 支持题目标签和错因标签。
+- 列表可按科目、关键词、题目标签、错因标签筛选。
+- 点击错题卡片上的标签可快速切换筛选条件。
+
+### 艾宾浩斯复习
+
+- 新增错题默认当天进入复习队列。
+- 标记已复习后，自动计算下一次复习日期。
+- 当前复习间隔为：当天、1 天、2 天、4 天、7 天、15 天、30 天、60 天。
+- 首页展示今日到期、逾期数量、薄弱科目和复习建议。
+
+### OCR 识别
+
+- 基于 MinerU API v4，将截图或图片识别为 Markdown。
+- 支持公式识别和图片内嵌。
+- 可在新增或编辑错题时选择 OCR 插入目标字段。
+- 编辑弹窗中可直接粘贴截图，识别结果会追加到当前字段。
+
+### PDF 导出
+
+导出错题时可选择不同 PDF 样式：
+
+- `详细复盘`：完整展示题目、错答、正解、错因。
+- `紧凑打印`：压缩间距，适合大量错题省纸打印。
+- `练习自测`：先输出题目和答题区，答案解析集中放在后面。
+
+### 设置与安全
+
+- 支持用户名设置。
+- 支持 MinerU Token 配置和清除。
+- 支持夜间模式。
+- 支持数据备份和导入恢复。
+- 支持检查 GitHub Releases 新版本；打包版可自动下载、替换并重启。
+
+## 快速开始
+
+### 方式一：运行发布包
+
+下载 `Tracker.zip`，解压后双击：
+
+```text
+Tracker.exe
+```
+
+程序启动后会自动打开浏览器。如果浏览器没有自动打开，手动访问：
+
+```text
+http://127.0.0.1:8000
+```
+
+首次运行会在 `Tracker.exe` 同级目录创建：
 
 ```text
 data/
@@ -71,22 +82,20 @@ data/
   config.json
 ```
 
-这些文件保存错题、科目和配置。可以在“设置”中点击“备份数据”下载 zip 备份包，迁移到新设备时再通过“导入备份”恢复。导入前程序会自动把当前数据保存到 `data/backups/`，避免误覆盖后无法找回。
+这些文件就是你的本地错题数据。更新程序时不要删除 `data/`。
 
 ### 方式二：源码运行
 
-需要提前安装：
+需要：
 
 - Python 3.10+
 - Node.js
 
-在项目根目录运行：
+推荐运行：
 
 ```powershell
 .\start.ps1
 ```
-
-脚本会安装 Python 依赖，必要时构建前端，然后启动后端服务。
 
 也可以手动运行：
 
@@ -99,49 +108,118 @@ cd ..
 python run.py
 ```
 
-访问：
-
-```text
-http://127.0.0.1:8000
-```
-
 ## OCR 配置
 
-1. 前往 [MinerU](https://mineru.net) 注册并获取 API Token。
+1. 前往 [MinerU](https://mineru.net) 获取 API Token。
 2. 打开应用左下角“设置”。
 3. 将 Token 粘贴到 `MinerU Token` 输入框并保存。
-4. 添加或编辑错题时点击 `OCR 插入`，也可以直接粘贴截图。
+4. 添加或编辑错题时使用 `OCR 插入`。
 
-如果未配置 Token，OCR 功能会提示先完成设置。
+未配置 Token 时，OCR 功能会提示先完成设置。
+
+## 数据备份与恢复
+
+数据默认位于：
+
+```text
+data/
+```
+
+常见文件：
+
+- `errors.json`：错题列表。
+- `subjects.json`：科目列表。
+- `config.json`：用户名、MinerU Token 等配置。
+- `knowledge.json`：可选，自定义每日知识点。
+- `backups/`：导入或更新前自动生成的恢复点。
+- `updates/`：自动更新下载包和更新日志。
+
+在应用“设置”中可以：
+
+- 点击“备份数据”下载 zip 备份包。
+- 点击“导入备份”恢复备份。
+
+导入备份会覆盖当前对应数据。覆盖前程序会自动生成：
+
+```text
+data/backups/pre-import-*.zip
+```
+
+自动更新前也会生成：
+
+```text
+data/backups/pre-update-*.zip
+```
+
+## 自动更新
+
+打包版会从 GitHub Releases 检查最新版本：
+
+```text
+Zilvren/Learning-Assitant
+```
+
+要求最新 Release 中存在资源：
+
+```text
+Tracker.zip
+```
+
+更新流程：
+
+1. 设置页点击“检查更新”。
+2. 如果发现新版本，点击“立即更新”。
+3. 后端下载 `Tracker.zip` 到 `data/updates/`。
+4. 更新前自动备份本地数据。
+5. 启动 `Updater.exe`。
+6. 旧 `Tracker.exe` 退出。
+7. `Updater.exe` 替换程序文件，但跳过 `data/`。
+8. 新版 `Tracker.exe` 静默启动。
+9. 原网页等待后端恢复，然后自动刷新。
+
+更新日志位于：
+
+```text
+data/updates/update.log
+```
+
+如果更新后版本号不对，优先检查：
+
+- `data/updates/update.log`
+- 程序目录下的 `version.json`
+- GitHub Release 中 `Tracker.zip` 内的 `version.json`
 
 ## 开发说明
 
-项目采用前后端分离开发，生产运行时由 FastAPI 托管构建后的前端静态文件。
+项目采用 FastAPI + Vue 3。开发时 Vite 代理 `/api` 到后端，生产时 FastAPI 托管构建后的前端静态文件。
 
 ```text
 .
 ├── backend/
-│   ├── api.py          # FastAPI 接口和 SPA 静态文件托管
-│   └── mineru.py       # MinerU OCR 调用与结果解析
+│   ├── api.py             # FastAPI 接口和 SPA 托管
+│   ├── mineru.py          # MinerU OCR 调用
+│   └── update_service.py  # 自动更新检查、下载和启动 updater
 ├── frontend/
-│   ├── src/
-│   │   ├── components/ # Vue 页面和组件
-│   │   ├── store/      # 前端轻量状态
-│   │   ├── utils/      # Markdown 渲染、PDF 导出
-│   │   └── api/        # 前端 API 封装
-│   └── vite.config.js  # Vite 配置，开发时代理 /api
+│   └── src/
+│       ├── api/           # 前端 API 封装
+│       ├── components/    # Vue 组件
+│       ├── store/         # 前端状态
+│       └── utils/         # Markdown、PDF 等工具
 ├── utils/
-│   ├── data_store.py   # JSON 文件读写
-│   ├── error_manager.py# 错题和科目逻辑
-│   └── daily_push.py   # 每日推送知识点
-├── run.py              # 应用入口
-├── start.ps1           # 源码启动脚本
-└── requirements.txt
+│   ├── data_store.py      # JSON 数据读写
+│   ├── error_manager.py   # 错题和科目逻辑
+│   └── daily_push.py      # 每日推送知识点
+├── run.py                 # 主程序入口
+├── updater.py             # 自动更新替换器入口
+├── version.json           # 当前版本和更新源信息
+├── start.ps1              # 源码启动脚本
+└── scripts/
+    └── build-release.ps1  # 发布打包脚本
 ```
 
-### 后端
+### 后端接口
 
-主要接口位于 `backend/api.py`：
+主要接口：
 
 - `GET /api/subjects`
 - `POST /api/subjects`
@@ -165,70 +243,96 @@ http://127.0.0.1:8000
 
 ### 前端开发
 
-进入前端目录：
-
 ```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-Vite 默认运行在：
+Vite 默认地址：
 
 ```text
 http://127.0.0.1:5173
 ```
 
-开发模式下 `/api` 会代理到：
-
-```text
-http://127.0.0.1:8000
-```
-
-因此前端开发时需要同时启动后端：
+同时启动后端：
 
 ```powershell
 python run.py
 ```
 
-### 打包发布
+## 打包发布
 
-项目提供发布脚本：
+本地打包：
 
 ```powershell
 .\scripts\build-release.ps1
 ```
 
-该脚本会：
-
-1. 安装并构建前端。
-2. 使用 PyInstaller 构建 `Tracker.exe` 和 `Updater.exe`。
-3. 写入发布包版本信息 `version.json`。
-4. 生成发布目录和 `Tracker.zip`。
-
-示例：
+指定版本：
 
 ```powershell
-.\scripts\build-release.ps1 -Version 1.0.0 -Upload
+.\scripts\build-release.ps1 -Version 2026.06.16-1223
 ```
 
-发布到 GitHub Releases 时，资源文件名保持为 `Tracker.zip`。应用会从 `Zilvren/Learning-Assitant` 的 latest release 检查该资源并执行自动更新。
+打包并上传 GitHub Release：
 
-自动更新会在设置页显示当前版本和检查结果。打包版发现新版本后，点击“立即更新”会下载 `Tracker.zip` 到 `data/updates/`，生成 `data/backups/pre-update-*.zip`，启动 `Updater.exe` 替换程序文件并重启；`data/` 目录不会被更新包覆盖。
+```powershell
+.\scripts\build-release.ps1 -Version 2026.06.16-1223 -Upload
+```
 
-## 数据说明
+脚本会：
 
-默认数据文件位于 `data/`：
+1. 安装并构建前端。
+2. 使用 PyInstaller 构建 `Tracker.exe`。
+3. 使用 PyInstaller 构建 `Updater.exe`。
+4. 写入发布包内的 `version.json`。
+5. 生成 `dist/release/Tracker.zip`。
+6. 如果传入 `-Upload`，创建或更新 GitHub Release。
 
-- `errors.json`：错题列表。
-- `subjects.json`：科目列表。
-- `config.json`：MinerU Token、用户名等配置。
-- `knowledge.json`：可选，自定义每日知识点；不存在时使用内置默认知识点。
+发布包内容：
 
-设置中的备份功能会把以上本地数据打包为 zip。导入备份会覆盖当前对应数据；覆盖前会自动生成一份 `data/backups/pre-import-*.zip` 恢复点。
+```text
+Tracker.exe
+Updater.exe
+version.json
+README.md
+README-release.txt
+```
 
-错题 ID 使用现有最大 ID 加 1 生成，删除旧错题后不会复用旧编号。
-每道错题会记录 `review_count`、`last_review`、`review_stage` 和 `next_review`，用于艾宾浩斯复习调度。
+注意：自动更新依赖 `Tracker.zip` 这个资源名，不要改名上传。
+
+## 常见问题
+
+### 为什么设置页显示源码模式？
+
+源码运行时没有 `Updater.exe`，所以只能检查更新，不能自动替换。只有打包后的 `Tracker.exe` 同级目录存在 `Updater.exe` 时，才会启用自动更新。
+
+### 为什么更新后版本号没变？
+
+先看：
+
+```text
+data/updates/update.log
+```
+
+确认日志中是否出现：
+
+```text
+Payload version ...
+Installed version ...
+Update installed successfully
+```
+
+如果没有，说明 updater 没有完成替换。常见原因是旧程序还占用文件，或者解压到了旧目录但实际启动的是另一个目录里的 `Tracker.exe`。
+
+### 为什么解压后看到旧数据？
+
+`data/` 是本地数据目录，自动更新和手动解压都不应该随便覆盖它。如果要完全干净测试，请解压到一个全新的文件夹。
+
+### 为什么 npm 提示 vulnerabilities？
+
+这是前端依赖审计提示。它不一定影响本地运行或打包，但发布前可以单独评估是否需要升级依赖。
 
 ## 技术栈
 
@@ -241,6 +345,7 @@ python run.py
 | OCR | MinerU API v4 |
 | 数据存储 | 本地 JSON 文件 |
 | 打包 | PyInstaller |
+| 更新 | GitHub Releases + Updater.exe |
 
 ## License
 

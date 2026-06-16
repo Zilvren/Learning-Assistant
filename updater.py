@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import ctypes
+import json
 import os
 import shutil
 import subprocess
@@ -11,6 +12,8 @@ from datetime import datetime
 
 
 SKIP_NAMES = {"data", ".git", "__pycache__"}
+RETRY_COUNT = 20
+RETRY_DELAY = 0.5
 
 
 def now():
@@ -74,6 +77,38 @@ def backup_target(target, rollback_dir, app_dir):
         shutil.copy2(target, backup)
 
 
+def copy_file_with_retry(source, target, log_path):
+    ensure_dir(os.path.dirname(target))
+    last_error = None
+    for attempt in range(1, RETRY_COUNT + 1):
+        try:
+            shutil.copy2(source, target)
+            return
+        except OSError as exc:
+            last_error = exc
+            write_log(log_path, f"Retry {attempt}/{RETRY_COUNT} copying {os.path.basename(target)}: {exc}")
+            time.sleep(RETRY_DELAY)
+    raise last_error
+
+
+def remove_path_with_retry(path, log_path):
+    if not os.path.exists(path):
+        return
+    last_error = None
+    for attempt in range(1, RETRY_COUNT + 1):
+        try:
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            return
+        except OSError as exc:
+            last_error = exc
+            write_log(log_path, f"Retry {attempt}/{RETRY_COUNT} removing {os.path.basename(path)}: {exc}")
+            time.sleep(RETRY_DELAY)
+    raise last_error
+
+
 def restore_rollback(rollback_dir, app_dir, log_path):
     if not os.path.isdir(rollback_dir):
         return
@@ -89,7 +124,8 @@ def restore_rollback(rollback_dir, app_dir, log_path):
 
 
 def replace_from_payload(payload_root, app_dir, rollback_dir, current_exe, log_path):
-    for name in os.listdir(payload_root):
+    names = sorted(os.listdir(payload_root), key=lambda item: item.lower().endswith(".exe"))
+    for name in names:
         if name in SKIP_NAMES:
             write_log(log_path, f"Skipping {name}")
             continue
@@ -103,26 +139,41 @@ def replace_from_payload(payload_root, app_dir, rollback_dir, current_exe, log_p
         backup_target(target, rollback_dir, app_dir)
         if os.path.isdir(source):
             if os.path.exists(target):
-                if os.path.isdir(target):
-                    shutil.rmtree(target)
-                else:
-                    os.remove(target)
+                remove_path_with_retry(target, log_path)
             shutil.copytree(source, target)
         else:
-            ensure_dir(os.path.dirname(target))
-            shutil.copy2(source, target)
+            copy_file_with_retry(source, target, log_path)
         write_log(log_path, f"Replaced {name}")
+
+
+def ensure_version_file(payload_root, app_dir, rollback_dir, log_path):
+    source = os.path.join(payload_root, "version.json")
+    if not os.path.isfile(source):
+        return
+    target = os.path.join(app_dir, "version.json")
+    backup_target(target, rollback_dir, app_dir)
+    copy_file_with_retry(source, target, log_path)
+    write_log(log_path, "Replaced version.json")
+
+
+def read_payload_version(payload_root):
+    path = os.path.join(payload_root, "version.json")
+    if not os.path.isfile(path):
+        return ""
+    with open(path, "r", encoding="utf-8-sig") as f:
+        data = json.load(f)
+    return str(data.get("version", ""))
 
 
 def launch_app(app_dir, app_exe, log_path):
     app_path = os.path.join(app_dir, app_exe)
     if not os.path.isfile(app_path):
         raise RuntimeError(f"App exe not found: {app_path}")
-    write_log(log_path, f"Launching {app_path}")
+    write_log(log_path, f"Launching {app_path} --no-browser")
     creationflags = 0
     if os.name == "nt":
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-    subprocess.Popen([app_path], cwd=app_dir, close_fds=True, creationflags=creationflags)
+    subprocess.Popen([app_path, "--no-browser"], cwd=app_dir, close_fds=True, creationflags=creationflags)
 
 
 def main():
@@ -148,7 +199,16 @@ def main():
         with zipfile.ZipFile(args.package, "r") as zf:
             zf.extractall(extract_dir)
         payload_root = pick_payload_root(extract_dir, args.app_exe)
+        payload_version = read_payload_version(payload_root)
+        if payload_version:
+            write_log(log_path, f"Payload version {payload_version}")
         replace_from_payload(payload_root, app_dir, rollback_dir, sys.executable, log_path)
+        ensure_version_file(payload_root, app_dir, rollback_dir, log_path)
+        if payload_version:
+            installed_version = read_payload_version(app_dir)
+            write_log(log_path, f"Installed version {installed_version}")
+            if installed_version != payload_version:
+                raise RuntimeError(f"version.json was not updated: expected {payload_version}, got {installed_version}")
         write_log(log_path, "Update installed successfully")
         launch_app(app_dir, args.app_exe, log_path)
         return 0

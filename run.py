@@ -29,5 +29,6 @@ from backend.api import app, open_browser
 import uvicorn
 
 if __name__ == "__main__":
-    open_browser()
+    if "--no-browser" not in sys.argv:
+        open_browser()
     uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -26,6 +26,7 @@ const updateBusy = ref(false)
 const updateApplying = ref(false)
 const updateStatus = ref("未检查更新")
 const LAST_UPDATE_CHECK_KEY = "studyTrackerLastUpdateCheck"
+let restartPollTimer = null
 
 const canApplyUpdate = computed(() => {
   return !!updateInfo.value?.has_update && !!updateInfo.value?.asset_found && !!versionInfo.value.can_auto_update
@@ -193,12 +194,36 @@ async function applyUpdate() {
   try {
     const result = await api.applyUpdate()
     const snapshot = result.snapshot ? `\n更新前数据备份：data/backups/${result.snapshot}` : ""
-    updateStatus.value = "即将重启并安装更新"
-    alert((result.message || "程序即将重启并安装更新") + snapshot)
+    updateStatus.value = (result.message || "程序即将重启并安装更新") + snapshot
+    waitForRestart(result.latest_version)
   } catch (e) {
     updateStatus.value = "更新失败: " + e.message
     updateApplying.value = false
   }
+}
+
+function waitForRestart(targetVersion) {
+  const startedAt = Date.now()
+  if (restartPollTimer) clearInterval(restartPollTimer)
+  restartPollTimer = setInterval(async () => {
+    try {
+      const info = await api.getVersion()
+      if (!targetVersion || info.version === targetVersion) {
+        clearInterval(restartPollTimer)
+        restartPollTimer = null
+        updateStatus.value = "更新完成，正在刷新页面..."
+        window.location.reload()
+      }
+    } catch {
+      updateStatus.value = "正在等待新版程序启动..."
+    }
+    if (Date.now() - startedAt > 90000) {
+      clearInterval(restartPollTimer)
+      restartPollTimer = null
+      updateApplying.value = false
+      updateStatus.value = "更新可能仍在进行，请稍后手动刷新页面"
+    }
+  }, 1500)
 }
 
 async function addSubject() {

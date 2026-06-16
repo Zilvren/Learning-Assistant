@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,12 @@ def _root_path(*parts):
     return os.path.join(ROOT_DIR, *parts)
 
 
+def _exe_root():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return ROOT_DIR
+
+
 def _data_path(*parts):
     os.makedirs(DATA_DIR, exist_ok=True)
     return os.path.join(DATA_DIR, *parts)
@@ -41,14 +48,44 @@ def _normalize_version(value):
     return str(value or "").strip().lstrip("vV")
 
 
+def _version_key(value):
+    text = _normalize_version(value)
+    if re.fullmatch(r"\d{4}\.\d{2}\.\d{2}-\d{4}", text):
+        date_part, time_part = text.split("-", 1)
+        year, month, day = (int(x) for x in date_part.split("."))
+        hour = int(time_part[:2])
+        minute = int(time_part[2:])
+        return (2, year, month, day, hour, minute)
+
+    if re.fullmatch(r"\d+(\.\d+)*", text):
+        parts = [int(x) for x in text.split(".")]
+        while len(parts) < 6:
+            parts.append(0)
+        return (1, *parts[:6])
+
+    return (0, text)
+
+
+def compare_versions(left, right):
+    left_key = _version_key(left)
+    right_key = _version_key(right)
+    return (left_key > right_key) - (left_key < right_key)
+
+
 def load_version_info():
     info = DEFAULT_VERSION.copy()
-    path = _root_path(VERSION_FILE)
-    if os.path.isfile(path):
-        with open(path, "r", encoding="utf-8-sig") as f:
-            loaded = json.load(f)
-        if isinstance(loaded, dict):
-            info.update({k: v for k, v in loaded.items() if v})
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(os.path.join(_exe_root(), VERSION_FILE))
+    candidates.append(_root_path(VERSION_FILE))
+    candidates.append(os.path.join(DATA_DIR, VERSION_FILE))
+    for path in candidates:
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8-sig") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                info.update({k: v for k, v in loaded.items() if v})
+                break
     updater_path = _root_path("Updater.exe")
     info["can_auto_update"] = bool(getattr(sys, "frozen", False) and os.path.isfile(updater_path))
     info["updater_path"] = updater_path if info["can_auto_update"] else ""
@@ -84,7 +121,7 @@ def fetch_latest_release():
         "current_version": info["version"],
         "latest_version": latest_version,
         "tag_name": release.get("tag_name", ""),
-        "has_update": bool(latest_version and latest_version != current_version),
+        "has_update": bool(latest_version and compare_versions(latest_version, current_version) > 0),
         "repo": info["repo"],
         "asset_name": info["asset_name"],
         "asset_found": bool(asset),
@@ -169,7 +206,7 @@ def apply_update():
         raise UpdateError("当前运行环境不支持自动替换，请使用打包后的 Tracker.exe")
 
     release = fetch_latest_release()
-    if not release["has_update"]:
+    if compare_versions(release["latest_version"], info["version"]) <= 0:
         return {"message": "当前已是最新版本", **check_update(force=True)}
     if not release["asset_found"]:
         raise UpdateError(f"最新 Release 中没有找到 {info['asset_name']}")
