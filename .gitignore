@@ -1,0 +1,8 @@
+/data/
+/dist/
+*.exe
+*.zip
+*.log
+*.bak
+*.download
+*.tmp
