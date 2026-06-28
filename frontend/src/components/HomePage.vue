@@ -119,8 +119,8 @@ onMounted(async () => {
               <p>{{ data.weak_errors.length }} 道按艾宾浩斯曲线到期</p>
             </div>
           </div>
-          <div v-if="dueReviews.length" class="review-list">
-            <article v-for="e in dueReviews" :key="e.id" class="review-item">
+          <div v-if="dueReviews.length" class="review-list review-list-scroll">
+            <article v-for="e in dueReviews" :key="e.id" class="review-item" :class="{ overdue: e.next_review && e.next_review < date }">
               <div class="review-id">#{{ e.id }}</div>
               <div class="review-copy">
                 <div class="review-title">
@@ -138,7 +138,27 @@ onMounted(async () => {
           <div v-else class="empty-state">暂无待复习错题</div>
         </div>
 
-        <div class="panel">
+        <div class="side-stack">
+        <div class="panel compact-panel">
+          <div class="panel-head">
+            <div>
+              <h3>复习状态</h3>
+              <p>今日队列概览</p>
+            </div>
+          </div>
+          <div class="status-grid">
+            <div>
+              <strong>{{ data.reviewed }}</strong>
+              <span>已复习</span>
+            </div>
+            <div>
+              <strong>{{ Math.max((data.total_errors || 0) - (data.reviewed || 0), 0) }}</strong>
+              <span>未复习</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel compact-panel">
           <div class="panel-head">
             <div>
               <h3>今日知识点</h3>
@@ -152,6 +172,7 @@ onMounted(async () => {
             </article>
             <div v-if="!knowledgeItems.length" class="empty-state">暂无知识点</div>
           </div>
+        </div>
         </div>
       </section>
     </template>
@@ -199,38 +220,72 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.home-workbench { display: flex; flex-direction: column; gap: 18px; }
+.home-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
 .home-hero {
   display: flex; justify-content: space-between; gap: 24px; align-items: stretch;
-  padding: 24px; border: 1px solid var(--border); border-radius: 12px;
-  background: linear-gradient(135deg, var(--surface), var(--surface-muted));
+  padding: 18px 20px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface);
 }
 .eyebrow { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
-.home-hero h2 { font-size: 26px; line-height: 1.25; margin-bottom: 8px; letter-spacing: 0; }
+.home-hero h2 { font-size: 24px; line-height: 1.25; margin-bottom: 8px; letter-spacing: 0; }
 .home-hero p { color: var(--text-sec); font-size: 14px; }
 .hero-stats { display: grid; grid-template-columns: repeat(4, minmax(88px, 1fr)); gap: 10px; min-width: 480px; }
-.hero-stats div { padding: 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); }
-.hero-stats strong { display: block; font-size: 22px; color: var(--text); margin-bottom: 4px; }
+.hero-stats div { padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-soft); }
+.hero-stats strong { display: block; font-size: 20px; color: var(--text); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hero-stats span { color: var(--text-muted); font-size: 12px; }
-.home-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, .8fr); gap: 18px; align-items: start; }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, .75fr);
+  gap: 14px;
+  align-items: start;
+  min-height: 0;
+}
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.panel-main {
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+  display: flex;
+  flex-direction: column;
+}
+.side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 220px);
+  min-height: 0;
+}
+.compact-panel { flex-shrink: 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .panel-head h3 { font-size: 16px; margin-bottom: 3px; }
 .panel-head p { font-size: 12px; color: var(--text-muted); }
 .review-list, .knowledge-list { display: flex; flex-direction: column; gap: 8px; }
+.review-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
 .review-item {
   width: 100%;
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface-soft);
   color: inherit;
   text-align: left;
   transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.review-item.overdue {
+  border-left: 3px solid var(--warning);
 }
 .review-item:hover {
   border-color: rgba(37, 99, 235, .28);
@@ -239,15 +294,15 @@ onMounted(async () => {
 }
 .review-id { font-weight: 700; color: var(--accent); }
 .review-copy { min-width: 0; }
-.review-title { display: flex; gap: 8px; align-items: baseline; color: var(--text); font-size: 14px; line-height: 1.5; min-width: 0; }
+.review-title { display: flex; gap: 8px; align-items: baseline; color: var(--text); font-size: 14px; line-height: 1.45; min-width: 0; }
 .review-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-subject { flex-shrink: 0; color: var(--text-sec); font-weight: 600; }
 .review-meta { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
 .review-actions { display: flex; gap: 8px; align-items: center; }
 .review-link, .review-done {
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -273,7 +328,30 @@ onMounted(async () => {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .14);
 }
 .review-link:active, .review-done:active { transform: translateY(1px); }
-.knowledge-item { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.status-grid div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.status-grid strong {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.status-grid span { color: var(--text-muted); font-size: 12px; }
+.knowledge-list {
+  max-height: min(360px, calc(100vh - 395px));
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.knowledge-item { padding: 11px; border: 1px solid var(--border); border-radius: 8px; }
 .knowledge-item span { display: inline-block; font-size: 12px; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
 .knowledge-item p { color: var(--text-sec); font-size: 13px; line-height: 1.65; }
 .empty-state { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; }
@@ -337,6 +415,8 @@ onMounted(async () => {
 @media (max-width: 980px) {
   .home-hero, .home-grid { grid-template-columns: 1fr; flex-direction: column; }
   .hero-stats { min-width: 0; grid-template-columns: repeat(2, 1fr); }
+  .panel-main, .side-stack { max-height: none; }
+  .review-list-scroll, .knowledge-list { max-height: none; overflow: visible; }
   .review-item { grid-template-columns: 48px minmax(0, 1fr); }
   .review-actions { grid-column: 2; justify-content: flex-start; }
   .review-dialog-head { flex-direction: column; }
