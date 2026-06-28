@@ -38,7 +38,12 @@ export function useSettings() {
     try {
       localStorage.setItem(THEME_KEY, darkModeRef.value ? "dark" : "light")
     } catch { /* ignore */ }
+    // 添加过渡 class，让颜色平滑渐变
+    document.documentElement.classList.add('theme-transitioning')
     applyTheme(darkModeRef.value)
+    setTimeout(() => {
+      document.documentElement.classList.remove('theme-transitioning')
+    }, 1000)
   }
 
   return { load, setUsername, setDarkMode, username: usernameRef, darkMode: darkModeRef }
