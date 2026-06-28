@@ -250,7 +250,7 @@ async function delSubject(name) {
 }
 
 const items = [
-  { key: "home", icon: "💡", label: "每日推送" },
+  { key: "home", icon: "💡", label: "仪表盘" },
   { key: "list", icon: "📋", label: "错题列表" },
 ]
 </script>

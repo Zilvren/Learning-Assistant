@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted } from "vue"
+import { computed, ref, onMounted, onBeforeUnmount } from "vue"
 import { api } from "../api/index.js"
 import { useSettings } from "../store/settings.js"
 import MarkdownRenderer from "./MarkdownRenderer.vue"
@@ -8,6 +8,9 @@ const emit = defineEmits(["snack"])
 const data = ref({ knowledge: {}, weak_errors: [], total_errors: 0, reviewed: 0, advice: "" })
 const loading = ref(true)
 const selectedReview = ref(null)
+const splitPercent = ref(68)
+const splitDragging = ref(false)
+const splitGrid = ref(null)
 
 const { username } = useSettings()
 const hour = new Date().getHours()
@@ -41,6 +44,30 @@ function reviewPlanText(e) {
 
 function closeReviewDetail() {
   selectedReview.value = null
+}
+
+function openReviewDetail(e) {
+  selectedReview.value = e
+}
+
+function startSplitDrag(event) {
+  splitDragging.value = true
+  updateSplitFromPointer(event)
+  window.addEventListener("pointermove", updateSplitFromPointer)
+  window.addEventListener("pointerup", stopSplitDrag, { once: true })
+}
+
+function updateSplitFromPointer(event) {
+  const el = splitGrid.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const raw = ((event.clientX - rect.left) / rect.width) * 100
+  splitPercent.value = Math.min(78, Math.max(48, raw))
+}
+
+function stopSplitDrag() {
+  splitDragging.value = false
+  window.removeEventListener("pointermove", updateSplitFromPointer)
 }
 
 async function loadHomeData() {
@@ -78,6 +105,11 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener("pointermove", updateSplitFromPointer)
+  window.removeEventListener("pointerup", stopSplitDrag)
+})
 </script>
 
 <template>
@@ -111,7 +143,12 @@ onMounted(async () => {
     <div v-if="loading" class="empty-state">加载中...</div>
 
     <template v-else>
-      <section class="home-grid">
+      <section
+        ref="splitGrid"
+        class="home-grid"
+        :class="{ resizing: splitDragging }"
+        :style="{ '--review-width': `${splitPercent}%` }"
+      >
         <div class="panel panel-main">
           <div class="panel-head">
             <div>
@@ -120,7 +157,17 @@ onMounted(async () => {
             </div>
           </div>
           <div v-if="dueReviews.length" class="review-list review-list-scroll">
-            <article v-for="e in dueReviews" :key="e.id" class="review-item" :class="{ overdue: e.next_review && e.next_review < date }">
+            <article
+              v-for="e in dueReviews"
+              :key="e.id"
+              class="review-item"
+              :class="{ overdue: e.next_review && e.next_review < date }"
+              role="button"
+              tabindex="0"
+              @click="openReviewDetail(e)"
+              @keydown.enter.prevent="openReviewDetail(e)"
+              @keydown.space.prevent="openReviewDetail(e)"
+            >
               <div class="review-id">#{{ e.id }}</div>
               <div class="review-copy">
                 <div class="review-title">
@@ -130,12 +177,21 @@ onMounted(async () => {
                 <div class="review-meta">{{ reviewPlanText(e) }}</div>
               </div>
               <div class="review-actions">
-                <button type="button" class="review-link" @click="selectedReview = e">查看详情</button>
-                <button type="button" class="review-done" @click="markReviewed(e)">标记复习</button>
+                <button type="button" class="review-done" @click.stop="markReviewed(e)">标记复习</button>
               </div>
             </article>
           </div>
           <div v-else class="empty-state">暂无待复习错题</div>
+        </div>
+
+        <div
+          class="split-handle"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          @pointerdown.prevent="startSplitDrag"
+        >
+          <span></span>
         </div>
 
         <div class="side-stack">
@@ -240,10 +296,14 @@ onMounted(async () => {
 .hero-stats span { color: var(--text-muted); font-size: 12px; }
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(300px, .75fr);
-  gap: 14px;
+  grid-template-columns: minmax(360px, var(--review-width, 68%)) 10px minmax(280px, 1fr);
+  gap: 10px;
   align-items: start;
   min-height: 0;
+}
+.home-grid.resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
 .panel-main {
@@ -258,6 +318,31 @@ onMounted(async () => {
   gap: 14px;
   max-height: calc(100vh - 220px);
   min-height: 0;
+}
+.split-handle {
+  align-self: stretch;
+  min-height: calc(100vh - 220px);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  cursor: col-resize;
+  border-radius: 8px;
+  outline: none;
+  touch-action: none;
+}
+.split-handle span {
+  width: 2px;
+  min-height: 100%;
+  border-radius: 999px;
+  background: var(--border);
+  transition: width .15s, background .15s, box-shadow .15s;
+}
+.split-handle:hover span,
+.split-handle:focus-visible span,
+.home-grid.resizing .split-handle span {
+  width: 4px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .compact-panel { flex-shrink: 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
@@ -291,6 +376,12 @@ onMounted(async () => {
   border-color: rgba(37, 99, 235, .28);
   background: var(--surface-muted);
   box-shadow: 0 4px 12px rgba(15,23,42,.06);
+  cursor: pointer;
+}
+.review-item:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .14);
 }
 .review-id { font-weight: 700; color: var(--accent); }
 .review-copy { min-width: 0; }
@@ -299,7 +390,7 @@ onMounted(async () => {
 .review-subject { flex-shrink: 0; color: var(--text-sec); font-weight: 600; }
 .review-meta { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
 .review-actions { display: flex; gap: 8px; align-items: center; }
-.review-link, .review-done {
+.review-done {
   height: 32px;
   padding: 0 10px;
   border-radius: 7px;
@@ -308,12 +399,6 @@ onMounted(async () => {
   cursor: pointer;
   transition: background .15s, color .15s, border-color .15s, transform .15s;
 }
-.review-link {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--accent);
-}
-.review-link:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .review-done {
   border: 1px solid rgba(16,185,129,.24);
   background: rgba(16,185,129,.08);
@@ -323,11 +408,11 @@ onMounted(async () => {
   background: rgba(16,185,129,.14);
   border-color: rgba(16,185,129,.38);
 }
-.review-link:focus-visible, .review-done:focus-visible {
+.review-done:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .14);
 }
-.review-link:active, .review-done:active { transform: translateY(1px); }
+.review-done:active { transform: translateY(1px); }
 .status-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -414,6 +499,7 @@ onMounted(async () => {
 .mini-chip.reason { color: #b45309; background: #fffbeb; border-color: #fde68a; }
 @media (max-width: 980px) {
   .home-hero, .home-grid { grid-template-columns: 1fr; flex-direction: column; }
+  .split-handle { display: none; }
   .hero-stats { min-width: 0; grid-template-columns: repeat(2, 1fr); }
   .panel-main, .side-stack { max-height: none; }
   .review-list-scroll, .knowledge-list { max-height: none; overflow: visible; }
