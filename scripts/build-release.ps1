@@ -36,9 +36,10 @@ function Assert-NativeSuccess($Step) {
 }
 
 Require-Command "go" "Install Go, then retry."
+Require-Command "npm" "Install Node.js and npm, then retry."
 
-if (-not (Test-Path (Join-Path $Root "frontend\dist\index.html"))) {
-  throw "Missing frontend/dist/index.html. Build or copy the frontend dist before packaging."
+if (-not (Test-Path (Join-Path $Root "frontend\package.json"))) {
+  throw "Missing frontend/package.json."
 }
 
 if ($Clean) {
@@ -47,6 +48,14 @@ if ($Clean) {
 
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
+
+Write-Host "==> Building frontend"
+Push-Location (Join-Path $Root "frontend")
+npm install
+Assert-NativeSuccess "npm install"
+npm run build
+Assert-NativeSuccess "npm run build"
+Pop-Location
 
 Write-Host "==> Building $ProductName.exe"
 go build -o $TrackerPath .

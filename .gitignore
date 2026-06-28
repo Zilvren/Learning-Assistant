@@ -1,5 +1,9 @@
 /data/
 /dist/
+/frontend/node_modules/
+/frontend/.vite/
+/frontend/vite.log
+/frontend/vite_err.log
 *.exe
 *.zip
 *.log
