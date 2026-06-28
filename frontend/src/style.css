@@ -5,11 +5,11 @@
 .page-enter-from { opacity: 0; transform: translateY(10px); }
 .page-leave-to { opacity: 0; transform: translateY(-8px); }
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-soft: #fbfcfe;
-  --surface-muted: #f8fafc;
-  --surface-hover: #eaf1fb;
+  --bg: #f7f2e8;
+  --surface: #fffaf0;
+  --surface-soft: #fcf5e8;
+  --surface-muted: #f4ecd9;
+  --surface-hover: #eee3cc;
   --sidebar-start: #111827;
   --sidebar-end: #172033;
   --accent: #2563eb;
@@ -17,7 +17,7 @@
   --text: #172033;
   --text-sec: #5f6b7a;
   --text-muted: #98a2b3;
-  --border: #dfe4ea;
+  --border: #e3d8c4;
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
