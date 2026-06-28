@@ -139,40 +139,40 @@ onMounted(async () => {
         </div>
 
         <div class="side-stack">
-        <div class="panel compact-panel">
-          <div class="panel-head">
-            <div>
-              <h3>复习状态</h3>
-              <p>今日队列概览</p>
+          <div class="panel compact-panel">
+            <div class="panel-head">
+              <div>
+                <h3>复习状态</h3>
+                <p>今日队列概览</p>
+              </div>
+            </div>
+            <div class="status-grid">
+              <div>
+                <strong>{{ data.reviewed }}</strong>
+                <span>已复习</span>
+              </div>
+              <div>
+                <strong>{{ Math.max((data.total_errors || 0) - (data.reviewed || 0), 0) }}</strong>
+                <span>未复习</span>
+              </div>
             </div>
           </div>
-          <div class="status-grid">
-            <div>
-              <strong>{{ data.reviewed }}</strong>
-              <span>已复习</span>
-            </div>
-            <div>
-              <strong>{{ Math.max((data.total_errors || 0) - (data.reviewed || 0), 0) }}</strong>
-              <span>未复习</span>
-            </div>
-          </div>
-        </div>
 
-        <div class="panel compact-panel">
-          <div class="panel-head">
-            <div>
-              <h3>今日知识点</h3>
-              <p>按当前科目随机抽取</p>
+          <div class="panel compact-panel">
+            <div class="panel-head">
+              <div>
+                <h3>今日知识点</h3>
+                <p>按当前科目随机抽取</p>
+              </div>
+            </div>
+            <div class="knowledge-list">
+              <article v-for="[subject, tip] in knowledgeItems" :key="subject" class="knowledge-item">
+                <span>{{ subject }}</span>
+                <p>{{ tip }}</p>
+              </article>
+              <div v-if="!knowledgeItems.length" class="empty-state">暂无知识点</div>
             </div>
           </div>
-          <div class="knowledge-list">
-            <article v-for="[subject, tip] in knowledgeItems" :key="subject" class="knowledge-item">
-              <span>{{ subject }}</span>
-              <p>{{ tip }}</p>
-            </article>
-            <div v-if="!knowledgeItems.length" class="empty-state">暂无知识点</div>
-          </div>
-        </div>
         </div>
       </section>
     </template>
