@@ -4,6 +4,10 @@
 /frontend/.vite/
 /frontend/vite.log
 /frontend/vite_err.log
+/push.bat
+/push.ps1
+/TUTORIAL.review.md
+/TUTORIAL.review.md.bak
 *.exe
 *.zip
 *.log
