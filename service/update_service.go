@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -376,18 +375,7 @@ func copyUpdaterForRun(updaterPath string) (string, error) {
 }
 
 func startUpdater(updaterPath, packagePath, appDir, appExe string) error {
-	cmd := exec.Command(
-		updaterPath,
-		"--package", packagePath,
-		"--app-dir", appDir,
-		"--app-exe", appExe,
-		"--pid", strconv.Itoa(os.Getpid()),
-	)
-	cmd.Dir = appDir
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	return cmd.Process.Release()
+	return startUpdaterProcess(updaterPath, packagePath, appDir, appExe, os.Getpid())
 }
 
 func validateZip(path string) error {

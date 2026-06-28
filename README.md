@@ -154,6 +154,18 @@ data/updates/update.log
 
 `data/` 是本地数据目录，自动更新和手动解压都不会随便覆盖它。如果要完全干净测试，请解压到一个全新的文件夹。
 
+## 技术栈
+
+| 层       | 技术                         |
+| -------- | ---------------------------- |
+| 前端     | Vue 3 + Vite                 |
+| 后端     | Go + Gin                     |
+| Markdown | markdown-it                  |
+| 公式渲染 | KaTeX                        |
+| OCR      | MinerU API v4                |
+| 数据存储 | 本地 JSON 文件               |
+| 更新     | GitHub Releases + Go Updater |
+
 ## License
 
 MIT
