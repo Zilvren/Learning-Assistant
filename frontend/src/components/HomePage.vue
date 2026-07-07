@@ -11,6 +11,8 @@ const selectedReview = ref(null)
 const splitPercent = ref(68)
 const splitDragging = ref(false)
 const splitGrid = ref(null)
+let splitHandleHalfWidth = 0
+let splitGridColumnGap = 0
 
 const { username } = useSettings()
 const hour = new Date().getHours()
@@ -52,22 +54,41 @@ function openReviewDetail(e) {
 
 function startSplitDrag(event) {
   splitDragging.value = true
+  const el = splitGrid.value
+  const handleRect = event.currentTarget?.getBoundingClientRect()
+  splitHandleHalfWidth = handleRect ? handleRect.width / 2 : 0
+  splitGridColumnGap = el ? gridColumnGap(el) : 0
   updateSplitFromPointer(event)
   window.addEventListener("pointermove", updateSplitFromPointer)
   window.addEventListener("pointerup", stopSplitDrag, { once: true })
+  window.addEventListener("pointercancel", stopSplitDrag, { once: true })
 }
 
 function updateSplitFromPointer(event) {
   const el = splitGrid.value
   if (!el) return
+  const x = pointerClientX(event)
+  if (x == null) return
   const rect = el.getBoundingClientRect()
-  const raw = ((event.clientX - rect.left) / rect.width) * 100
+  const raw = ((x - splitGridColumnGap - splitHandleHalfWidth - rect.left) / rect.width) * 100
   splitPercent.value = Math.min(78, Math.max(48, raw))
 }
 
 function stopSplitDrag() {
   splitDragging.value = false
+  splitHandleHalfWidth = 0
+  splitGridColumnGap = 0
   window.removeEventListener("pointermove", updateSplitFromPointer)
+  window.removeEventListener("pointercancel", stopSplitDrag)
+}
+
+function pointerClientX(event) {
+  return event.clientX ?? event.touches?.[0]?.clientX ?? event.changedTouches?.[0]?.clientX
+}
+
+function gridColumnGap(el) {
+  const styles = window.getComputedStyle(el)
+  return Number.parseFloat(styles.columnGap || styles.gap || "0") || 0
 }
 
 async function loadHomeData() {
@@ -109,6 +130,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener("pointermove", updateSplitFromPointer)
   window.removeEventListener("pointerup", stopSplitDrag)
+  window.removeEventListener("pointercancel", stopSplitDrag)
 })
 </script>
 

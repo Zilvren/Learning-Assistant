@@ -236,16 +236,28 @@ function setTagSearch(mode, tag) {
   refresh()
 }
 
+function pointerClientX(e) {
+  return e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX
+}
+
+function gridColumnGap(el) {
+  const styles = window.getComputedStyle(el)
+  return Number.parseFloat(styles.columnGap || styles.gap || "0") || 0
+}
+
 function startResize(e) {
   if (window.innerWidth <= 1060) return
   e.preventDefault()
   const el = splitLayout.value
   if (!el) return
   const rect = el.getBoundingClientRect()
+  const handleRect = e.currentTarget?.getBoundingClientRect()
+  const handleHalfWidth = handleRect ? handleRect.width / 2 : 0
+  const columnGap = gridColumnGap(el)
   const onMove = (ev) => {
-    const x = ev.clientX ?? ev.touches?.[0]?.clientX
+    const x = pointerClientX(ev)
     if (x == null) return
-    const percent = Math.min(65, Math.max(28, ((x - rect.left) / rect.width) * 100))
+    const percent = Math.min(65, Math.max(28, ((x - columnGap - handleHalfWidth - rect.left) / rect.width) * 100))
     leftPane.value = Math.round(percent * 10) / 10
   }
   const onUp = () => {
@@ -257,6 +269,7 @@ function startResize(e) {
     document.body.classList.remove("resizing-pane")
   }
   document.body.classList.add("resizing-pane")
+  onMove(e)
   window.addEventListener("mousemove", onMove)
   window.addEventListener("mouseup", onUp)
   window.addEventListener("touchmove", onMove, { passive: false })
@@ -269,10 +282,13 @@ function startEditorResize(e, layoutEl) {
   const el = layoutEl?.value || layoutEl
   if (!el) return
   const rect = el.getBoundingClientRect()
+  const handleRect = e.currentTarget?.getBoundingClientRect()
+  const handleHalfWidth = handleRect ? handleRect.width / 2 : 0
+  const columnGap = gridColumnGap(el)
   const onMove = (ev) => {
-    const x = ev.clientX ?? ev.touches?.[0]?.clientX
+    const x = pointerClientX(ev)
     if (x == null) return
-    const percent = Math.min(72, Math.max(42, ((x - rect.left) / rect.width) * 100))
+    const percent = Math.min(72, Math.max(42, ((x - columnGap - handleHalfWidth - rect.left) / rect.width) * 100))
     editorLeftPane.value = Math.round(percent * 10) / 10
   }
   const onUp = () => {
@@ -284,6 +300,7 @@ function startEditorResize(e, layoutEl) {
     document.body.classList.remove("resizing-pane")
   }
   document.body.classList.add("resizing-pane")
+  onMove(e)
   window.addEventListener("mousemove", onMove)
   window.addEventListener("mouseup", onUp)
   window.addEventListener("touchmove", onMove, { passive: false })

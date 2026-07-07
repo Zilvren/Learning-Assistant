@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"io/fs"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,70 +15,159 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"study-tracker-go/handlers"
+	"study-tracker-go/api/handlers"
+	"study-tracker-go/internal/middleware"
+	"study-tracker-go/internal/repository"
+	jsonrepo "study-tracker-go/internal/repository/jsonrepo"
+	postgresrepo "study-tracker-go/internal/repository/postgres"
+	"study-tracker-go/internal/service"
+	"study-tracker-go/pkg/config"
+	"study-tracker-go/pkg/logger"
 )
 
 func main() {
-	r := gin.Default()
+	cfg := config.Load(os.Args[1:])
+	log := logger.New()
+	if cfg.GinMode != "" {
+		gin.SetMode(cfg.GinMode)
+	}
+	repos, pool, cleanup, err := setupRepositories(cfg)
+	if err != nil {
+		log.Errorf("failed to initialize storage: %v", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+	if err := service.InitApp(cfg, repos, pool); err != nil {
+		log.Errorf("failed to initialize services: %v", err)
+		os.Exit(1)
+	}
+	if cfg.AuthEnabled && os.Getenv("TRACKER_JWT_SECRET") == "" {
+		log.Infof("TRACKER_JWT_SECRET is empty; using a temporary in-memory auth secret for this run.")
+	}
 
+	listener, port, err := listenWithFallback(cfg.Host, cfg.Port)
+	if err != nil {
+		log.Errorf("failed to start server: %v", err)
+		os.Exit(1)
+	}
+
+	r := gin.Default()
+	r.Use(middleware.SecurityHeaders(), middleware.LocalCORS(), middleware.CookieOriginGuard())
+	registerRoutes(r)
+
+	url := fmt.Sprintf("http://%s:%d/", cfg.Host, port)
+	if port != cfg.Port {
+		log.Infof("Port %d is occupied, using %d instead.", cfg.Port, port)
+	}
+	log.Infof("Study tracker is running at %s", url)
+
+	if !cfg.NoBrowser {
+		openBrowserLater(url)
+	}
+
+	if err := r.RunListener(listener); err != nil && err != http.ErrServerClosed {
+		log.Errorf("server stopped: %v", err)
+		os.Exit(1)
+	}
+}
+
+func setupRepositories(cfg config.Config) (repository.Repositories, *pgxpool.Pool, func(), error) {
+	switch cfg.StorageDriver {
+	case "", "json":
+		return jsonrepo.NewRepositories(), nil, func() {}, nil
+	case "postgres":
+		ctx := context.Background()
+		pool, err := postgresrepo.NewPool(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return repository.Repositories{}, nil, func() {}, err
+		}
+		userID, err := postgresrepo.EnsureLocalUser(ctx, pool)
+		if err != nil {
+			pool.Close()
+			return repository.Repositories{}, nil, func() {}, err
+		}
+		return postgresrepo.NewRepositories(pool, userID), pool, pool.Close, nil
+	default:
+		return repository.Repositories{}, nil, func() {}, fmt.Errorf("未知存储类型：%s", cfg.StorageDriver)
+	}
+}
+
+func listenWithFallback(host string, preferredPort int) (net.Listener, int, error) {
+	const attempts = 20
+	for offset := 0; offset < attempts; offset++ {
+		port := preferredPort + offset
+		if port > 65535 {
+			break
+		}
+		address := fmt.Sprintf("%s:%d", host, port)
+		listener, err := net.Listen("tcp", address)
+		if err == nil {
+			return listener, port, nil
+		}
+	}
+	return nil, 0, fmt.Errorf("ports %d-%d are unavailable", preferredPort, preferredPort+attempts-1)
+}
+
+func registerRoutes(r *gin.Engine) {
 	//健康检查
 	r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	//科目接口
-	r.GET("/api/subjects", handlers.GetSubjects)
-	r.POST("/api/subjects", handlers.Addsubject)
-	r.DELETE("/api/subjects/:name", handlers.DeleteSubject)
+	//认证接口
+	r.GET("/api/auth/status", handlers.AuthStatus)
+	r.POST("/api/auth/register", handlers.Register)
+	r.POST("/api/auth/login", handlers.Login)
+	r.POST("/api/auth/refresh", handlers.Refresh)
+	r.POST("/api/auth/logout", handlers.Logout)
 
-	//错题接口
-	r.GET("/api/errors", handlers.GetErrors)
-	r.POST("/api/errors", handlers.CreateError)
-	r.PUT("/api/errors/:id", handlers.UpdateError)
-	r.DELETE("/api/errors/:id", handlers.DeleteError)
-
-	r.PUT("/api/errors/:id/review", handlers.ReviewError)
-	r.GET("/api/tags", handlers.GetTags)
-
-	//每日推送接口
-	r.GET("/api/daily-push", handlers.GetDailyPush)
-
-	//设置接口
-	r.GET("/api/settings/token", handlers.GetToken)
-	r.PUT("/api/settings/token", handlers.SetToken)
-	r.DELETE("/api/settings/token", handlers.DeleteToken)
-	r.PUT("/api/settings/username", handlers.SetUsername)
-
-	//备份接口】
-	r.GET("/api/backup/export", handlers.ExportBackup)
-	r.POST("/api/backup/import", handlers.ImportBackup)
-
-	//OCR接口
-	r.POST("/api/ocr", handlers.OCRImage)
-
-	//更新接口
+	//公开更新接口
 	r.GET("/api/version", handlers.GetVersion)
 	r.GET("/api/update/check", handlers.CheckUpdate)
-	r.POST("/api/update/apply", handlers.ApplyUpdate)
+
+	api := r.Group("/api")
+	api.Use(middleware.AuthRequired())
+	{
+		api.GET("/auth/me", handlers.Me)
+
+		//科目接口
+		api.GET("/subjects", handlers.GetSubjects)
+		api.POST("/subjects", handlers.Addsubject)
+		api.DELETE("/subjects/:name", handlers.DeleteSubject)
+
+		//错题接口
+		api.GET("/errors", handlers.GetErrors)
+		api.POST("/errors", handlers.CreateError)
+		api.PUT("/errors/:id", handlers.UpdateError)
+		api.DELETE("/errors/:id", handlers.DeleteError)
+
+		api.PUT("/errors/:id/review", handlers.ReviewError)
+		api.GET("/tags", handlers.GetTags)
+
+		//每日推送接口
+		api.GET("/daily-push", handlers.GetDailyPush)
+
+		//设置接口
+		api.GET("/settings/token", handlers.GetToken)
+		api.PUT("/settings/token", handlers.SetToken)
+		api.DELETE("/settings/token", handlers.DeleteToken)
+		api.PUT("/settings/username", handlers.SetUsername)
+
+		//备份接口
+		api.GET("/backup/export", handlers.ExportBackup)
+		api.POST("/backup/import", handlers.ImportBackup)
+
+		//OCR接口
+		api.POST("/ocr", handlers.OCRImage)
+
+		//更新应用
+		api.POST("/update/apply", handlers.ApplyUpdate)
+	}
 
 	//接口失败
 	r.NoRoute(serveFrontend)
-
-	if !hasArg("--no-browser") {
-		openBrowserLater("http://127.0.0.1:8000/")
-	}
-
-	r.Run("127.0.0.1:8000")
-}
-
-func hasArg(name string) bool {
-	for _, arg := range os.Args[1:] {
-		if arg == name {
-			return true
-		}
-	}
-	return false
 }
 
 func openBrowserLater(url string) {

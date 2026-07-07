@@ -101,7 +101,7 @@ $PackageReadmeText = @(
   "Notes:",
   "- The data folder is preserved during automatic updates.",
   "- Automatic update downloads $ProductName.zip from GitHub Releases and uses Updater.exe to replace program files.",
-  "- If port 8000 is occupied, close the program using that port first."
+  "- If port 8000 is occupied, the app automatically uses the next available local port."
 )
 Set-Content -LiteralPath $PackageReadme -Value $PackageReadmeText -Encoding UTF8
 

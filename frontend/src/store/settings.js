@@ -3,6 +3,7 @@ import { api } from "../api/index.js"
 
 const usernameRef = ref("")
 const THEME_KEY = "studyTrackerThemeV2"
+const THEME_TRANSITION_MS = 1900
 
 function initialDarkMode() {
   try {
@@ -15,6 +16,7 @@ function initialDarkMode() {
 
 const darkModeRef = ref(initialDarkMode())
 let loaded = false
+let themeTransitionTimer = 0
 
 function applyTheme(dark) {
   document.documentElement.dataset.theme = dark ? "dark" : "light"
@@ -38,12 +40,14 @@ export function useSettings() {
     try {
       localStorage.setItem(THEME_KEY, darkModeRef.value ? "dark" : "light")
     } catch { /* ignore */ }
-    // 添加过渡 class，让颜色平滑渐变
+    window.clearTimeout(themeTransitionTimer)
     document.documentElement.classList.add('theme-transitioning')
-    applyTheme(darkModeRef.value)
-    setTimeout(() => {
+    window.requestAnimationFrame(() => {
+      applyTheme(darkModeRef.value)
+    })
+    themeTransitionTimer = window.setTimeout(() => {
       document.documentElement.classList.remove('theme-transitioning')
-    }, 1000)
+    }, THEME_TRANSITION_MS)
   }
 
   return { load, setUsername, setDarkMode, username: usernameRef, darkMode: darkModeRef }

@@ -1,9 +1,12 @@
 /data/
 /dist/
+/tmp/
 /frontend/node_modules/
 /frontend/.vite/
 /frontend/vite.log
 /frontend/vite_err.log
+/.env
+/.env.local
 /push.bat
 /push.ps1
 /TUTORIAL.review.md

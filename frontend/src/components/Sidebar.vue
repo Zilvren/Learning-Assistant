@@ -2,11 +2,13 @@
 import { computed, ref, onMounted } from "vue"
 import { useSubjects } from "../store/subjects.js"
 import { useSettings } from "../store/settings.js"
+import { useAuth } from "../store/auth.js"
 import { api } from "../api/index.js"
 
 defineProps({ active: String })
 
-const emit = defineEmits(["navigate"])
+const emit = defineEmits(["navigate", "signed-out"])
+const auth = useAuth()
 const showSubDlg = ref(false)
 const showSettingsDlg = ref(false)
 const subjectList = ref([])
@@ -249,6 +251,11 @@ async function delSubject(name) {
   } catch (e) { /* ignore */ }
 }
 
+async function logout() {
+  await auth.logout()
+  emit("signed-out")
+}
+
 const items = [
   { key: "home", icon: "💡", label: "仪表盘" },
   { key: "list", icon: "📋", label: "错题列表" },
@@ -364,7 +371,7 @@ const items = [
         <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
       </div>
       <h1 style="font-size:24px">错题本</h1>
-      <p style="font-size:12.5px">{{ username }}</p>
+      <p style="font-size:12.5px">{{ auth.enabled.value && auth.user.value ? auth.user.value.username : username }}</p>
     </div>
     <nav class="sidebar-nav">
       <div v-for="item in items" :key="item.key"
@@ -386,6 +393,10 @@ const items = [
       <button class="btn btn-ghost" style="color:rgba(255,255,255,.55);font-size:13.5px"
               @click="$emit('navigate', 'home')">
         🏠 首页
+      </button>
+      <button v-if="auth.enabled.value" class="btn btn-ghost" style="color:rgba(255,255,255,.55);font-size:13.5px"
+              @click="logout">
+        退出登录
       </button>
     </div>
   </aside>

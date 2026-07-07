@@ -2,13 +2,17 @@
 
 本地优先的错题管理工具，用来记录错题、复盘错因、安排复习和整理学习资料。
 
-应用默认运行在本机：
+应用默认优先运行在本机：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-数据保存在程序目录下的 `data/` 文件夹中，不需要账号，也不会把错题上传到远程服务器。
+如果 8000 端口已被占用，程序会自动改用后续可用端口，并打开对应地址。
+
+默认使用本地 JSON 存储，数据保存在程序目录下的 `data/` 文件夹中，不需要账号，也不会把错题上传到远程服务器。
+
+如果你需要多用户、登录注册或服务端部署，可以切换到 PostgreSQL 存储模式。
 
 ## 快速开始
 
@@ -24,6 +28,8 @@ Tracker.exe
 http://127.0.0.1:8000
 ```
 
+如果启动窗口提示 8000 已被占用，请按窗口里显示的新端口访问。
+
 首次运行会在程序同级目录创建或使用：
 
 ```text
@@ -34,6 +40,26 @@ data/
 ```
 
 更新程序时不要删除 `data/`。
+
+## 源码运行
+
+已经安装 Go 和 Node.js 后，可以直接运行：
+
+```powershell
+.\start.bat
+```
+
+也可以手动启动：
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+go run .
+```
+
+默认仍使用 JSON 本地模式。源码模式没有 `Updater.exe` 时，可以检查更新，但不能执行自动替换。
 
 ## 主要功能
 
@@ -108,6 +134,39 @@ data/backups/pre-import-*.zip
 data/backups/pre-update-*.zip
 ```
 
+## 登录与 PostgreSQL 模式
+
+JSON 本地模式默认免登录，适合单机自用。
+
+PostgreSQL 模式会启用登录注册，所有业务数据按用户隔离。启动前需要准备 PostgreSQL 数据库，并设置环境变量：
+
+```powershell
+$env:TRACKER_STORAGE="postgres"
+$env:TRACKER_DATABASE_URL="postgres://study_tracker_app:你的密码@localhost:5432/study_tracker?sslmode=disable"
+$env:TRACKER_JWT_SECRET="请换成一段固定的强随机密钥"
+go run .
+```
+
+相关环境变量：
+
+| 变量 | 说明 |
+| ---- | ---- |
+| `TRACKER_STORAGE` | `json` 或 `postgres`，默认 `json` |
+| `TRACKER_DATABASE_URL` | PostgreSQL 连接字符串，`postgres` 模式必填 |
+| `TRACKER_JWT_SECRET` | 登录 Cookie/JWT 签名密钥，生产环境必须设置固定强密钥 |
+| `TRACKER_HOST` | 服务监听地址，默认 `127.0.0.1` |
+| `TRACKER_PORT` | 服务端口，默认 `8000` |
+| `GIN_MODE` | Gin 运行模式，例如 `release` |
+
+JSON 数据导入 PostgreSQL：
+
+```powershell
+go run ./cmd/import-json --data-dir data --database-url "postgres://study_tracker_app:你的密码@localhost:5432/study_tracker?sslmode=disable" --dry-run
+go run ./cmd/import-json --data-dir data --database-url "postgres://study_tracker_app:你的密码@localhost:5432/study_tracker?sslmode=disable" --replace
+```
+
+`--dry-run` 只预览导入数量，`--replace` 会替换当前用户的数据。
+
 ## 自动更新
 
 打包版会从 GitHub Releases 检查最新版本。更新流程：
@@ -163,7 +222,9 @@ data/updates/update.log
 | Markdown | markdown-it                  |
 | 公式渲染 | KaTeX                        |
 | OCR      | MinerU API v4                |
-| 数据存储 | 本地 JSON 文件               |
+| 数据存储 | 本地 JSON 文件 / PostgreSQL  |
+| 数据库驱动 | pgx / pgxpool              |
+| 认证     | HttpOnly Cookie + refresh token |
 | 更新     | GitHub Releases + Go Updater |
 
 ## License

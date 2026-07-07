@@ -1,12 +1,18 @@
 const BASE = '/api'
 
-async function request(method, path, body) {
-  const opts = { method, headers: {} }
+let refreshing = null
+
+async function request(method, path, body, retry = true) {
+  const opts = { method, headers: {}, credentials: 'include' }
   if (body) {
     opts.headers['Content-Type'] = 'application/json'
     opts.body = JSON.stringify(body)
   }
   const res = await fetch(BASE + path, opts)
+  if (res.status === 401 && retry && !path.startsWith('/auth/')) {
+    const ok = await refreshAuth()
+    if (ok) return request(method, path, body, false)
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || '请求失败')
@@ -19,7 +25,11 @@ async function request(method, path, body) {
 }
 
 async function requestBackupExport() {
-  const res = await fetch(BASE + '/backup/export')
+  const res = await fetch(BASE + '/backup/export', { credentials: 'include' })
+  if (res.status === 401) {
+    const ok = await refreshAuth()
+    if (ok) return requestBackupExport()
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || '备份失败')
@@ -28,7 +38,11 @@ async function requestBackupExport() {
 }
 
 async function requestBackupImport(file) {
-  const res = await fetch(BASE + '/backup/import', { method: 'POST', body: file })
+  const res = await fetch(BASE + '/backup/import', { method: 'POST', body: file, credentials: 'include' })
+  if (res.status === 401) {
+    const ok = await refreshAuth()
+    if (ok) return requestBackupImport(file)
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || '导入失败')
@@ -36,13 +50,33 @@ async function requestBackupImport(file) {
   return res.json()
 }
 
+async function refreshAuth() {
+  if (!refreshing) {
+    refreshing = fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
+      .then(res => res.ok)
+      .catch(() => false)
+      .finally(() => { refreshing = null })
+  }
+  return refreshing
+}
+
 export const api = {
   getSubjects: () => request('GET', '/subjects'),
+  authStatus: () => request('GET', '/auth/status', null, false),
+  me: () => request('GET', '/auth/me', null, false),
+  login: (account, password) => request('POST', '/auth/login', { account, password }, false),
+  register: (username, email, password) => request('POST', '/auth/register', { username, email, password }, false),
+  refreshAuth: () => request('POST', '/auth/refresh', null, false),
+  logout: () => request('POST', '/auth/logout', null, false),
   addSubject: (name) => request('POST', '/subjects', { name }),
   deleteSubject: (name) => request('DELETE', '/subjects/' + encodeURIComponent(name)),
   ocrImage: async (file) => {
     const blob = file instanceof Blob ? file : new Blob([file])
-    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob })
+    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob, credentials: 'include' })
+    if (resp.status === 401) {
+      const ok = await refreshAuth()
+      if (ok) return api.ocrImage(file)
+    }
     if (!resp.ok) throw new Error((await resp.json()).detail || 'OCR failed')
     return resp.json()
   },
