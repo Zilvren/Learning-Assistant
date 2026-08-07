@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: docker.m.daocloud.io/library/postgres:16-alpine
     restart: unless-stopped
     env_file: .env
     environment:
@@ -45,7 +45,7 @@ services:
       - tracker_data:/app/data
 
   caddy:
-    image: caddy:2-alpine
+    image: docker.m.daocloud.io/library/caddy:2-alpine
     restart: unless-stopped
     depends_on:
       - app
