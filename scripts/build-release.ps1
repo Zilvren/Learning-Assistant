@@ -15,7 +15,7 @@ if (-not $Version) {
 }
 
 $NormalizedVersion = if ($Version.StartsWith("v")) { $Version.Substring(1) } else { $Version }
-$Repo = "Zilvren/Learning-Assitant"
+$Repo = "Zilvren/Learning-Assistant"
 $DistDir = Join-Path $Root "dist"
 $ReleaseDir = Join-Path $DistDir "release"
 $PackageDir = Join-Path $ReleaseDir "$ProductName-$NormalizedVersion"

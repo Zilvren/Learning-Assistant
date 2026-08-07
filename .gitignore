@@ -1,5 +1,6 @@
 /data/
 /dist/
+/.tools/
 /tmp/
 /frontend/node_modules/
 /frontend/.vite/
