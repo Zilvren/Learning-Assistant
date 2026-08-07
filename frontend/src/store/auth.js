@@ -2,6 +2,7 @@ import { ref } from "vue"
 import { api } from "../api/index.js"
 
 const enabledRef = ref(false)
+const registrationEnabledRef = ref(false)
 const readyRef = ref(false)
 const userRef = ref(null)
 
@@ -11,8 +12,10 @@ export function useAuth() {
     try {
       const status = await api.authStatus()
       enabledRef.value = !!status.enabled
+      registrationEnabledRef.value = !!status.registration_enabled
       if (!enabledRef.value) {
         userRef.value = null
+        registrationEnabledRef.value = false
         return
       }
       try {
@@ -46,6 +49,7 @@ export function useAuth() {
 
   return {
     enabled: enabledRef,
+    registrationEnabled: registrationEnabledRef,
     ready: readyRef,
     user: userRef,
     init,

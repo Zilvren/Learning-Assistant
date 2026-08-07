@@ -1,0 +1,6 @@
+# Initial IP-address deployment: HTTP is served on port 80.
+# After your domain has an ICP filing, replace ":80" with the domain name.
+:80 {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

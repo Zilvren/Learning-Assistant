@@ -20,11 +20,12 @@ type Config struct {
 	StorageDriver string
 	DatabaseURL   string
 
-	AuthEnabled     bool
-	JWTSecret       string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
-	CookieSecure    bool
+	AuthEnabled         bool
+	RegistrationEnabled bool
+	JWTSecret           string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	CookieSecure        bool
 }
 
 func Load(args []string) Config {
@@ -38,10 +39,11 @@ func Load(args []string) Config {
 		StorageDriver: strings.ToLower(envString("TRACKER_STORAGE", "json")),
 		DatabaseURL:   envString("TRACKER_DATABASE_URL", ""),
 
-		JWTSecret:       envString("TRACKER_JWT_SECRET", ""),
-		AccessTokenTTL:  envDuration("TRACKER_ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL: envDuration("TRACKER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
-		CookieSecure:    envBool("TRACKER_COOKIE_SECURE", false),
+		JWTSecret:           envString("TRACKER_JWT_SECRET", ""),
+		RegistrationEnabled: envBool("TRACKER_REGISTRATION_ENABLED", true),
+		AccessTokenTTL:      envDuration("TRACKER_ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:     envDuration("TRACKER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		CookieSecure:        envBool("TRACKER_COOKIE_SECURE", false),
 	}
 
 	for i := 0; i < len(args); i++ {

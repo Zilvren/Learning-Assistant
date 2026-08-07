@@ -19,6 +19,7 @@ const confirmPassword = ref("")
 const busy = ref(false)
 const error = ref("")
 const isRegister = computed(() => mode.value === "register")
+const registrationEnabled = computed(() => auth.registrationEnabled.value)
 
 function switchMode(next) {
   mode.value = next
@@ -67,9 +68,9 @@ async function submit() {
       <div class="auth-form-wrap">
         <span class="page-eyebrow">{{ isRegister ? '创建学习空间' : '欢迎回来' }}</span>
         <h2>{{ isRegister ? "创建个人学习空间" : "继续今天的学习" }}</h2>
-        <p>{{ isRegister ? "注册后即可整理笔记、错题与学习文件。" : "使用用户名或邮箱登录。" }}</p>
+        <p>{{ isRegister ? "注册后即可整理笔记、错题与学习文件。" : registrationEnabled ? "使用用户名或邮箱登录。" : "此学习空间仅限已有账户登录。" }}</p>
 
-        <div class="auth-tabs" role="tablist">
+        <div v-if="registrationEnabled" class="auth-tabs" role="tablist">
           <button type="button" role="tab" :aria-selected="!isRegister" :class="{ active: !isRegister }" @click="switchMode('login')">登录</button>
           <button type="button" role="tab" :aria-selected="isRegister" :class="{ active: isRegister }" @click="switchMode('register')">注册</button>
         </div>

@@ -23,15 +23,17 @@ const (
 )
 
 type AuthConfig struct {
-	Enabled         bool
-	Secret          string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
-	CookieSecure    bool
+	Enabled             bool
+	RegistrationEnabled bool
+	Secret              string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	CookieSecure        bool
 }
 
 type AuthStatus struct {
-	Enabled bool `json:"enabled"`
+	Enabled             bool `json:"enabled"`
+	RegistrationEnabled bool `json:"registration_enabled"`
 }
 
 type TokenPair struct {
@@ -50,13 +52,20 @@ type jwtClaims struct {
 }
 
 func AuthStatusResponse() AuthStatus {
-	return AuthStatus{Enabled: AuthEnabled()}
+	cfg := currentAuthConfig()
+	return AuthStatus{
+		Enabled:             cfg.Enabled,
+		RegistrationEnabled: cfg.Enabled && cfg.RegistrationEnabled,
+	}
 }
 
 func Register(ctx context.Context, req models.RegisterRequest, userAgent string, ipAddress string) (TokenPair, error) {
 	cfg := currentAuthConfig()
 	if !cfg.Enabled {
 		return TokenPair{}, fmt.Errorf("当前运行模式未启用登录注册")
+	}
+	if !cfg.RegistrationEnabled {
+		return TokenPair{}, fmt.Errorf("当前学习空间暂不开放注册")
 	}
 	username, email, password, err := validateRegister(req)
 	if err != nil {
@@ -203,11 +212,12 @@ func currentAuthConfig() AuthConfig {
 	defaultMu.RLock()
 	defer defaultMu.RUnlock()
 	return AuthConfig{
-		Enabled:         appConfig.AuthEnabled,
-		Secret:          appConfig.JWTSecret,
-		AccessTokenTTL:  appConfig.AccessTokenTTL,
-		RefreshTokenTTL: appConfig.RefreshTokenTTL,
-		CookieSecure:    appConfig.CookieSecure,
+		Enabled:             appConfig.AuthEnabled,
+		RegistrationEnabled: appConfig.RegistrationEnabled,
+		Secret:              appConfig.JWTSecret,
+		AccessTokenTTL:      appConfig.AccessTokenTTL,
+		RefreshTokenTTL:     appConfig.RefreshTokenTTL,
+		CookieSecure:        appConfig.CookieSecure,
 	}
 }
 

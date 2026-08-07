@@ -30,6 +30,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("TRACKER_STORAGE", "Postgres")
 	t.Setenv("TRACKER_DATABASE_URL", "postgres://example")
 	t.Setenv("TRACKER_JWT_SECRET", "test-secret")
+	t.Setenv("TRACKER_REGISTRATION_ENABLED", "false")
 
 	cfg := Load(nil)
 	if cfg.Port != 8030 {
@@ -52,6 +53,9 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 	if cfg.JWTSecret != "test-secret" {
 		t.Fatalf("expected jwt secret from env, got %q", cfg.JWTSecret)
+	}
+	if cfg.RegistrationEnabled {
+		t.Fatal("expected registration to be disabled from env")
 	}
 }
 

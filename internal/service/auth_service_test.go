@@ -67,3 +67,19 @@ func TestJSONModeAuthDisabled(t *testing.T) {
 		t.Fatal("expected auth repository placeholder")
 	}
 }
+
+func TestRegisterRejectsWhenRegistrationIsDisabled(t *testing.T) {
+	if err := InitApp(config.Config{
+		StorageDriver:       "postgres",
+		AuthEnabled:         true,
+		RegistrationEnabled: false,
+	}, jsonrepo.NewRepositories(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Register(background(), models.RegisterRequest{
+		Username: "tester",
+		Password: "password123",
+	}, "", ""); err == nil {
+		t.Fatal("expected registration to be rejected")
+	}
+}

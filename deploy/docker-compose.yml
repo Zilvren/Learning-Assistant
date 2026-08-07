@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U study_tracker -d study_tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TRACKER_STORAGE: postgres
+      TRACKER_DATABASE_URL: postgresql://study_tracker:${POSTGRES_PASSWORD}@db:5432/study_tracker?sslmode=disable
+      TRACKER_HOST: 0.0.0.0
+      TRACKER_PORT: "8000"
+      TRACKER_NO_BROWSER: "true"
+      GIN_MODE: release
+      GOMEMLIMIT: 384MiB
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - tracker_data:/app/data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  tracker_data:
+  caddy_data:
+  caddy_config:
