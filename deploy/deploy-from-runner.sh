@@ -17,10 +17,8 @@ if [[ ! -f "$compose_dir/.env" ]]; then
   exit 1
 fi
 
-docker info >/dev/null
-
-if [[ -z "${GITHUB_TOKEN:-}" || -z "${GITHUB_ACTOR:-}" ]]; then
-  echo "GitHub registry credentials are unavailable." >&2
+if ! docker image inspect "$app_image" >/dev/null 2>&1; then
+  echo "Production image is not loaded: $app_image" >&2
   exit 1
 fi
 
@@ -35,9 +33,6 @@ rsync -a --delete \
   "$source_dir/" "$deploy_root/"
 
 cd "$compose_dir"
-trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-TRACKER_APP_IMAGE="$app_image" docker compose pull app
 TRACKER_APP_IMAGE="$app_image" docker compose up -d --no-build app
 
 for attempt in $(seq 1 20); do
