@@ -30,17 +30,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOMAXPROCS=1 \
     go build -trimpath -ldflags="-s -w" -o /out/tracker .
 
 FROM docker.m.daocloud.io/library/debian:bookworm-slim
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 tracker \
-    && useradd --system --uid 10001 --gid tracker --create-home tracker
-
 WORKDIR /app
+# The Go builder already contains the certificate bundle.  Copy it instead of
+# reaching Debian package mirrors during the runtime-image build.
+COPY --from=app-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=app-builder /out/tracker /app/tracker
-RUN mkdir /app/data && chown -R tracker:tracker /app
+RUN mkdir /app/data && chown -R 10001:10001 /app
 
-USER tracker
+USER 10001:10001
 EXPOSE 8000
 
 ENTRYPOINT ["/app/tracker", "--no-browser"]
