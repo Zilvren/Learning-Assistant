@@ -20,20 +20,21 @@ func NewAuthRepository(pool *pgxpool.Pool) *AuthRepository {
 	return &AuthRepository{pool: pool}
 }
 
-func (r *AuthRepository) CreateUser(ctx context.Context, username string, email string, passwordHash string) (models.User, error) {
+func (r *AuthRepository) CreateUser(ctx context.Context, username string, email string, passwordHash string, emailVerified bool) (models.User, error) {
 	username = strings.TrimSpace(username)
 	email = normalizeEmail(email)
 
 	var user models.User
 	var nullableEmail pgtype.Text
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO users (username, email, password_hash, status)
-		VALUES ($1, nullif($2, ''), $3, 'active')
-		RETURNING id, username, coalesce(email, ''), status, created_at, updated_at
-	`, username, email, passwordHash).Scan(
+		INSERT INTO users (username, email, password_hash, status, email_verified_at)
+		VALUES ($1, nullif($2, ''), $3, 'active', CASE WHEN $4 THEN now() ELSE NULL END)
+		RETURNING id, username, coalesce(email, ''), email_verified_at IS NOT NULL, status, created_at, updated_at
+	`, username, email, passwordHash, emailVerified).Scan(
 		&user.ID,
 		&user.Username,
 		&nullableEmail,
+		&user.EmailVerified,
 		&user.Status,
 		&user.CreatedAt,
 		&user.UpdatedAt,
@@ -45,17 +46,22 @@ func (r *AuthRepository) CreateUser(ctx context.Context, username string, email 
 	return user, nil
 }
 
+func (r *AuthRepository) DeleteUnverifiedUser(ctx context.Context, id int64) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM users WHERE id = $1 AND email_verified_at IS NULL`, id)
+	return err
+}
+
 func (r *AuthRepository) FindUserByAccount(ctx context.Context, account string) (models.AuthUser, error) {
 	account = strings.TrimSpace(account)
 	var user models.AuthUser
 	var email pgtype.Text
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, username, email, password_hash, status
+		SELECT id, username, email, email_verified_at IS NOT NULL, password_hash, status
 		FROM users
 		WHERE deleted_at IS NULL
 		  AND (lower(username) = lower($1) OR lower(email) = lower($1))
 		LIMIT 1
-	`, account).Scan(&user.ID, &user.Username, &email, &user.PasswordHash, &user.Status)
+	`, account).Scan(&user.ID, &user.Username, &email, &user.EmailVerified, &user.PasswordHash, &user.Status)
 	if err != nil {
 		return models.AuthUser{}, err
 	}
@@ -69,12 +75,54 @@ func (r *AuthRepository) FindUserByID(ctx context.Context, id int64) (models.Aut
 	var user models.AuthUser
 	var email pgtype.Text
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, username, email, password_hash, status
+		SELECT id, username, email, email_verified_at IS NOT NULL, password_hash, status
 		FROM users
 		WHERE id = $1
 		  AND deleted_at IS NULL
 		LIMIT 1
-	`, id).Scan(&user.ID, &user.Username, &email, &user.PasswordHash, &user.Status)
+	`, id).Scan(&user.ID, &user.Username, &email, &user.EmailVerified, &user.PasswordHash, &user.Status)
+	if err != nil {
+		return models.AuthUser{}, err
+	}
+	if email.Valid {
+		user.Email = email.String
+	}
+	return user, nil
+}
+
+func (r *AuthRepository) CreateEmailVerificationToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
+	if _, err := r.pool.Exec(ctx, `
+		DELETE FROM email_verification_tokens
+		WHERE user_id = $1 AND consumed_at IS NULL
+	`, userID); err != nil {
+		return err
+	}
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, tokenHash, expiresAt)
+	return err
+}
+
+func (r *AuthRepository) ConsumeEmailVerificationToken(ctx context.Context, tokenHash string) (models.AuthUser, error) {
+	var user models.AuthUser
+	var email pgtype.Text
+	err := r.pool.QueryRow(ctx, `
+		WITH verified_token AS (
+			UPDATE email_verification_tokens
+			SET consumed_at = now()
+			WHERE token_hash = $1
+			  AND consumed_at IS NULL
+			  AND expires_at > now()
+			RETURNING user_id
+		)
+		UPDATE users AS u
+		SET email_verified_at = COALESCE(email_verified_at, now())
+		FROM verified_token
+		WHERE u.id = verified_token.user_id
+		  AND u.deleted_at IS NULL
+		RETURNING u.id, u.username, u.email, u.email_verified_at IS NOT NULL, u.password_hash, u.status
+	`, tokenHash).Scan(&user.ID, &user.Username, &email, &user.EmailVerified, &user.PasswordHash, &user.Status)
 	if err != nil {
 		return models.AuthUser{}, err
 	}

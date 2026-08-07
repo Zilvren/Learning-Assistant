@@ -38,6 +38,7 @@ let restartPollTimer = null
 const LAST_UPDATE_CHECK_KEY = "studyTrackerLastUpdateCheck"
 
 const canApplyUpdate = computed(() => !!updateInfo.value?.has_update && !!updateInfo.value?.asset_found && !!versionInfo.value.can_auto_update)
+const updateEnabled = computed(() => auth.updateEnabled.value)
 
 async function saveUsername() {
   if (usernameBusy.value) return
@@ -181,7 +182,9 @@ async function logout() {
 }
 
 onMounted(async () => {
-  await Promise.all([settings.load(), loadToken(), loadVersion()])
+  const tasks = [settings.load(), loadToken()]
+  if (updateEnabled.value) tasks.push(loadVersion())
+  await Promise.all(tasks)
   if (route.query.section) await nextTick(() => document.getElementById(String(route.query.section))?.scrollIntoView({ behavior: "smooth" }))
 })
 onBeforeUnmount(() => window.clearInterval(restartPollTimer))
@@ -197,7 +200,7 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
         <a href="#appearance"><Brush :size="16" />外观</a>
         <a href="#backup"><DatabaseBackup :size="16" />备份恢复</a>
         <a href="#ocr"><KeyRound :size="16" />OCR Token</a>
-        <a href="#updates"><PackageCheck :size="16" />版本更新</a>
+        <a v-if="updateEnabled" href="#updates"><PackageCheck :size="16" />版本更新</a>
       </nav>
 
       <div class="settings-sections">
@@ -230,7 +233,7 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
           <div class="setting-control-row"><label><span class="field-label">{{ tokenConfigured ? '替换 Token' : 'MinerU Token' }}</span><input v-model="token" class="field-control" type="password" :placeholder="tokenConfigured ? '粘贴新 Token' : '粘贴 Token 后保存'" autocomplete="off" /></label><BaseButton :busy="tokenBusy" @click="saveToken">保存连接</BaseButton><BaseButton v-if="tokenConfigured" variant="quiet-danger" :busy="tokenBusy" @click="clearToken">清除</BaseButton></div>
         </section>
 
-        <section id="updates" class="settings-section paper-panel">
+        <section v-if="updateEnabled" id="updates" class="settings-section paper-panel">
           <header><span>05</span><div><h2>版本更新</h2><p>当前版本 {{ versionInfo.version || '读取中' }} · {{ updateStatus }}</p></div><PackageCheck :size="21" /></header>
           <div class="setting-subrow"><div><strong>{{ updateInfo?.has_update ? `可更新至 v${updateInfo.latest_version}` : '检查发行版本' }}</strong><p v-if="updateInfo?.published_at">发布于 {{ updateInfo.published_at.slice(0, 10) }}</p><p v-if="updateInfo?.has_update && !versionInfo.can_auto_update">源码模式需要手动拉取新版本。</p></div><div class="button-row"><BaseButton :busy="updateBusy" :disabled="updateApplying" @click="checkUpdate(true, false)"><template #icon><RefreshCw :size="16" /></template>检查更新</BaseButton><BaseButton v-if="canApplyUpdate" variant="primary" :busy="updateApplying" @click="confirmUpdate = true">立即更新</BaseButton></div></div>
         </section>
@@ -238,6 +241,6 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
     </div>
 
     <ConfirmDialog :open="!!pendingBackup" title="用备份覆盖当前数据？" message="资料库、笔记、标签与设置会被替换。系统会先自动创建 pre-import 快照。" confirm-text="确认导入" danger :busy="backupBusy" @close="pendingBackup = null" @confirm="importBackup" />
-    <ConfirmDialog :open="confirmUpdate" title="立即安装更新？" message="程序会先备份数据，然后下载更新并自动重启。" confirm-text="开始更新" :busy="updateApplying" @close="confirmUpdate = false" @confirm="applyUpdate" />
+    <ConfirmDialog v-if="updateEnabled" :open="confirmUpdate" title="立即安装更新？" message="程序会先备份数据，然后下载更新并自动重启。" confirm-text="开始更新" :busy="updateApplying" @close="confirmUpdate = false" @confirm="applyUpdate" />
   </div>
 </template>

@@ -23,17 +23,27 @@ const (
 )
 
 type AuthConfig struct {
-	Enabled             bool
-	RegistrationEnabled bool
-	Secret              string
-	AccessTokenTTL      time.Duration
-	RefreshTokenTTL     time.Duration
-	CookieSecure        bool
+	Enabled                  bool
+	RegistrationEnabled      bool
+	EmailVerificationEnabled bool
+	Secret                   string
+	AccessTokenTTL           time.Duration
+	RefreshTokenTTL          time.Duration
+	CookieSecure             bool
+	EmailVerificationTTL     time.Duration
 }
 
 type AuthStatus struct {
-	Enabled             bool `json:"enabled"`
-	RegistrationEnabled bool `json:"registration_enabled"`
+	Enabled                  bool `json:"enabled"`
+	RegistrationEnabled      bool `json:"registration_enabled"`
+	EmailVerificationEnabled bool `json:"email_verification_enabled"`
+	UpdateEnabled            bool `json:"update_enabled"`
+}
+
+type RegistrationResult struct {
+	TokenPair                 TokenPair
+	EmailVerificationRequired bool
+	Email                     string
 }
 
 type TokenPair struct {
@@ -54,41 +64,106 @@ type jwtClaims struct {
 func AuthStatusResponse() AuthStatus {
 	cfg := currentAuthConfig()
 	return AuthStatus{
-		Enabled:             cfg.Enabled,
-		RegistrationEnabled: cfg.Enabled && cfg.RegistrationEnabled,
+		Enabled:                  cfg.Enabled,
+		RegistrationEnabled:      cfg.Enabled && cfg.RegistrationEnabled,
+		EmailVerificationEnabled: cfg.Enabled && cfg.RegistrationEnabled && cfg.EmailVerificationEnabled,
+		UpdateEnabled:            !cfg.Enabled,
 	}
 }
 
-func Register(ctx context.Context, req models.RegisterRequest, userAgent string, ipAddress string) (TokenPair, error) {
+// UpdateEnabled is limited to the desktop JSON mode. Production releases are
+// deployed by the server pipeline instead of downloading a client updater.
+func UpdateEnabled() bool {
+	return !AuthEnabled()
+}
+
+func Register(ctx context.Context, req models.RegisterRequest, userAgent string, ipAddress string) (RegistrationResult, error) {
 	cfg := currentAuthConfig()
 	if !cfg.Enabled {
-		return TokenPair{}, fmt.Errorf("当前运行模式未启用登录注册")
+		return RegistrationResult{}, fmt.Errorf("当前运行模式未启用登录注册")
 	}
 	if !cfg.RegistrationEnabled {
-		return TokenPair{}, fmt.Errorf("当前学习空间暂不开放注册")
+		return RegistrationResult{}, fmt.Errorf("当前学习空间暂不开放注册")
 	}
-	username, email, password, err := validateRegister(req)
+	username, email, password, err := validateRegister(req, cfg.EmailVerificationEnabled)
 	if err != nil {
-		return TokenPair{}, err
+		return RegistrationResult{}, err
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return TokenPair{}, err
+		return RegistrationResult{}, err
+	}
+	repo, err := authRepository()
+	if err != nil {
+		return RegistrationResult{}, err
+	}
+	user, err := repo.CreateUser(ctx, username, email, string(passwordHash), !cfg.EmailVerificationEnabled)
+	if err != nil {
+		return RegistrationResult{}, friendlyAuthError(err)
+	}
+	if cfg.EmailVerificationEnabled {
+		if err := createEmailVerification(ctx, repo, currentConfig(), user); err != nil {
+			_ = repo.DeleteUnverifiedUser(ctx, user.ID)
+			return RegistrationResult{}, err
+		}
+		return RegistrationResult{EmailVerificationRequired: true, Email: user.Email}, nil
+	}
+	pair, err := issueTokens(ctx, repo, cfg, models.AuthUser{
+		ID:            user.ID,
+		Username:      user.Username,
+		Email:         user.Email,
+		EmailVerified: true,
+		Status:        user.Status,
+	}, userAgent, ipAddress)
+	if err != nil {
+		return RegistrationResult{}, err
+	}
+	return RegistrationResult{TokenPair: pair}, nil
+}
+
+func VerifyEmail(ctx context.Context, token string, userAgent string, ipAddress string) (TokenPair, error) {
+	cfg := currentAuthConfig()
+	if !cfg.Enabled || !cfg.EmailVerificationEnabled {
+		return TokenPair{}, fmt.Errorf("邮箱验证尚未启用")
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return TokenPair{}, fmt.Errorf("验证链接无效")
 	}
 	repo, err := authRepository()
 	if err != nil {
 		return TokenPair{}, err
 	}
-	user, err := repo.CreateUser(ctx, username, email, string(passwordHash))
+	user, err := repo.ConsumeEmailVerificationToken(ctx, hashRefreshToken(token))
 	if err != nil {
-		return TokenPair{}, friendlyAuthError(err)
+		return TokenPair{}, fmt.Errorf("验证链接无效或已过期")
 	}
-	return issueTokens(ctx, repo, cfg, models.AuthUser{
+	return issueTokens(ctx, repo, cfg, user, userAgent, ipAddress)
+}
+
+func ResendEmailVerification(ctx context.Context, rawEmail string) error {
+	cfg := currentAuthConfig()
+	if !cfg.Enabled || !cfg.EmailVerificationEnabled {
+		return fmt.Errorf("邮箱验证尚未启用")
+	}
+	email, err := validateEmailAddress(rawEmail)
+	if err != nil {
+		return err
+	}
+	repo, err := authRepository()
+	if err != nil {
+		return err
+	}
+	user, err := repo.FindUserByAccount(ctx, email)
+	if err != nil || user.Status != "active" || user.Email != email || user.EmailVerified {
+		return nil
+	}
+	return createEmailVerification(ctx, repo, currentConfig(), models.User{
 		ID:       user.ID,
 		Username: user.Username,
 		Email:    user.Email,
 		Status:   user.Status,
-	}, userAgent, ipAddress)
+	})
 }
 
 func Login(ctx context.Context, req models.LoginRequest, userAgent string, ipAddress string) (TokenPair, error) {
@@ -110,6 +185,9 @@ func Login(ctx context.Context, req models.LoginRequest, userAgent string, ipAdd
 	user, err := repo.FindUserByAccount(ctx, account)
 	if err != nil || user.Status != "active" {
 		return TokenPair{}, fmt.Errorf("账号或密码错误")
+	}
+	if cfg.EmailVerificationEnabled && user.Email != "" && !user.EmailVerified {
+		return TokenPair{}, fmt.Errorf("邮箱尚未验证，请查收验证邮件")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return TokenPair{}, fmt.Errorf("账号或密码错误")
@@ -136,7 +214,7 @@ func RefreshLogin(ctx context.Context, refreshToken string, userAgent string, ip
 		return TokenPair{}, fmt.Errorf("登录已过期")
 	}
 	user, err := repo.FindUserByID(ctx, userID)
-	if err != nil || user.Status != "active" {
+	if err != nil || user.Status != "active" || (cfg.EmailVerificationEnabled && user.Email != "" && !user.EmailVerified) {
 		return TokenPair{}, fmt.Errorf("登录已过期")
 	}
 	if err := repo.RevokeRefreshToken(ctx, tokenHash); err != nil {
@@ -170,7 +248,7 @@ func CurrentUser(ctx context.Context) (models.User, error) {
 		return models.User{}, err
 	}
 	user, err := repo.FindUserByID(ctx, userID)
-	if err != nil || user.Status != "active" {
+	if err != nil || user.Status != "active" || (cfg.EmailVerificationEnabled && user.Email != "" && !user.EmailVerified) {
 		return models.User{}, fmt.Errorf("未登录")
 	}
 	return publicUser(user), nil
@@ -190,7 +268,7 @@ func ValidateAccessToken(token string) (models.AuthUser, error) {
 		return models.AuthUser{}, err
 	}
 	user, err := repo.FindUserByID(context.Background(), claims.Sub)
-	if err != nil || user.Status != "active" {
+	if err != nil || user.Status != "active" || (cfg.EmailVerificationEnabled && user.Email != "" && !user.EmailVerified) {
 		return models.AuthUser{}, fmt.Errorf("未登录")
 	}
 	return user, nil
@@ -212,16 +290,18 @@ func currentAuthConfig() AuthConfig {
 	defaultMu.RLock()
 	defer defaultMu.RUnlock()
 	return AuthConfig{
-		Enabled:             appConfig.AuthEnabled,
-		RegistrationEnabled: appConfig.RegistrationEnabled,
-		Secret:              appConfig.JWTSecret,
-		AccessTokenTTL:      appConfig.AccessTokenTTL,
-		RefreshTokenTTL:     appConfig.RefreshTokenTTL,
-		CookieSecure:        appConfig.CookieSecure,
+		Enabled:                  appConfig.AuthEnabled,
+		RegistrationEnabled:      appConfig.RegistrationEnabled,
+		EmailVerificationEnabled: appConfig.EmailVerificationEnabled,
+		Secret:                   appConfig.JWTSecret,
+		AccessTokenTTL:           appConfig.AccessTokenTTL,
+		RefreshTokenTTL:          appConfig.RefreshTokenTTL,
+		CookieSecure:             appConfig.CookieSecure,
+		EmailVerificationTTL:     appConfig.EmailVerificationTTL,
 	}
 }
 
-func validateRegister(req models.RegisterRequest) (string, string, string, error) {
+func validateRegister(req models.RegisterRequest, requireEmail bool) (string, string, string, error) {
 	username := strings.TrimSpace(req.Username)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	password := req.Password
@@ -233,8 +313,15 @@ func validateRegister(req models.RegisterRequest) (string, string, string, error
 			return "", "", "", fmt.Errorf("用户名只能包含中文、字母、数字、下划线、短横线和点")
 		}
 	}
-	if email != "" && !strings.Contains(email, "@") {
-		return "", "", "", fmt.Errorf("邮箱格式不正确")
+	if requireEmail && email == "" {
+		return "", "", "", fmt.Errorf("请填写用于验证账号的邮箱")
+	}
+	if email != "" {
+		normalizedEmail, validationErr := validateEmailAddress(email)
+		if validationErr != nil {
+			return "", "", "", validationErr
+		}
+		email = normalizedEmail
 	}
 	if len(password) < 8 || len(password) > 128 {
 		return "", "", "", fmt.Errorf("密码长度需要在 8 到 128 位之间")
@@ -280,10 +367,11 @@ func issueTokens(ctx context.Context, repo interface {
 
 func publicUser(user models.AuthUser) models.User {
 	return models.User{
-		ID:       user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Status:   user.Status,
+		ID:            user.ID,
+		Username:      user.Username,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerified,
+		Status:        user.Status,
 	}
 }
 

@@ -10,8 +10,12 @@ import (
 
 type AuthRepository struct{}
 
-func (r *AuthRepository) CreateUser(ctx context.Context, username string, email string, passwordHash string) (models.User, error) {
+func (r *AuthRepository) CreateUser(ctx context.Context, username string, email string, passwordHash string, emailVerified bool) (models.User, error) {
 	return models.User{}, fmt.Errorf("JSON 模式不支持登录注册")
+}
+
+func (r *AuthRepository) DeleteUnverifiedUser(ctx context.Context, id int64) error {
+	return nil
 }
 
 func (r *AuthRepository) FindUserByAccount(ctx context.Context, account string) (models.AuthUser, error) {
@@ -19,6 +23,14 @@ func (r *AuthRepository) FindUserByAccount(ctx context.Context, account string) 
 }
 
 func (r *AuthRepository) FindUserByID(ctx context.Context, id int64) (models.AuthUser, error) {
+	return models.AuthUser{}, fmt.Errorf("JSON 模式不支持登录注册")
+}
+
+func (r *AuthRepository) CreateEmailVerificationToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
+	return fmt.Errorf("JSON 模式不支持登录注册")
+}
+
+func (r *AuthRepository) ConsumeEmailVerificationToken(ctx context.Context, tokenHash string) (models.AuthUser, error) {
 	return models.AuthUser{}, fmt.Errorf("JSON 模式不支持登录注册")
 }
 

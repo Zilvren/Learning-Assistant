@@ -26,6 +26,16 @@ type Config struct {
 	AccessTokenTTL      time.Duration
 	RefreshTokenTTL     time.Duration
 	CookieSecure        bool
+
+	EmailVerificationEnabled bool
+	PublicURL                string
+	SMTPHost                 string
+	SMTPPort                 int
+	SMTPUsername             string
+	SMTPPassword             string
+	SMTPFrom                 string
+	SMTPTLSMode              string
+	EmailVerificationTTL     time.Duration
 }
 
 func Load(args []string) Config {
@@ -44,6 +54,16 @@ func Load(args []string) Config {
 		AccessTokenTTL:      envDuration("TRACKER_ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:     envDuration("TRACKER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		CookieSecure:        envBool("TRACKER_COOKIE_SECURE", false),
+
+		EmailVerificationEnabled: envBool("TRACKER_EMAIL_VERIFICATION_ENABLED", false),
+		PublicURL:                envString("TRACKER_PUBLIC_URL", ""),
+		SMTPHost:                 envString("TRACKER_SMTP_HOST", ""),
+		SMTPPort:                 envPort("TRACKER_SMTP_PORT", 465),
+		SMTPUsername:             envString("TRACKER_SMTP_USERNAME", ""),
+		SMTPPassword:             envString("TRACKER_SMTP_PASSWORD", ""),
+		SMTPFrom:                 envString("TRACKER_SMTP_FROM", ""),
+		SMTPTLSMode:              strings.ToLower(envString("TRACKER_SMTP_TLS_MODE", "implicit")),
+		EmailVerificationTTL:     envDuration("TRACKER_EMAIL_VERIFICATION_TTL", 24*time.Hour),
 	}
 
 	for i := 0; i < len(args); i++ {

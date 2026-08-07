@@ -181,6 +181,23 @@ docker compose up -d --build app
 
 Caddy 会自动申请和续期 HTTPS 证书。HTTPS 开启后再使用正式登录密码。
 
+## 注册邮箱验证
+
+邮箱验证使用验证链接激活新账号。为避免验证令牌在公网 HTTP 链路中泄露，必须先完成上面的域名与 HTTPS 配置，再在 `deploy/.env` 中填写 SMTP 信息并启用：
+
+```text
+TRACKER_EMAIL_VERIFICATION_ENABLED=true
+TRACKER_PUBLIC_URL=https://你的域名
+TRACKER_SMTP_HOST=smtp.example.com
+TRACKER_SMTP_PORT=465
+TRACKER_SMTP_USERNAME=你的邮箱
+TRACKER_SMTP_PASSWORD=邮箱 SMTP 授权码
+TRACKER_SMTP_FROM=你的邮箱
+TRACKER_SMTP_TLS_MODE=implicit
+```
+
+常见的端口组合是 `465 + implicit` 或 `587 + starttls`。保存后执行 `docker compose up -d app`。新注册用户将收到 24 小时有效的验证链接；已有账号会保留现有访问权限。
+
 ## 常见问题
 
 ### Docker 镜像或依赖下载超时

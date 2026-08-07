@@ -37,18 +37,21 @@ func TestValidateRegister(t *testing.T) {
 		Username: "test_user",
 		Email:    "USER@example.com",
 		Password: "password123",
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if username != "test_user" || email != "user@example.com" || password != "password123" {
 		t.Fatalf("unexpected normalized values: %q %q %q", username, email, password)
 	}
-	if _, _, _, err := validateRegister(models.RegisterRequest{Username: "ab", Password: "password123"}); err == nil {
+	if _, _, _, err := validateRegister(models.RegisterRequest{Username: "ab", Password: "password123"}, false); err == nil {
 		t.Fatal("expected short username to fail")
 	}
-	if _, _, _, err := validateRegister(models.RegisterRequest{Username: "valid", Password: "short"}); err == nil {
+	if _, _, _, err := validateRegister(models.RegisterRequest{Username: "valid", Password: "short"}, false); err == nil {
 		t.Fatal("expected short password to fail")
+	}
+	if _, _, _, err := validateRegister(models.RegisterRequest{Username: "valid", Password: "password123"}, true); err == nil {
+		t.Fatal("expected verification registration to require an email")
 	}
 }
 

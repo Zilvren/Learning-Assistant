@@ -22,13 +22,49 @@ func Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
 		return
 	}
-	pair, err := service.Register(c.Request.Context(), req, c.Request.UserAgent(), clientIP(c))
+	result, err := service.Register(c.Request.Context(), req, c.Request.UserAgent(), clientIP(c))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	if result.EmailVerificationRequired {
+		c.JSON(http.StatusAccepted, models.RegistrationResponse{
+			EmailVerificationRequired: true,
+			Email:                     result.Email,
+		})
+		return
+	}
+	writeAuthCookies(c, result.TokenPair)
+	c.JSON(http.StatusOK, models.AuthResponse{User: result.TokenPair.User})
+}
+
+func VerifyEmail(c *gin.Context) {
+	var req models.VerifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		return
+	}
+	pair, err := service.VerifyEmail(c.Request.Context(), req.Token, c.Request.UserAgent(), clientIP(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
 		return
 	}
 	writeAuthCookies(c, pair)
 	c.JSON(http.StatusOK, models.AuthResponse{User: pair.User})
+}
+
+func ResendEmailVerification(c *gin.Context) {
+	var req models.ResendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		return
+	}
+	if err := service.ResendEmailVerification(c.Request.Context(), req.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	// Do not reveal whether the address belongs to an unverified account.
+	c.JSON(http.StatusAccepted, gin.H{"message": "如果该邮箱对应未验证账号，验证邮件已发送"})
 }
 
 func Login(c *gin.Context) {

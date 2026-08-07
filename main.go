@@ -119,6 +119,8 @@ func registerRoutes(r *gin.Engine) {
 	//认证接口
 	r.GET("/api/auth/status", handlers.AuthStatus)
 	r.POST("/api/auth/register", handlers.Register)
+	r.POST("/api/auth/verify-email", handlers.VerifyEmail)
+	r.POST("/api/auth/resend-verification", handlers.ResendEmailVerification)
 	r.POST("/api/auth/login", handlers.Login)
 	r.POST("/api/auth/refresh", handlers.Refresh)
 	r.POST("/api/auth/logout", handlers.Logout)
@@ -148,6 +150,7 @@ func registerRoutes(r *gin.Engine) {
 
 		//每日推送接口
 		api.GET("/daily-push", handlers.GetDailyPush)
+		api.GET("/dashboard/activity", handlers.GetLearningActivity)
 
 		//设置接口
 		api.GET("/settings/token", handlers.GetToken)

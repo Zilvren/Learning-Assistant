@@ -69,6 +69,13 @@ func TestBusinessRoutesAuthPolicy(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("postgres auth mode should require login, got %d", w.Code)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("production mode should hide client updates, got %d", w.Code)
+	}
 }
 
 func TestFrontendMissingAssetDoesNotFallbackToHTML(t *testing.T) {

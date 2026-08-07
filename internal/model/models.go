@@ -122,3 +122,16 @@ type DailyPushResult struct {
 	DueNotes     []LibraryItem     `json:"due_notes,omitempty"`
 	TopTags      []string          `json:"top_tags,omitempty"`
 }
+
+type LearningActivityDay struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
+type LearningActivityResponse struct {
+	StartDate  string                `json:"start_date"`
+	EndDate    string                `json:"end_date"`
+	Total      int                   `json:"total"`
+	ActiveDays int                   `json:"active_days"`
+	Days       []LearningActivityDay `json:"days"`
+}

@@ -122,6 +122,8 @@ export const api = {
   me: () => request('GET', '/auth/me', null, false),
   login: (account, password) => request('POST', '/auth/login', { account, password }, false),
   register: (username, email, password) => request('POST', '/auth/register', { username, email, password }, false),
+  verifyEmail: (token) => request('POST', '/auth/verify-email', { token }, false),
+  resendVerification: (email) => request('POST', '/auth/resend-verification', { email }, false),
   refreshAuth: () => request('POST', '/auth/refresh', null, false),
   logout: () => request('POST', '/auth/logout', null, false),
   addSubject: (name) => request('POST', '/subjects', { name }),
@@ -159,4 +161,5 @@ export const api = {
   deleteError: (id) => request('DELETE', `/errors/${id}`),
   updateError: (id, data) => request('PUT', `/errors/${id}`, data),
   getDailyPush: () => request('GET', '/daily-push'),
+  getLearningActivity: () => request('GET', '/dashboard/activity'),
 }

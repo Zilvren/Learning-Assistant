@@ -27,6 +27,9 @@ func InitApp(cfg config.Config, repos repository.Repositories, pool *pgxpool.Poo
 	if repos.Auth == nil || repos.Subjects == nil || repos.Errors == nil || repos.Settings == nil || repos.Knowledge == nil || repos.OCRTasks == nil || repos.Backup == nil || repos.Library == nil {
 		return fmt.Errorf("repository 初始化不完整")
 	}
+	if err := validateEmailVerificationConfig(cfg); err != nil {
+		return err
+	}
 	defaultMu.Lock()
 	defaultRepos = repos
 	appConfig = cfg
@@ -65,6 +68,12 @@ func AuthEnabled() bool {
 	defaultMu.RLock()
 	defer defaultMu.RUnlock()
 	return appConfig.AuthEnabled
+}
+
+func currentConfig() config.Config {
+	defaultMu.RLock()
+	defer defaultMu.RUnlock()
+	return appConfig
 }
 
 func authRepository() (repository.AuthRepository, error) {

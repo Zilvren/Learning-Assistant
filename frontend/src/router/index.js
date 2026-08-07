@@ -5,6 +5,7 @@ const AppShell = () => import("../layouts/AppShell.vue")
 const DesignPreviewShell = () => import("../layouts/DesignPreviewShell.vue")
 const KnowtPreviewShell = () => import("../layouts/KnowtPreviewShell.vue")
 const AuthPage = () => import("../components/AuthPage.vue")
+const VerifyEmailPage = () => import("../components/VerifyEmailPage.vue")
 const HomePage = () => import("../components/HomePage.vue")
 const ReviewPage = () => import("../components/review/ReviewPage.vue")
 const ErrorPreviewPage = () => import("../components/design-preview/ErrorPreviewPage.vue")
@@ -15,6 +16,7 @@ const LibraryItemPage = () => import("../components/library/LibraryItemPage.vue"
 
 export const routes = [
   { path: "/login", name: "login", component: AuthPage, meta: { public: true } },
+  { path: "/verify-email", name: "verify-email", component: VerifyEmailPage, meta: { public: true } },
   {
     path: "/design-preview/knowt",
     component: KnowtPreviewShell,
@@ -51,8 +53,8 @@ export function installAuthGuard(targetRouter, auth = useAuth()) {
   targetRouter.beforeEach(async (to) => {
     if (!auth.ready.value) await auth.init()
 
-    if (to.name === "login") {
-      if (!auth.enabled.value || auth.user.value) return { name: "home" }
+    if (to.meta.public) {
+      if (to.name === "login" && (!auth.enabled.value || auth.user.value)) return { name: "home" }
       return true
     }
 

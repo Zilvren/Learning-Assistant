@@ -31,6 +31,14 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("TRACKER_DATABASE_URL", "postgres://example")
 	t.Setenv("TRACKER_JWT_SECRET", "test-secret")
 	t.Setenv("TRACKER_REGISTRATION_ENABLED", "false")
+	t.Setenv("TRACKER_EMAIL_VERIFICATION_ENABLED", "true")
+	t.Setenv("TRACKER_PUBLIC_URL", "https://study.example.com")
+	t.Setenv("TRACKER_SMTP_HOST", "smtp.example.com")
+	t.Setenv("TRACKER_SMTP_PORT", "587")
+	t.Setenv("TRACKER_SMTP_USERNAME", "mailer")
+	t.Setenv("TRACKER_SMTP_PASSWORD", "smtp-secret")
+	t.Setenv("TRACKER_SMTP_FROM", "mailer@example.com")
+	t.Setenv("TRACKER_SMTP_TLS_MODE", "starttls")
 
 	cfg := Load(nil)
 	if cfg.Port != 8030 {
@@ -56,6 +64,9 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 	if cfg.RegistrationEnabled {
 		t.Fatal("expected registration to be disabled from env")
+	}
+	if !cfg.EmailVerificationEnabled || cfg.PublicURL != "https://study.example.com" || cfg.SMTPPort != 587 || cfg.SMTPTLSMode != "starttls" {
+		t.Fatalf("expected email verification settings from environment, got %#v", cfg)
 	}
 }
 

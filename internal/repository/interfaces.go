@@ -50,9 +50,12 @@ type LibraryRepository interface {
 }
 
 type AuthRepository interface {
-	CreateUser(ctx context.Context, username string, email string, passwordHash string) (models.User, error)
+	CreateUser(ctx context.Context, username string, email string, passwordHash string, emailVerified bool) (models.User, error)
+	DeleteUnverifiedUser(ctx context.Context, id int64) error
 	FindUserByAccount(ctx context.Context, account string) (models.AuthUser, error)
 	FindUserByID(ctx context.Context, id int64) (models.AuthUser, error)
+	CreateEmailVerificationToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error
+	ConsumeEmailVerificationToken(ctx context.Context, tokenHash string) (models.AuthUser, error)
 	TouchLastLogin(ctx context.Context, id int64) error
 	CreateRefreshToken(ctx context.Context, userID int64, tokenHash string, userAgent string, ipAddress string, expiresAt time.Time) error
 	FindRefreshToken(ctx context.Context, tokenHash string) (userID int64, expiresAt time.Time, revoked bool, err error)

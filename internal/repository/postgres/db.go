@@ -40,6 +40,14 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 		pool.Close()
 		return nil, err
 	}
+	if err := EnsureEmailVerificationSchema(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	if err := EnsureActivitySchema(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
 
 	return pool, nil
 }
