@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	models "study-tracker-go/internal/model"
@@ -15,6 +16,37 @@ type Repositories struct {
 	Knowledge KnowledgeRepository
 	OCRTasks  OCRTaskRepository
 	Backup    BackupRepository
+	Library   LibraryRepository
+}
+
+type LibraryFilter struct {
+	ParentID   *int64
+	Kind       string
+	Query      string
+	Trashed    bool
+	Tag        string
+	ReviewOnly bool
+	DueOnly    bool
+}
+
+type LibraryRepository interface {
+	List(ctx context.Context, filter LibraryFilter) ([]models.LibraryItem, error)
+	Get(ctx context.Context, id int64) (models.LibraryItem, error)
+	Create(ctx context.Context, req models.CreateLibraryItemRequest, content []byte) (models.LibraryItem, error)
+	Update(ctx context.Context, id int64, req models.UpdateLibraryItemRequest) (models.LibraryItem, error)
+	SaveContent(ctx context.Context, id int64, content []byte, baseVersion int, checkpoint, force bool) (models.LibraryItem, error)
+	ReadContent(ctx context.Context, id int64) ([]byte, models.LibraryItem, error)
+	Trash(ctx context.Context, id int64) error
+	Restore(ctx context.Context, id int64) (models.LibraryItem, error)
+	Purge(ctx context.Context, id int64) error
+	Duplicate(ctx context.Context, id int64, parentID *int64) (models.LibraryItem, error)
+	Versions(ctx context.Context, id int64) ([]models.LibraryVersion, error)
+	RestoreVersion(ctx context.Context, id, versionID int64) (models.LibraryItem, error)
+	ListTags(ctx context.Context) ([]string, error)
+	DueReviews(ctx context.Context, day time.Time) ([]models.LibraryItem, error)
+	Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error)
+	EnsureLegacy(ctx context.Context, errors []models.ErrorProblem, subjects []string) error
+	Cleanup(ctx context.Context, before time.Time) error
 }
 
 type AuthRepository interface {
@@ -48,7 +80,7 @@ type ErrorRepository interface {
 	Get(ctx context.Context, id int) (models.ErrorProblem, error)
 	Update(ctx context.Context, id int, req models.UpdateErrorRequest) error
 	Delete(ctx context.Context, id int) error
-	UpdateReview(ctx context.Context, id int, reviewedAt string, reviewCount int, reviewStage int, nextReview string) (models.ErrorProblem, error)
+	Review(ctx context.Context, id int, reviewedAt time.Time, intervals []int) (models.ErrorProblem, error)
 	ListTags(ctx context.Context) ([]string, error)
 	Replace(ctx context.Context, errors []models.ErrorProblem) error
 	HasAny(ctx context.Context) (bool, error)
@@ -84,10 +116,12 @@ type OCRTaskRepository interface {
 }
 
 type BackupData struct {
-	Errors    *[]models.ErrorProblem
-	Subjects  *[]string
-	Config    *models.Config
-	Knowledge *map[string][]string
+	Errors      *[]models.ErrorProblem
+	Subjects    *[]string
+	Config      *models.Config
+	Knowledge   *map[string][]string
+	LibraryJSON json.RawMessage
+	Blobs       map[string][]byte
 }
 
 type BackupRepository interface {

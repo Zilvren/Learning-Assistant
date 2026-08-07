@@ -1,0 +1,51 @@
+graph L4 {
+  // 局部 E-R 图 L4：OCR 与附件子系统
+  rankdir=LR;
+  bgcolor="white";
+  splines=true;
+  nodesep=0.5;
+  ranksep=1.0;
+  node [fontname="Microsoft YaHei", fontsize=16];
+  edge [fontname="Microsoft YaHei", fontsize=15, color="#555555"];
+
+  node [shape=none, color="#2b6cb0"];
+  User [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>用户 users</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">username</TD><TD ALIGN="LEFT">用户名</TD></TR>
+    </TABLE>>];
+  OCRTask [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>OCR任务 ocr_tasks</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">provider</TD><TD ALIGN="LEFT">mineru</TD></TR>
+      <TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">pending/.../failed</TD></TR>
+      <TR><TD ALIGN="LEFT">source_filename / file_size</TD><TD ALIGN="LEFT">原文件名/大小</TD></TR>
+      <TR><TD ALIGN="LEFT">batch_id / task_id</TD><TD ALIGN="LEFT">第三方任务标识</TD></TR>
+      <TR><TD ALIGN="LEFT">result_markdown</TD><TD ALIGN="LEFT">识别结果 Markdown</TD></TR>
+      <TR><TD ALIGN="LEFT">error_message</TD><TD ALIGN="LEFT">失败原因</TD></TR>
+    </TABLE>>];
+  Attachment [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>附件 attachments</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">error_problem_id</TD><TD ALIGN="LEFT">FK → error_problems（可空）</TD></TR>
+      <TR><TD ALIGN="LEFT">ocr_task_id</TD><TD ALIGN="LEFT">FK → ocr_tasks（可空）</TD></TR>
+      <TR><TD ALIGN="LEFT">storage_type</TD><TD ALIGN="LEFT">inline/local/object</TD></TR>
+      <TR><TD ALIGN="LEFT">storage_key</TD><TD ALIGN="LEFT">路径或对象 key</TD></TR>
+      <TR><TD ALIGN="LEFT">checksum</TD><TD ALIGN="LEFT">校验值</TD></TR>
+    </TABLE>>];
+
+  node [shape=diamond, style=filled, fillcolor="#fff3bf", color="#b08900", penwidth=1.5, fontsize=15];
+  R_ownO   [label="发起"];
+  R_ownA   [label="拥有"];
+  R_ocrAtt [label="产生"];
+
+  User -- R_ownO [label="1"];  R_ownO   -- OCRTask    [label="N"];
+  User -- R_ownA [label="1"];  R_ownA   -- Attachment [label="N"];
+
+  OCRTask -- R_ocrAtt [label="1"];  R_ocrAtt -- Attachment [label="N"];
+}

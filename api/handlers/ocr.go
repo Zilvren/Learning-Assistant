@@ -29,7 +29,7 @@ func OCRImage(c *gin.Context) {
 
 	markdown, err := service.OCRImageBytes(c.Request.Context(), body, "ocr_upload.png")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 

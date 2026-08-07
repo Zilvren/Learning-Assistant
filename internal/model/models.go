@@ -1,5 +1,64 @@
 package model
 
+import "time"
+
+type LibraryItem struct {
+	ID             int64      `json:"id"`
+	ParentID       *int64     `json:"parent_id"`
+	OriginalParent *int64     `json:"original_parent_id,omitempty"`
+	Kind           string     `json:"kind"`
+	Name           string     `json:"name"`
+	MimeType       string     `json:"mime_type,omitempty"`
+	Size           int64      `json:"size"`
+	Tags           []string   `json:"tags"`
+	Pinned         bool       `json:"pinned"`
+	CurrentVersion int        `json:"current_version"`
+	ErrorProblemID *int       `json:"error_problem_id,omitempty"`
+	ReviewEnabled  bool       `json:"review_enabled"`
+	ReviewCount    int        `json:"review_count"`
+	ReviewStage    int        `json:"review_stage"`
+	LastReview     *time.Time `json:"last_review,omitempty"`
+	NextReview     string     `json:"next_review,omitempty"`
+	BlobHash       string     `json:"blob_hash,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
+}
+
+type LibraryVersion struct {
+	ID        int64     `json:"id"`
+	ItemID    int64     `json:"item_id"`
+	Version   int       `json:"version"`
+	BlobHash  string    `json:"blob_hash"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type CreateLibraryItemRequest struct {
+	ParentID      *int64   `json:"parent_id"`
+	Kind          string   `json:"kind"`
+	Name          string   `json:"name"`
+	MimeType      string   `json:"mime_type"`
+	Tags          []string `json:"tags"`
+	ReviewEnabled bool     `json:"review_enabled"`
+}
+
+type UpdateLibraryItemRequest struct {
+	Name          *string   `json:"name"`
+	Tags          *[]string `json:"tags"`
+	Pinned        *bool     `json:"pinned"`
+	ParentID      *int64    `json:"parent_id"`
+	Conflict      string    `json:"conflict"`
+	ReviewEnabled *bool     `json:"review_enabled"`
+}
+
+type SaveLibraryContentRequest struct {
+	Content     string `json:"content"`
+	BaseVersion int    `json:"base_version"`
+	Checkpoint  bool   `json:"checkpoint"`
+	Force       bool   `json:"force"`
+}
+
 type ErrorProblem struct {
 	ID          int      `json:"id"`           // 编号（整数）
 	Subject     string   `json:"subject"`      // 科目，比如"数学"（字符串）
@@ -25,6 +84,7 @@ type Config struct {
 
 // AddErrorRequest 是创建错题时的请求体
 type AddErrorRequest struct {
+	ParentID   *int64   `json:"parent_id,omitempty"`
 	Subject    string   `json:"subject"`
 	Question   string   `json:"question"`
 	Title      string   `json:"title"`
@@ -59,4 +119,6 @@ type DailyPushResult struct {
 	Knowledge    map[string]string `json:"knowledge"`
 	WeakErrors   []ErrorProblem    `json:"weak_errors"`
 	Advice       string            `json:"advice"`
+	DueNotes     []LibraryItem     `json:"due_notes,omitempty"`
+	TopTags      []string          `json:"top_tags,omitempty"`
 }

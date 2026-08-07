@@ -19,7 +19,7 @@ func CreateError(c *gin.Context) {
 
 	item, err := service.CreateError(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"id": item.ID, "message": "添加成功"})
@@ -35,7 +35,7 @@ func GetErrors(c *gin.Context) {
 		c.Query("reason_tag"), // ?reason_tag=概念混淆
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	// 注意：前端读 res.errors 和 res.total
@@ -58,7 +58,7 @@ func UpdateError(c *gin.Context) {
 	}
 
 	if err := service.UpdateError(c.Request.Context(), id, req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -74,7 +74,7 @@ func DeleteError(c *gin.Context) {
 	}
 
 	if err := service.DeleteError(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusNotFound, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "错题 #" + strconv.Itoa(id) + " 已删除"})
@@ -90,7 +90,7 @@ func ReviewError(c *gin.Context) {
 
 	item, err := service.ReviewError(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusNotFound, err)
 		return
 	}
 
@@ -105,7 +105,7 @@ func ReviewError(c *gin.Context) {
 func GetTags(c *gin.Context) {
 	tags, err := service.GetAllTags(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"tags": tags})

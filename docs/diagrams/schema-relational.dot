@@ -1,0 +1,144 @@
+digraph Schema {
+  // 关系模式图（逻辑设计阶段）：表结构 + 主键/外键 + 外键连线
+  rankdir=LR;
+  bgcolor="white";
+  splines=polyline;
+  nodesep=0.5;
+  ranksep=1.1;
+  node [shape=none, fontname="Microsoft YaHei", fontsize=15];
+  edge [fontname="Microsoft YaHei", fontsize=12, color="#2b6cb0", arrowsize=0.8];
+  graph [fontname="Microsoft YaHei", fontsize=18, labelloc="t",
+         label="关系模式图（PostgreSQL 逻辑结构）"];
+
+  users [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>users</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">username</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">email</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">password_hash</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">last_login_at</TD><TD ALIGN="LEFT">TIMESTAMPTZ</TD></TR>
+    </TABLE>>];
+
+  user_settings [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>user_settings</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>user_id</U></TD><TD ALIGN="LEFT">BIGINT PK/FK</TD></TR>
+      <TR><TD ALIGN="LEFT">display_name</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">mineru_token_cipher</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">settings</TD><TD ALIGN="LEFT">JSONB</TD></TR>
+    </TABLE>>];
+
+  refresh_tokens [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>refresh_tokens</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">token_hash</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">expires_at / revoked_at</TD><TD ALIGN="LEFT">TIMESTAMPTZ</TD></TR>
+      <TR><TD ALIGN="LEFT">user_agent / ip_address</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+    </TABLE>>];
+
+  subjects [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>subjects</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">name</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">sort_order</TD><TD ALIGN="LEFT">INT</TD></TR>
+    </TABLE>>];
+
+  error_problems [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>error_problems</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">subject_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">title / question</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">wrong_answer / correct_answer</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">reason / difficulty / source</TD><TD ALIGN="LEFT">TEXT/INT/VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">review_count / review_stage</TD><TD ALIGN="LEFT">INT</TD></TR>
+      <TR><TD ALIGN="LEFT">next_review_at / last_reviewed_at</TD><TD ALIGN="LEFT">DATE/TIMESTAMPTZ</TD></TR>
+      <TR><TD ALIGN="LEFT">archived_at / metadata</TD><TD ALIGN="LEFT">TIMESTAMPTZ/JSONB</TD></TR>
+    </TABLE>>];
+
+  tags [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>tags</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">name</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">tag_type</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+    </TABLE>>];
+
+  error_problem_tags [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>error_problem_tags</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>error_problem_id</U></TD><TD ALIGN="LEFT">BIGINT PK/FK</TD></TR>
+      <TR><TD ALIGN="LEFT"><U>tag_id</U></TD><TD ALIGN="LEFT">BIGINT PK/FK</TD></TR>
+    </TABLE>>];
+
+  review_records [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>review_records</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">error_problem_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">review_no / result</TD><TD ALIGN="LEFT">INT/VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">reviewed_at / next_review_at</TD><TD ALIGN="LEFT">TIMESTAMPTZ</TD></TR>
+      <TR><TD ALIGN="LEFT">duration_seconds / note</TD><TD ALIGN="LEFT">INT/TEXT</TD></TR>
+    </TABLE>>];
+
+  ocr_tasks [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>ocr_tasks</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">provider / status</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">source_filename / file_size</TD><TD ALIGN="LEFT">VARCHAR/BIGINT</TD></TR>
+      <TR><TD ALIGN="LEFT">batch_id / task_id</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">result_markdown / error_message</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">metadata</TD><TD ALIGN="LEFT">JSONB</TD></TR>
+    </TABLE>>];
+
+  attachments [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>attachments</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">error_problem_id</TD><TD ALIGN="LEFT">BIGINT FK（可空）</TD></TR>
+      <TR><TD ALIGN="LEFT">ocr_task_id</TD><TD ALIGN="LEFT">BIGINT FK（可空）</TD></TR>
+      <TR><TD ALIGN="LEFT">storage_type / storage_key</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">checksum</TD><TD ALIGN="LEFT">VARCHAR</TD></TR>
+    </TABLE>>];
+
+  knowledge_items [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="5">
+      <TR><TD BGCOLOR="#2b6cb0" COLSPAN="2"><FONT COLOR="white"><B>knowledge_items</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">BIGINT FK</TD></TR>
+      <TR><TD ALIGN="LEFT">subject_id</TD><TD ALIGN="LEFT">BIGINT FK（可空）</TD></TR>
+      <TR><TD ALIGN="LEFT">content / source</TD><TD ALIGN="LEFT">TEXT/VARCHAR</TD></TR>
+      <TR><TD ALIGN="LEFT">metadata</TD><TD ALIGN="LEFT">JSONB</TD></TR>
+    </TABLE>>];
+
+  // ===== 外键关系（1 端 → N 端，箭头指向 N 端） =====
+  users -> user_settings        [arrowhead=none, taillabel="1", headlabel="1", label="user_id"];
+  users -> refresh_tokens       [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> subjects             [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> error_problems       [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> tags                 [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> review_records       [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> ocr_tasks            [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> attachments          [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+  users -> knowledge_items      [arrowhead=none, taillabel="1", headlabel="N", label="user_id"];
+
+  subjects        -> error_problems    [arrowhead=none, taillabel="1", headlabel="N", label="subject_id"];
+  subjects        -> knowledge_items   [arrowhead=none, taillabel="1", headlabel="N", label="subject_id"];
+  error_problems  -> review_records    [arrowhead=none, taillabel="1", headlabel="N", label="error_problem_id"];
+  error_problems  -> error_problem_tags [arrowhead=none, taillabel="1", headlabel="N", label="error_problem_id"];
+  tags            -> error_problem_tags [arrowhead=none, taillabel="1", headlabel="N", label="tag_id"];
+  error_problems  -> attachments       [arrowhead=none, taillabel="1", headlabel="N", label="error_problem_id"];
+  ocr_tasks       -> attachments       [arrowhead=none, taillabel="1", headlabel="N", label="ocr_task_id"];
+}

@@ -12,7 +12,7 @@ func GetDailyPush(c *gin.Context) {
 	result, err := service.GetDailyPush(c.Request.Context())
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)

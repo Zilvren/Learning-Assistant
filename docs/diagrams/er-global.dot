@@ -1,0 +1,52 @@
+graph G {
+  // 全局 E-R 图（Chen 记法，方案 B）
+  // 实体 = 矩形，关系 = 菱形，边上标基数。
+  // 所有业务实体均通过 user_id 隶属于用户（多用户隔离），此处省略归属连线以突出业务关系。
+  rankdir=TB;
+  bgcolor="white";
+  splines=true;
+  overlap=false;
+  nodesep=0.4;
+  ranksep=0.8;
+  node [fontname="Microsoft YaHei", fontsize=22];
+  edge [fontname="Microsoft YaHei", fontsize=18, color="#555555"];
+
+  // ===== 实体 =====
+  node [shape=box, style="filled,bold", fillcolor="#cfe8ff", color="#2b6cb0", penwidth=2];
+  User           [label="用户\n(users)"];
+  UserSettings   [label="用户设置\n(user_settings)"];
+  RefreshToken   [label="刷新令牌\n(refresh_tokens)"];
+  Subject        [label="科目\n(subjects)"];
+  ErrorProblem   [label="错题\n(error_problems)"];
+  Tag            [label="标签\n(tags)"];
+  ReviewRecord   [label="复习记录\n(review_records)"];
+  OCRTask        [label="OCR任务\n(ocr_tasks)"];
+  Attachment     [label="附件\n(attachments)"];
+  KnowledgeItem  [label="知识点\n(knowledge_items)"];
+
+  // ===== 关系 =====
+  node [shape=diamond, style=filled, fillcolor="#fff3bf", color="#b08900", penwidth=1.6, fontsize=18];
+  R_config    [label="配置"];
+  R_token     [label="持有令牌"];
+  R_group     [label="包含"];
+  R_knowledge [label="关联"];
+  R_review    [label="记录复习"];
+  R_tag       [label="标注"];
+  R_errAttach [label="拥有"];
+  R_ocrAttach [label="拥有"];
+
+  // ===== 边（基数） =====
+  User -- R_config    [label="1"];  R_config    -- UserSettings  [label="1"];
+  User -- R_token     [label="1"];  R_token     -- RefreshToken  [label="N"];
+
+  Subject       -- R_group      [label="1"];  R_group     -- ErrorProblem  [label="N"];
+  Subject       -- R_knowledge  [label="1"];  R_knowledge -- KnowledgeItem [label="N"];
+  ErrorProblem  -- R_review     [label="1"];  R_review    -- ReviewRecord  [label="N"];
+  ErrorProblem  -- R_tag        [label="M"];  R_tag       -- Tag           [label="N"];
+  ErrorProblem  -- R_errAttach  [label="1"];  R_errAttach -- Attachment    [label="N"];
+  OCRTask       -- R_ocrAttach  [label="1"];  R_ocrAttach -- Attachment    [label="N"];
+
+  // ===== 图注 =====
+  Note [shape=note, style=filled, fillcolor="#fef9e7", color="#b08900", fontsize=14,
+        label="注：所有业务实体均通过 user_id 隶属于用户（多用户隔离），\n此处省略归属连线以突出业务关系。"];
+}

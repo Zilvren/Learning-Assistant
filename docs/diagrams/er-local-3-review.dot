@@ -1,0 +1,50 @@
+graph L3 {
+  // 局部 E-R 图 L3：复习子系统
+  rankdir=LR;
+  bgcolor="white";
+  splines=true;
+  nodesep=0.5;
+  ranksep=1.0;
+  node [fontname="Microsoft YaHei", fontsize=16];
+  edge [fontname="Microsoft YaHei", fontsize=15, color="#555555"];
+
+  node [shape=none, color="#2b6cb0"];
+  User [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>用户 users</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">username</TD><TD ALIGN="LEFT">用户名</TD></TR>
+    </TABLE>>];
+  ErrorProblem [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>错题 error_problems</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">title</TD><TD ALIGN="LEFT">题目标题</TD></TR>
+      <TR><TD ALIGN="LEFT">review_count / review_stage</TD><TD ALIGN="LEFT">复习次数/阶段</TD></TR>
+      <TR><TD ALIGN="LEFT">next_review_at</TD><TD ALIGN="LEFT">下次复习日期</TD></TR>
+      <TR><TD ALIGN="LEFT">last_reviewed_at</TD><TD ALIGN="LEFT">最后复习时间</TD></TR>
+    </TABLE>>];
+  ReviewRecord [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>复习记录 review_records</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">error_problem_id</TD><TD ALIGN="LEFT">FK → error_problems</TD></TR>
+      <TR><TD ALIGN="LEFT">review_no</TD><TD ALIGN="LEFT">第几次复习</TD></TR>
+      <TR><TD ALIGN="LEFT">result</TD><TD ALIGN="LEFT">remembered/forgotten/skipped</TD></TR>
+      <TR><TD ALIGN="LEFT">reviewed_at</TD><TD ALIGN="LEFT">复习时间</TD></TR>
+      <TR><TD ALIGN="LEFT">next_review_at</TD><TD ALIGN="LEFT">本次算出的下次复习</TD></TR>
+      <TR><TD ALIGN="LEFT">duration_seconds / note</TD><TD ALIGN="LEFT">用时/备注</TD></TR>
+    </TABLE>>];
+
+  node [shape=diamond, style=filled, fillcolor="#fff3bf", color="#b08900", penwidth=1.5, fontsize=15];
+  R_ownE   [label="拥有"];
+  R_ownR   [label="拥有"];
+  R_review [label="记录复习"];
+
+  User -- R_ownE [label="1"];  R_ownE   -- ErrorProblem [label="N"];
+  User -- R_ownR [label="1"];  R_ownR   -- ReviewRecord [label="N"];
+
+  ErrorProblem -- R_review [label="1"];  R_review -- ReviewRecord [label="N"];
+}

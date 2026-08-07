@@ -211,19 +211,39 @@ func (r *ErrorRepository) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (r *ErrorRepository) UpdateReview(ctx context.Context, id int, reviewedAt string, reviewCount int, reviewStage int, nextReview string) (models.ErrorProblem, error) {
-	reviewed := parseDateTime(reviewedAt)
-	if reviewed == nil {
-		now := time.Now()
-		reviewed = &now
-	}
-	next := parseDate(nextReview)
-
+func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Time, intervals []int) (models.ErrorProblem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
 		return models.ErrorProblem{}, err
 	}
 	defer tx.Rollback(ctx)
+
+	var currentCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT review_count
+		FROM error_problems
+		WHERE user_id = $1
+		  AND id = $2
+		  AND deleted_at IS NULL
+		FOR UPDATE
+	`, r.store.userID, id).Scan(&currentCount); err != nil {
+		if err == pgx.ErrNoRows {
+			return models.ErrorProblem{}, notFound("错题", id)
+		}
+		return models.ErrorProblem{}, err
+	}
+	reviewCount := currentCount + 1
+	index := reviewCount
+	if index < 0 {
+		index = 0
+	}
+	if len(intervals) == 0 {
+		intervals = []int{0}
+	}
+	if index >= len(intervals) {
+		index = len(intervals) - 1
+	}
+	nextReview := reviewedAt.AddDate(0, 0, intervals[index])
 
 	tag, err := tx.Exec(ctx, `
 		UPDATE error_problems
@@ -234,7 +254,7 @@ func (r *ErrorRepository) UpdateReview(ctx context.Context, id int, reviewedAt s
 		WHERE user_id = $1
 		  AND id = $2
 		  AND deleted_at IS NULL
-	`, r.store.userID, id, reviewCount, reviewStage, reviewed, next)
+	`, r.store.userID, id, reviewCount, reviewCount, reviewedAt, nextReview)
 	if err != nil {
 		return models.ErrorProblem{}, err
 	}
@@ -244,7 +264,7 @@ func (r *ErrorRepository) UpdateReview(ctx context.Context, id int, reviewedAt s
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO review_records (user_id, error_problem_id, review_no, result, reviewed_at, next_review_at)
 		VALUES ($1, $2, $3, 'remembered', $4, $5)
-	`, r.store.userID, id, reviewCount, reviewed, next); err != nil {
+	`, r.store.userID, id, reviewCount, reviewedAt, nextReview); err != nil {
 		return models.ErrorProblem{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

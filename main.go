@@ -162,6 +162,26 @@ func registerRoutes(r *gin.Engine) {
 		//OCR接口
 		api.POST("/ocr", handlers.OCRImage)
 
+		// 个人学习资料库
+		api.GET("/library/items", handlers.ListLibraryItems)
+		api.POST("/library/items", handlers.CreateLibraryItem)
+		api.GET("/library/search", handlers.SearchLibrary)
+		api.GET("/library/tags", handlers.ListLibraryTags)
+		api.GET("/library/reviews", handlers.ListLibraryReviews)
+		api.POST("/library/uploads", handlers.UploadLibraryFile)
+		api.POST("/library/batch", handlers.BatchLibraryItems)
+		api.GET("/library/items/:id", handlers.GetLibraryItem)
+		api.PATCH("/library/items/:id", handlers.UpdateLibraryItem)
+		api.DELETE("/library/items/:id", handlers.DeleteLibraryItem)
+		api.GET("/library/items/:id/content", handlers.GetLibraryContent)
+		api.PUT("/library/items/:id/content", handlers.SaveLibraryContent)
+		api.POST("/library/items/:id/restore", handlers.RestoreLibraryItem)
+		api.DELETE("/library/items/:id/purge", handlers.PurgeLibraryItem)
+		api.POST("/library/items/:id/duplicate", handlers.DuplicateLibraryItem)
+		api.POST("/library/items/:id/review", handlers.ReviewLibraryNote)
+		api.GET("/library/items/:id/versions", handlers.ListLibraryVersions)
+		api.POST("/library/items/:id/versions/:versionId/restore", handlers.RestoreLibraryVersion)
+
 		//更新应用
 		api.POST("/update/apply", handlers.ApplyUpdate)
 	}
@@ -190,6 +210,8 @@ func openBrowser(url string) error {
 
 // serveFrontend 处理前端页面请求
 func serveFrontend(c *gin.Context) {
+	setFrontendCacheHeaders(c)
+
 	// /api 开头但没匹配到路由 → 404
 	if strings.HasPrefix(c.Request.URL.Path, "/api") {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "接口不存在"})
@@ -205,6 +227,11 @@ func serveFrontend(c *gin.Context) {
 	filePath := path.Join("frontend/dist", requestPath)
 	data, err := fs.ReadFile(frontendFS, filePath)
 	if err != nil {
+		if isFrontendAssetRequest(requestPath) {
+			c.String(http.StatusNotFound, "frontend asset not found")
+			return
+		}
+
 		// 文件不存在 → 回退到 index.html（Vue Router 是前端路由）
 		data, err = fs.ReadFile(frontendFS, "frontend/dist/index.html")
 		if err != nil {
@@ -221,4 +248,13 @@ func serveFrontend(c *gin.Context) {
 		contentType = "application/octet-stream"
 	}
 	c.Data(http.StatusOK, contentType, data)
+}
+
+func isFrontendAssetRequest(requestPath string) bool {
+	return strings.HasPrefix(requestPath, "assets/") || path.Ext(requestPath) != ""
+}
+
+func setFrontendCacheHeaders(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, max-age=0")
+	c.Header("Pragma", "no-cache")
 }

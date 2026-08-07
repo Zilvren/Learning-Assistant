@@ -7,16 +7,20 @@ import (
 	base "study-tracker-go/internal/repository"
 )
 
-type SettingsRepository struct{}
+type SettingsRepository struct {
+	store *base.JSONStore
+}
 
 func (r *SettingsRepository) Load(ctx context.Context) (models.Config, error) {
 	var config models.Config
-	if err := base.LoadJSON("config.json", &config); err != nil {
-		return models.Config{}, err
-	}
-	return config, nil
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		return tx.Load("config.json", &config)
+	})
+	return config, err
 }
 
 func (r *SettingsRepository) Save(ctx context.Context, config models.Config) error {
-	return base.SaveJSON("config.json", config)
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		return tx.Save("config.json", config)
+	})
 }

@@ -1,0 +1,63 @@
+graph L2 {
+  // 局部 E-R 图 L2：错题与分类子系统
+  rankdir=LR;
+  bgcolor="white";
+  splines=true;
+  nodesep=0.5;
+  ranksep=1.0;
+  node [fontname="Microsoft YaHei", fontsize=16];
+  edge [fontname="Microsoft YaHei", fontsize=15, color="#555555"];
+
+  node [shape=none, color="#2b6cb0"];
+  User [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>用户 users</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">username</TD><TD ALIGN="LEFT">用户名</TD></TR>
+    </TABLE>>];
+  Subject [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>科目 subjects</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">name</TD><TD ALIGN="LEFT">科目名</TD></TR>
+      <TR><TD ALIGN="LEFT">sort_order</TD><TD ALIGN="LEFT">排序</TD></TR>
+    </TABLE>>];
+  ErrorProblem [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>错题 error_problems</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">subject_id</TD><TD ALIGN="LEFT">FK → subjects</TD></TR>
+      <TR><TD ALIGN="LEFT">title / question</TD><TD ALIGN="LEFT">题目标题/题干</TD></TR>
+      <TR><TD ALIGN="LEFT">wrong_answer</TD><TD ALIGN="LEFT">错误答案</TD></TR>
+      <TR><TD ALIGN="LEFT">correct_answer / reason</TD><TD ALIGN="LEFT">正确答案/错因</TD></TR>
+      <TR><TD ALIGN="LEFT">difficulty</TD><TD ALIGN="LEFT">难度 0-5</TD></TR>
+      <TR><TD ALIGN="LEFT">source</TD><TD ALIGN="LEFT">manual/ocr/import</TD></TR>
+      <TR><TD ALIGN="LEFT">review_count / review_stage</TD><TD ALIGN="LEFT">复习次数/阶段</TD></TR>
+      <TR><TD ALIGN="LEFT">next_review_at / last_reviewed_at</TD><TD ALIGN="LEFT">下次/最后复习</TD></TR>
+    </TABLE>>];
+  Tag [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>标签 tags</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">name</TD><TD ALIGN="LEFT">标签名</TD></TR>
+      <TR><TD ALIGN="LEFT">tag_type</TD><TD ALIGN="LEFT">question/reason</TD></TR>
+    </TABLE>>];
+
+  node [shape=diamond, style=filled, fillcolor="#fff3bf", color="#b08900", penwidth=1.5, fontsize=15];
+  R_ownS  [label="拥有"];
+  R_ownE  [label="拥有"];
+  R_ownT  [label="拥有"];
+  R_group [label="包含"];
+  R_tag   [label="标注"];
+
+  User -- R_ownS [label="1"];  R_ownS -- Subject       [label="N"];
+  User -- R_ownE [label="1"];  R_ownE -- ErrorProblem  [label="N"];
+  User -- R_ownT [label="1"];  R_ownT -- Tag           [label="N"];
+
+  Subject      -- R_group [label="1"];  R_group -- ErrorProblem [label="N"];
+
+  ErrorProblem -- R_tag   [label="M"];  R_tag   -- Tag          [label="N"];
+}

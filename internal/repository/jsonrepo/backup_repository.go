@@ -3,76 +3,99 @@ package jsonrepo
 import (
 	"context"
 
+	models "study-tracker-go/internal/model"
 	base "study-tracker-go/internal/repository"
 )
 
 type BackupRepository struct {
-	subjects  *SubjectRepository
-	errors    *ErrorRepository
-	settings  *SettingsRepository
-	knowledge *KnowledgeRepository
+	store *base.JSONStore
 }
 
 func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) {
-	subjects, err := r.subjects.List(ctx)
-	if err != nil {
-		return base.BackupData{}, err
-	}
-	errors, err := r.errors.List(ctx, base.ErrorFilter{})
-	if err != nil {
-		return base.BackupData{}, err
-	}
-	config, err := r.settings.Load(ctx)
-	if err != nil {
-		return base.BackupData{}, err
-	}
-	knowledge, err := r.knowledge.Load(ctx)
-	if err != nil {
-		return base.BackupData{}, err
-	}
-	return base.BackupData{
-		Subjects:  &subjects,
-		Errors:    &errors,
-		Config:    &config,
-		Knowledge: &knowledge,
-	}, nil
+	var result base.BackupData
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		subjects := []string{}
+		errors := []models.ErrorProblem{}
+		var config models.Config
+		knowledge := map[string][]string{}
+		if err := tx.Load("subjects.json", &subjects); err != nil {
+			return err
+		}
+		if err := tx.Load("errors.json", &errors); err != nil {
+			return err
+		}
+		if err := tx.Load("config.json", &config); err != nil {
+			return err
+		}
+		if err := tx.Load("knowledge.json", &knowledge); err != nil {
+			return err
+		}
+		result = base.BackupData{
+			Subjects:  &subjects,
+			Errors:    &errors,
+			Config:    &config,
+			Knowledge: &knowledge,
+		}
+		return nil
+	})
+	return result, err
 }
 
 func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) error {
-	if data.Subjects != nil {
-		if err := r.subjects.Replace(ctx, *data.Subjects); err != nil {
-			return err
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		if data.Subjects != nil {
+			subjects := *data.Subjects
+			if subjects == nil {
+				subjects = []string{}
+			}
+			if err := tx.Save("subjects.json", subjects); err != nil {
+				return err
+			}
 		}
-	}
-	if data.Errors != nil {
-		if err := r.errors.Replace(ctx, *data.Errors); err != nil {
-			return err
+		if data.Errors != nil {
+			errors := *data.Errors
+			if errors == nil {
+				errors = []models.ErrorProblem{}
+			}
+			if err := tx.Save("errors.json", errors); err != nil {
+				return err
+			}
 		}
-	}
-	if data.Config != nil {
-		if err := r.settings.Save(ctx, *data.Config); err != nil {
-			return err
+		if data.Config != nil {
+			if err := tx.Save("config.json", *data.Config); err != nil {
+				return err
+			}
 		}
-	}
-	if data.Knowledge != nil {
-		if err := r.knowledge.Replace(ctx, *data.Knowledge); err != nil {
-			return err
+		if data.Knowledge != nil {
+			knowledge := *data.Knowledge
+			if knowledge == nil {
+				knowledge = map[string][]string{}
+			}
+			if err := tx.Save("knowledge.json", knowledge); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
-	subjects, err := r.subjects.List(ctx)
-	if err != nil {
-		return false, err
-	}
-	if len(subjects) > 0 {
-		return true, nil
-	}
-	errors, err := r.errors.HasAny(ctx)
-	if err != nil {
-		return false, err
-	}
-	return errors, nil
+	hasData := false
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		subjects := []string{}
+		if err := tx.Load("subjects.json", &subjects); err != nil {
+			return err
+		}
+		if len(subjects) > 0 {
+			hasData = true
+			return nil
+		}
+		errors := []models.ErrorProblem{}
+		if err := tx.Load("errors.json", &errors); err != nil {
+			return err
+		}
+		hasData = len(errors) > 0
+		return nil
+	})
+	return hasData, err
 }

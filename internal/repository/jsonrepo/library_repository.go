@@ -1,0 +1,768 @@
+package jsonrepo
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	models "study-tracker-go/internal/model"
+	base "study-tracker-go/internal/repository"
+)
+
+const librarySchemaVersion = 2
+
+type libraryState struct {
+	SchemaVersion int                     `json:"schema_version"`
+	NextID        int64                   `json:"next_id"`
+	NextVersionID int64                   `json:"next_version_id"`
+	Items         []models.LibraryItem    `json:"items"`
+	Versions      []models.LibraryVersion `json:"versions"`
+}
+
+type LibraryRepository struct{ store *base.JSONStore }
+
+func loadLibrary(tx *base.JSONTx) (libraryState, error) {
+	state := libraryState{NextID: 1, NextVersionID: 1, Items: []models.LibraryItem{}, Versions: []models.LibraryVersion{}}
+	if err := tx.Load("library.json", &state); err != nil {
+		return state, err
+	}
+	if state.NextID < 1 {
+		state.NextID = 1
+	}
+	if state.NextVersionID < 1 {
+		state.NextVersionID = 1
+	}
+	return state, nil
+}
+
+func saveLibrary(tx *base.JSONTx, state libraryState) error { return tx.Save("library.json", state) }
+
+func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter) ([]models.LibraryItem, error) {
+	result := []models.LibraryItem{}
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		state, err := loadLibrary(tx)
+		if err != nil {
+			return err
+		}
+		q := strings.ToLower(strings.TrimSpace(filter.Query))
+		for _, item := range state.Items {
+			if filter.Trashed != (item.DeletedAt != nil) {
+				continue
+			}
+			if filter.ParentID != nil && (item.ParentID == nil || *item.ParentID != *filter.ParentID) {
+				continue
+			}
+			if filter.ParentID == nil && filter.Query == "" && !filter.Trashed && !filter.ReviewOnly && item.ParentID != nil {
+				continue
+			}
+			if filter.Kind != "" && filter.Kind != "all" && item.Kind != filter.Kind {
+				continue
+			}
+			if filter.Tag != "" && !containsTag(item.Tags, filter.Tag) {
+				continue
+			}
+			if filter.ReviewOnly && !item.ReviewEnabled {
+				continue
+			}
+			if filter.DueOnly && (!item.ReviewEnabled || item.NextReview == "" || item.NextReview > time.Now().Format("2006-01-02")) {
+				continue
+			}
+			if q != "" && !strings.Contains(strings.ToLower(item.Name+" "+strings.Join(item.Tags, " ")), q) {
+				if item.Kind != "note" || item.BlobHash == "" {
+					continue
+				}
+				body, _ := base.ReadBlob(item.BlobHash)
+				if !strings.Contains(strings.ToLower(string(body)), q) {
+					continue
+				}
+			}
+			result = append(result, item)
+		}
+		return nil
+	})
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Pinned != result[j].Pinned {
+			return result[i].Pinned
+		}
+		return result[i].UpdatedAt.After(result[j].UpdatedAt)
+	})
+	return result, err
+}
+
+func (r *LibraryRepository) Get(ctx context.Context, id int64) (models.LibraryItem, error) {
+	var result models.LibraryItem
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		state, err := loadLibrary(tx)
+		if err != nil {
+			return err
+		}
+		idx := itemIndex(state.Items, id)
+		if idx < 0 {
+			return fmt.Errorf("资料不存在")
+		}
+		result = state.Items[idx]
+		return nil
+	})
+	return result, err
+}
+
+func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibraryItemRequest, content []byte) (models.LibraryItem, error) {
+	var result models.LibraryItem
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return result, fmt.Errorf("名称不能为空")
+	}
+	if !validKind(req.Kind) {
+		return result, fmt.Errorf("无效资料类型")
+	}
+	var hash string
+	var size int64
+	var err error
+	if req.Kind != "folder" {
+		hash, size, err = base.StoreBlob(bytes.NewReader(content))
+		if err != nil {
+			return result, err
+		}
+	}
+	err = r.store.Write(ctx, func(tx *base.JSONTx) error {
+		state, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		if e = validateParent(state.Items, req.ParentID, 0); e != nil {
+			return e
+		}
+		name = uniqueName(state.Items, req.ParentID, name, 0)
+		now := time.Now().UTC()
+		result = models.LibraryItem{ID: state.NextID, ParentID: req.ParentID, Kind: req.Kind, Name: name, MimeType: req.MimeType, Size: size, Tags: normalizeTags(req.Tags), BlobHash: hash, ReviewEnabled: req.ReviewEnabled, CreatedAt: now, UpdatedAt: now}
+		if req.ReviewEnabled {
+			result.NextReview = now.Format("2006-01-02")
+		}
+		state.NextID++
+		if req.Kind != "folder" {
+			result.CurrentVersion = 1
+			state.Versions = append(state.Versions, models.LibraryVersion{ID: state.NextVersionID, ItemID: result.ID, Version: 1, BlobHash: hash, Size: size, CreatedAt: now})
+			state.NextVersionID++
+		}
+		state.Items = append(state.Items, result)
+		return saveLibrary(tx, state)
+	})
+	return result, err
+}
+
+func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.UpdateLibraryItemRequest) (models.LibraryItem, error) {
+	var result models.LibraryItem
+	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
+		state, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		idx := itemIndex(state.Items, id)
+		if idx < 0 {
+			return fmt.Errorf("资料不存在")
+		}
+		item := &state.Items[idx]
+		if req.Name != nil {
+			n := strings.TrimSpace(*req.Name)
+			if n == "" {
+				return fmt.Errorf("名称不能为空")
+			}
+			item.Name = uniqueName(state.Items, item.ParentID, n, id)
+		}
+		if req.Tags != nil {
+			item.Tags = normalizeTags(*req.Tags)
+		}
+		if req.Pinned != nil {
+			item.Pinned = *req.Pinned
+		}
+		if req.ParentID != nil {
+			p := *req.ParentID
+			if e = validateParent(state.Items, &p, id); e != nil {
+				return e
+			}
+			item.ParentID = &p
+		}
+		if req.ReviewEnabled != nil {
+			item.ReviewEnabled = *req.ReviewEnabled
+			if item.ReviewEnabled && item.NextReview == "" {
+				item.NextReview = time.Now().Format("2006-01-02")
+			}
+		}
+		item.UpdatedAt = time.Now().UTC()
+		result = *item
+		return saveLibrary(tx, state)
+	})
+	return result, err
+}
+
+func (r *LibraryRepository) SaveContent(ctx context.Context, id int64, content []byte, baseVersion int, checkpoint, force bool) (models.LibraryItem, error) {
+	var result models.LibraryItem
+	hash, size, err := base.StoreBlob(bytes.NewReader(content))
+	if err != nil {
+		return result, err
+	}
+	err = r.store.Write(ctx, func(tx *base.JSONTx) error {
+		state, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		idx := itemIndex(state.Items, id)
+		if idx < 0 {
+			return fmt.Errorf("资料不存在")
+		}
+		item := &state.Items[idx]
+		if item.Kind == "folder" {
+			return fmt.Errorf("该资料不能保存正文")
+		}
+		if !force && baseVersion != item.CurrentVersion {
+			return fmt.Errorf("版本冲突")
+		}
+		if hash == item.BlobHash {
+			if checkpoint && !hasVersion(state.Versions, id, item.CurrentVersion) {
+				state.Versions = append(state.Versions, models.LibraryVersion{ID: state.NextVersionID, ItemID: id, Version: item.CurrentVersion, BlobHash: hash, Size: size, CreatedAt: time.Now().UTC()})
+				state.NextVersionID++
+				trimVersions(&state, id, 50)
+				result = *item
+				return saveLibrary(tx, state)
+			}
+			result = *item
+			return nil
+		}
+		item.CurrentVersion++
+		item.BlobHash = hash
+		item.Size = size
+		item.UpdatedAt = time.Now().UTC()
+		if checkpoint {
+			state.Versions = append(state.Versions, models.LibraryVersion{ID: state.NextVersionID, ItemID: id, Version: item.CurrentVersion, BlobHash: hash, Size: size, CreatedAt: item.UpdatedAt})
+			state.NextVersionID++
+			trimVersions(&state, id, 50)
+		}
+		result = *item
+		return saveLibrary(tx, state)
+	})
+	return result, err
+}
+
+func (r *LibraryRepository) ReadContent(ctx context.Context, id int64) ([]byte, models.LibraryItem, error) {
+	item, err := r.Get(ctx, id)
+	if err != nil {
+		return nil, item, err
+	}
+	if item.BlobHash == "" {
+		return []byte{}, item, nil
+	}
+	body, err := base.ReadBlob(item.BlobHash)
+	return body, item, err
+}
+func (r *LibraryRepository) Trash(ctx context.Context, id int64) error {
+	return r.setTrash(ctx, id, true)
+}
+func (r *LibraryRepository) Restore(ctx context.Context, id int64) (models.LibraryItem, error) {
+	var out models.LibraryItem
+	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
+		s, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		i := itemIndex(s.Items, id)
+		if i < 0 {
+			return fmt.Errorf("资料不存在")
+		}
+		s.Items[i].DeletedAt = nil
+		s.Items[i].ParentID = s.Items[i].OriginalParent
+		s.Items[i].OriginalParent = nil
+		s.Items[i].Name = uniqueName(s.Items, s.Items[i].ParentID, s.Items[i].Name, id)
+		s.Items[i].UpdatedAt = time.Now().UTC()
+		for n := range s.Items {
+			if isDescendant(s.Items, s.Items[n].ID, id) {
+				s.Items[n].DeletedAt = nil
+				s.Items[n].OriginalParent = nil
+				s.Items[n].UpdatedAt = time.Now().UTC()
+			}
+		}
+		out = s.Items[i]
+		return saveLibrary(tx, s)
+	})
+	return out, err
+}
+func (r *LibraryRepository) setTrash(ctx context.Context, id int64, trash bool) error {
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		s, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		i := itemIndex(s.Items, id)
+		if i < 0 {
+			return fmt.Errorf("资料不存在")
+		}
+		now := time.Now().UTC()
+		s.Items[i].OriginalParent = s.Items[i].ParentID
+		s.Items[i].DeletedAt = &now
+		for n := range s.Items {
+			if isDescendant(s.Items, s.Items[n].ID, id) {
+				s.Items[n].DeletedAt = &now
+			}
+		}
+		return saveLibrary(tx, s)
+	})
+}
+func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		s, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		keep := s.Items[:0]
+		ids := map[int64]bool{id: true}
+		for _, x := range s.Items {
+			if isDescendant(s.Items, x.ID, id) {
+				ids[x.ID] = true
+			}
+		}
+		for _, x := range s.Items {
+			if !ids[x.ID] {
+				keep = append(keep, x)
+			}
+		}
+		s.Items = keep
+		vk := s.Versions[:0]
+		for _, v := range s.Versions {
+			if !ids[v.ItemID] {
+				vk = append(vk, v)
+			}
+		}
+		s.Versions = vk
+		return saveLibrary(tx, s)
+	})
+}
+func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parentID *int64) (models.LibraryItem, error) {
+	body, item, err := r.ReadContent(ctx, id)
+	if err != nil {
+		return models.LibraryItem{}, err
+	}
+	if item.Kind == "folder" {
+		return r.Create(ctx, models.CreateLibraryItemRequest{ParentID: parentID, Kind: "folder", Name: item.Name, Tags: item.Tags}, nil)
+	}
+	return r.Create(ctx, models.CreateLibraryItemRequest{ParentID: parentID, Kind: item.Kind, Name: item.Name, MimeType: item.MimeType, Tags: item.Tags, ReviewEnabled: item.ReviewEnabled}, body)
+}
+func (r *LibraryRepository) Versions(ctx context.Context, id int64) ([]models.LibraryVersion, error) {
+	out := []models.LibraryVersion{}
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		s, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		for _, v := range s.Versions {
+			if v.ItemID == id {
+				out = append(out, v)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Version > out[j].Version })
+		return nil
+	})
+	return out, err
+}
+func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, versionID int64) (models.LibraryItem, error) {
+	var content []byte
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		s, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		for _, v := range s.Versions {
+			if v.ID == versionID && v.ItemID == id {
+				content, e = base.ReadBlob(v.BlobHash)
+				return e
+			}
+		}
+		return fmt.Errorf("版本不存在")
+	})
+	if err != nil {
+		return models.LibraryItem{}, err
+	}
+	item, err := r.Get(ctx, id)
+	if err != nil {
+		return item, err
+	}
+	// Restoring changes the current content, but it is not a new user-created
+	// checkpoint. Keep the revision token monotonic for conflict detection while
+	// leaving the visible version history unchanged.
+	return r.SaveContent(ctx, id, content, item.CurrentVersion, false, true)
+}
+
+func (r *LibraryRepository) EnsureLegacy(ctx context.Context, errs []models.ErrorProblem, subjects []string) error {
+	legacy := make(map[int]struct {
+		body []byte
+		hash string
+		size int64
+	})
+	for _, problem := range errs {
+		body := []byte(legacyErrorMarkdown(problem))
+		hash, size, err := base.StoreBlob(bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		legacy[problem.ID] = struct {
+			body []byte
+			hash string
+			size int64
+		}{body: body, hash: hash, size: size}
+	}
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		s, e := loadLibrary(tx)
+		if e != nil {
+			return e
+		}
+		now := time.Now().UTC()
+		for _, problem := range errs {
+			data := legacy[problem.ID]
+			eid := problem.ID
+			name := strings.TrimSpace(problem.Title)
+			if name == "" {
+				name = fmt.Sprintf("复习笔记 #%d", problem.ID)
+			}
+			linked := false
+			for i := range s.Items {
+				if s.Items[i].ErrorProblemID != nil && *s.Items[i].ErrorProblemID == problem.ID {
+					item := &s.Items[i]
+					if item.Kind == "note" {
+						linked = true
+						break
+					}
+					item.Kind = "note"
+					item.ParentID = nil
+					item.Name = uniqueName(s.Items, nil, name, item.ID)
+					item.Tags = mergeTags(problem.Tags, problem.ReasonTags, []string{problem.Subject})
+					item.BlobHash, item.Size = data.hash, data.size
+					item.ReviewEnabled = true
+					item.ReviewCount, item.ReviewStage, item.NextReview = problem.ReviewCount, problem.ReviewStage, problem.NextReview
+					item.LastReview = parseLegacyReview(problem.LastReview)
+					if item.NextReview == "" {
+						item.NextReview = now.Format("2006-01-02")
+					}
+					if item.CurrentVersion < 1 {
+						item.CurrentVersion = 1
+					}
+					item.UpdatedAt = now
+					if !hasVersion(s.Versions, item.ID, item.CurrentVersion) {
+						s.Versions = append(s.Versions, models.LibraryVersion{ID: s.NextVersionID, ItemID: item.ID, Version: item.CurrentVersion, BlobHash: data.hash, Size: data.size, CreatedAt: now})
+						s.NextVersionID++
+					}
+					linked = true
+					break
+				}
+			}
+			if linked {
+				continue
+			}
+			item := models.LibraryItem{ID: s.NextID, Kind: "note", Name: uniqueName(s.Items, nil, name, 0), MimeType: "text/markdown; charset=utf-8", Size: data.size, Tags: mergeTags(problem.Tags, problem.ReasonTags, []string{problem.Subject}), ErrorProblemID: &eid, BlobHash: data.hash, CurrentVersion: 1, ReviewEnabled: true, ReviewCount: problem.ReviewCount, ReviewStage: problem.ReviewStage, LastReview: parseLegacyReview(problem.LastReview), NextReview: problem.NextReview, CreatedAt: now, UpdatedAt: now}
+			if item.NextReview == "" {
+				item.NextReview = now.Format("2006-01-02")
+			}
+			s.Items = append(s.Items, item)
+			s.Versions = append(s.Versions, models.LibraryVersion{ID: s.NextVersionID, ItemID: item.ID, Version: 1, BlobHash: data.hash, Size: data.size, CreatedAt: now})
+			s.NextVersionID++
+			s.NextID++
+		}
+		removeEmptySystemFolders(&s, subjects)
+		s.SchemaVersion = librarySchemaVersion
+		return saveLibrary(tx, s)
+	})
+}
+
+func (r *LibraryRepository) ListTags(ctx context.Context) ([]string, error) {
+	set := map[string]string{}
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		s, err := loadLibrary(tx)
+		if err != nil {
+			return err
+		}
+		for _, item := range s.Items {
+			if item.DeletedAt != nil {
+				continue
+			}
+			for _, tag := range item.Tags {
+				set[strings.ToLower(tag)] = tag
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(set))
+	for _, tag := range set {
+		out = append(out, tag)
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i]) < strings.ToLower(out[j]) })
+	return out, nil
+}
+
+func (r *LibraryRepository) DueReviews(ctx context.Context, day time.Time) ([]models.LibraryItem, error) {
+	items, err := r.List(ctx, base.LibraryFilter{ReviewOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	today := day.Format("2006-01-02")
+	out := make([]models.LibraryItem, 0, len(items))
+	for _, item := range items {
+		if item.NextReview == "" || item.NextReview <= today {
+			out = append(out, item)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].NextReview == out[j].NextReview {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].NextReview < out[j].NextReview
+	})
+	return out, nil
+}
+
+func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error) {
+	var out models.LibraryItem
+	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
+		s, err := loadLibrary(tx)
+		if err != nil {
+			return err
+		}
+		i := itemIndex(s.Items, id)
+		if i < 0 || s.Items[i].DeletedAt != nil || !s.Items[i].ReviewEnabled {
+			return fmt.Errorf("复习笔记不存在")
+		}
+		item := &s.Items[i]
+		item.ReviewCount++
+		item.ReviewStage = item.ReviewCount
+		if len(intervals) == 0 {
+			intervals = []int{0}
+		}
+		index := item.ReviewCount
+		if index >= len(intervals) {
+			index = len(intervals) - 1
+		}
+		if index < 0 {
+			index = 0
+		}
+		item.LastReview = &reviewedAt
+		item.NextReview = reviewedAt.AddDate(0, 0, intervals[index]).Format("2006-01-02")
+		item.UpdatedAt = reviewedAt.UTC()
+		out = *item
+		return saveLibrary(tx, s)
+	})
+	return out, err
+}
+
+func legacyErrorMarkdown(problem models.ErrorProblem) string {
+	return "## 题目\n\n" + strings.TrimSpace(problem.Question) + "\n\n## 错解\n\n" + strings.TrimSpace(problem.Wrong) + "\n\n## 正解\n\n" + strings.TrimSpace(problem.Correct) + "\n\n## 错因\n\n" + strings.TrimSpace(problem.Reason) + "\n"
+}
+
+func parseLegacyReview(value *string) *time.Time {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if parsed, err := time.ParseInLocation(layout, *value, time.Local); err == nil {
+			return &parsed
+		}
+	}
+	return nil
+}
+
+func mergeTags(groups ...[]string) []string {
+	all := []string{}
+	for _, group := range groups {
+		all = append(all, group...)
+	}
+	return normalizeTags(all)
+}
+
+func containsTag(tags []string, want string) bool {
+	for _, tag := range tags {
+		if strings.EqualFold(strings.TrimSpace(tag), strings.TrimSpace(want)) {
+			return true
+		}
+	}
+	return false
+}
+
+func removeEmptySystemFolders(s *libraryState, subjects []string) {
+	subjectNames := map[string]bool{}
+	for _, subject := range subjects {
+		subjectNames[strings.TrimSpace(subject)] = true
+	}
+	changed := true
+	for changed {
+		changed = false
+		legacyRoots := map[int64]bool{}
+		for _, item := range s.Items {
+			if item.Kind == "folder" && item.ParentID == nil && item.Name == "错题库" {
+				legacyRoots[item.ID] = true
+			}
+		}
+		for i := len(s.Items) - 1; i >= 0; i-- {
+			item := s.Items[i]
+			isRoot := legacyRoots[item.ID]
+			isLegacySubject := item.ParentID != nil && legacyRoots[*item.ParentID] && subjectNames[item.Name]
+			if item.Kind != "folder" || (!isRoot && !isLegacySubject) {
+				continue
+			}
+			hasChild := false
+			for _, child := range s.Items {
+				if child.ParentID != nil && *child.ParentID == item.ID {
+					hasChild = true
+					break
+				}
+			}
+			if hasChild {
+				continue
+			}
+			s.Items = append(s.Items[:i], s.Items[i+1:]...)
+			changed = true
+		}
+	}
+}
+
+func (r *LibraryRepository) Cleanup(ctx context.Context, before time.Time) error {
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		s, err := loadLibrary(tx)
+		if err != nil {
+			return err
+		}
+		ids := map[int64]bool{}
+		for _, item := range s.Items {
+			if item.DeletedAt != nil && item.DeletedAt.Before(before) {
+				ids[item.ID] = true
+			}
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		items := s.Items[:0]
+		for _, item := range s.Items {
+			if !ids[item.ID] {
+				items = append(items, item)
+			}
+		}
+		s.Items = items
+		versions := s.Versions[:0]
+		for _, version := range s.Versions {
+			if !ids[version.ItemID] {
+				versions = append(versions, version)
+			}
+		}
+		s.Versions = versions
+		return saveLibrary(tx, s)
+	})
+}
+
+func itemIndex(items []models.LibraryItem, id int64) int {
+	for i := range items {
+		if items[i].ID == id {
+			return i
+		}
+	}
+	return -1
+}
+func validKind(v string) bool { return v == "folder" || v == "note" || v == "file" }
+func normalizeTags(tags []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t != "" && !seen[strings.ToLower(t)] {
+			seen[strings.ToLower(t)] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+func sameParent(a, b *int64) bool { return a == nil && b == nil || (a != nil && b != nil && *a == *b) }
+func uniqueName(items []models.LibraryItem, parent *int64, name string, except int64) string {
+	baseName := name
+	candidate := name
+	for n := 2; ; n++ {
+		used := false
+		for _, x := range items {
+			if x.ID != except && x.DeletedAt == nil && sameParent(x.ParentID, parent) && strings.EqualFold(x.Name, candidate) {
+				used = true
+				break
+			}
+		}
+		if !used {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s (%d)", baseName, n)
+	}
+}
+func validateParent(items []models.LibraryItem, parent *int64, self int64) error {
+	if parent == nil {
+		return nil
+	}
+	i := itemIndex(items, *parent)
+	if i < 0 || items[i].Kind != "folder" || items[i].DeletedAt != nil {
+		return fmt.Errorf("目标文件夹不存在")
+	}
+	if *parent == self || isDescendant(items, *parent, self) {
+		return fmt.Errorf("不能移动到自身或子文件夹")
+	}
+	return nil
+}
+func isDescendant(items []models.LibraryItem, id, ancestor int64) bool {
+	if ancestor == 0 {
+		return false
+	}
+	seen := map[int64]bool{}
+	for id != 0 && !seen[id] {
+		seen[id] = true
+		i := itemIndex(items, id)
+		if i < 0 || items[i].ParentID == nil {
+			return false
+		}
+		if *items[i].ParentID == ancestor {
+			return true
+		}
+		id = *items[i].ParentID
+	}
+	return false
+}
+func trimVersions(s *libraryState, id int64, max int) {
+	indices := []int{}
+	for i, v := range s.Versions {
+		if v.ItemID == id {
+			indices = append(indices, i)
+		}
+	}
+	if len(indices) <= max {
+		return
+	}
+	drop := len(indices) - max
+	keep := s.Versions[:0]
+	for i, v := range s.Versions {
+		remove := false
+		for _, idx := range indices[:drop] {
+			if i == idx {
+				remove = true
+				break
+			}
+		}
+		if !remove {
+			keep = append(keep, v)
+		}
+	}
+	s.Versions = keep
+}
+func hasVersion(items []models.LibraryVersion, itemID int64, version int) bool {
+	for _, v := range items {
+		if v.ItemID == itemID && v.Version == version {
+			return true
+		}
+	}
+	return false
+}
+
+var _ base.LibraryRepository = (*LibraryRepository)(nil)
+var _ = errors.Is

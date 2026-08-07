@@ -1,0 +1,49 @@
+graph L1 {
+  // 局部 E-R 图 L1：用户与配置子系统
+  rankdir=LR;
+  bgcolor="white";
+  splines=true;
+  nodesep=0.5;
+  ranksep=1.0;
+  node [fontname="Microsoft YaHei", fontsize=16];
+  edge [fontname="Microsoft YaHei", fontsize=15, color="#555555"];
+
+  // ===== 实体（含关键属性，PK 下划线） =====
+  node [shape=none, color="#2b6cb0"];
+  User [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>用户 users</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">username</TD><TD ALIGN="LEFT">用户名</TD></TR>
+      <TR><TD ALIGN="LEFT">email</TD><TD ALIGN="LEFT">邮箱</TD></TR>
+      <TR><TD ALIGN="LEFT">password_hash</TD><TD ALIGN="LEFT">密码哈希</TD></TR>
+      <TR><TD ALIGN="LEFT">status</TD><TD ALIGN="LEFT">状态</TD></TR>
+      <TR><TD ALIGN="LEFT">last_login_at</TD><TD ALIGN="LEFT">最后登录</TD></TR>
+    </TABLE>>];
+  UserSettings [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>用户设置 user_settings</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>user_id</U></TD><TD ALIGN="LEFT">BIGINT PK/FK</TD></TR>
+      <TR><TD ALIGN="LEFT">display_name</TD><TD ALIGN="LEFT">展示名</TD></TR>
+      <TR><TD ALIGN="LEFT">mineru_token_cipher</TD><TD ALIGN="LEFT">OCR Token 密文</TD></TR>
+      <TR><TD ALIGN="LEFT">settings</TD><TD ALIGN="LEFT">jsonb 其他设置</TD></TR>
+    </TABLE>>];
+  RefreshToken [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR><TD BGCOLOR="#cfe8ff" COLSPAN="2"><B>刷新令牌 refresh_tokens</B></TD></TR>
+      <TR><TD ALIGN="LEFT"><U>id</U></TD><TD ALIGN="LEFT">BIGINT PK</TD></TR>
+      <TR><TD ALIGN="LEFT">user_id</TD><TD ALIGN="LEFT">FK → users</TD></TR>
+      <TR><TD ALIGN="LEFT">token_hash</TD><TD ALIGN="LEFT">令牌哈希</TD></TR>
+      <TR><TD ALIGN="LEFT">expires_at</TD><TD ALIGN="LEFT">过期时间</TD></TR>
+      <TR><TD ALIGN="LEFT">revoked_at</TD><TD ALIGN="LEFT">撤销时间</TD></TR>
+      <TR><TD ALIGN="LEFT">user_agent / ip_address</TD><TD ALIGN="LEFT">登录环境</TD></TR>
+    </TABLE>>];
+
+  // ===== 关系 =====
+  node [shape=diamond, style=filled, fillcolor="#fff3bf", color="#b08900", penwidth=1.5, fontsize=15];
+  R_config [label="配置"];
+  R_token  [label="持有令牌"];
+
+  User -- R_config      [label="1"];  R_config -- UserSettings  [label="1"];
+  User -- R_token       [label="1"];  R_token  -- RefreshToken  [label="N"];
+}

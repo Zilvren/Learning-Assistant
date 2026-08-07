@@ -1,12 +1,44 @@
 import markdownit from "markdown-it"
 import mark from "markdown-it-mark"
 import katex from "katex"
+import hljs from "highlight.js/lib/common"
+
+function highlightCode(code, language = "") {
+  try {
+    if (language && hljs.getLanguage(language)) return hljs.highlight(code, { language }).value
+    return hljs.highlightAuto(code).value
+  } catch {
+    return escapeHtml(code)
+  }
+}
 
 const md = markdownit({
   html: false,
   linkify: true,
   breaks: true,
+  highlight: highlightCode,
 }).use(mark)
+
+function headingID(text, index) {
+  const slug = String(text || "")
+    .toLowerCase()
+    .replace(/<[^>]+>/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+  return `section-${index}-${slug || "heading"}`
+}
+
+md.core.ruler.push("heading_anchors", (state) => {
+  let index = 0
+  for (let i = 0; i < state.tokens.length; i++) {
+    const token = state.tokens[i]
+    if (token.type !== "heading_open") continue
+    const text = state.tokens[i + 1]?.content || ""
+    token.attrSet("id", headingID(text, index))
+    token.attrSet("data-outline-index", String(index))
+    index++
+  }
+})
 
 // Inline math: $...$
 const inlineRegex = /\$(.+?)\$/g
@@ -99,6 +131,21 @@ export function renderMd(src) {
   html = html.replace(/<img\s+src="(data:image\/[^"]+)"(?![^>]*\bwidth\b)(?![^>]*\bheight\b)([^>]*)>/g,
     '<img src="$1" width="400"$2>')
   return html
+}
+
+export function extractOutline(src) {
+  if (!src) return []
+  const tokens = md.parse(src, {})
+  const outline = []
+  let index = 0
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].type !== "heading_open") continue
+    const inline = tokens[i + 1]
+    const text = inline?.children?.map((token) => token.content).join("") || inline?.content || "未命名章节"
+    outline.push({ index, level: Number(tokens[i].tag.slice(1)), text, id: headingID(text, index) })
+    index++
+  }
+  return outline
 }
 
 export { katex }

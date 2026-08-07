@@ -67,7 +67,28 @@ func CreateError(ctx context.Context, req models.AddErrorRequest) (models.ErrorP
 		ReviewStage: 0,
 		NextReview:  now.Format("2006-01-02"),
 	}
-	return repos.Errors.Create(ctx, item)
+	created, err := repos.Errors.Create(ctx, item)
+	if err != nil {
+		return models.ErrorProblem{}, err
+	}
+	all, _ := repos.Errors.List(ctx, repository.ErrorFilter{})
+	subjects, _ := repos.Subjects.List(ctx)
+	if err := repos.Library.EnsureLegacy(ctx, all, subjects); err != nil {
+		return models.ErrorProblem{}, err
+	}
+	if req.ParentID != nil {
+		matches, _ := repos.Library.List(ctx, repository.LibraryFilter{Kind: "error", Query: created.Title})
+		for _, node := range matches {
+			if node.ErrorProblemID != nil && *node.ErrorProblemID == created.ID {
+				_, err = repos.Library.Update(ctx, node.ID, models.UpdateLibraryItemRequest{ParentID: req.ParentID})
+				break
+			}
+		}
+		if err != nil {
+			return models.ErrorProblem{}, err
+		}
+	}
+	return created, nil
 }
 
 func firstRunes(text string, max int) string {
@@ -113,7 +134,12 @@ func UpdateError(ctx context.Context, id int, req models.UpdateErrorRequest) err
 	if req.Question != nil && strings.TrimSpace(*req.Question) == "" {
 		return fmt.Errorf("题目不能为空")
 	}
-	return repos.Errors.Update(ctx, id, req)
+	if err := repos.Errors.Update(ctx, id, req); err != nil {
+		return err
+	}
+	all, _ := repos.Errors.List(ctx, repository.ErrorFilter{})
+	subjects, _ := repos.Subjects.List(ctx)
+	return repos.Library.EnsureLegacy(ctx, all, subjects)
 }
 
 func DeleteError(ctx context.Context, id int) error {
@@ -131,24 +157,7 @@ func ReviewError(ctx context.Context, id int) (models.ErrorProblem, error) {
 	if err != nil {
 		return models.ErrorProblem{}, err
 	}
-	item, err := repos.Errors.Get(ctx, id)
-	if err != nil {
-		return models.ErrorProblem{}, err
-	}
-	reviewCount := item.ReviewCount + 1
-	reviewedAt := time.Now().Format("2006-01-02 15:04:05")
-	return repos.Errors.UpdateReview(ctx, id, reviewedAt, reviewCount, reviewCount, nextReviewDate(reviewCount))
-}
-
-func nextReviewDate(reviewCount int) string {
-	index := reviewCount
-	if index < 0 {
-		index = 0
-	}
-	if index >= len(reviewIntervals) {
-		index = len(reviewIntervals) - 1
-	}
-	return time.Now().AddDate(0, 0, reviewIntervals[index]).Format("2006-01-02")
+	return repos.Errors.Review(ctx, id, time.Now(), reviewIntervals)
 }
 
 func GetAllTags(ctx context.Context) ([]string, error) {

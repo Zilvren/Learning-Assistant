@@ -86,6 +86,7 @@ func NewRepositories(pool *pgxpool.Pool, userID int64) base.Repositories {
 		Knowledge: &KnowledgeRepository{store: store},
 		OCRTasks:  &OCRTaskRepository{store: store},
 		Backup:    &BackupRepository{store: store},
+		Library:   &LibraryRepository{store: store},
 	}
 }
 

@@ -1,61 +1,304 @@
 package repository
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
 
-// dataDir 是放数据文件的目录，相对于运行程序的目录
-var dataDir = "data"
+const defaultJSONLockTimeout = 10 * time.Second
 
-// SetDataDir 设置数据目录（可选的，默认就是 "data"）
+var (
+	ErrDataBusy = errors.New("数据目录正在被其他操作占用")
+	errLockBusy = errors.New("file lock busy")
+
+	dataDirMu sync.RWMutex
+	dataDir   = "data"
+
+	storeRegistryMu sync.Mutex
+	storeRegistry   = map[string]*sync.RWMutex{}
+)
+
+// JSONStore serializes access to one data directory, both within this process
+// and across different Tracker processes.
+type JSONStore struct {
+	dir         string
+	local       *sync.RWMutex
+	lockTimeout time.Duration
+}
+
+// JSONTx is valid only for the duration of a JSONStore Read or Write callback.
+type JSONTx struct {
+	dir      string
+	writable bool
+}
+
 func SetDataDir(dir string) {
-	dataDir = dir
+	dataDirMu.Lock()
+	dataDir = normalizeDataDir(dir)
+	dataDirMu.Unlock()
 }
 
-// ensureDataDir 确保 data 目录存在
-func ensureDataDir() error {
-	return os.MkdirAll(dataDir, 0755)
+func DataDir() string {
+	dataDirMu.RLock()
+	dir := normalizeDataDir(dataDir)
+	dataDirMu.RUnlock()
+	_ = os.MkdirAll(dir, 0755)
+	return dir
 }
 
-// LoadJSON 从 data 目录读取 JSON 文件，解析到 target 里
-// target 必须是一个指针，比如 &subjects 或 &errors
-// 如果文件不存在，把 target 置为空（空切片/空结构体），不会报错
-func LoadJSON(filename string, target interface{}) error {
-	path := filepath.Join(dataDir, filename)
+func Path(filename string) string {
+	return filepath.Join(DataDir(), filepath.Base(filename))
+}
+
+func StoreBlob(r io.Reader) (string, int64, error) {
+	tmpDir := filepath.Join(DataDir(), "blobs", ".tmp")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return "", 0, err
+	}
+	tmp, err := os.CreateTemp(tmpDir, "blob-*")
+	if err != nil {
+		return "", 0, err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	h := sha256.New()
+	size, err := io.Copy(io.MultiWriter(tmp, h), r)
+	if err != nil {
+		tmp.Close()
+		return "", 0, err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return "", 0, err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", 0, err
+	}
+	hash := fmt.Sprintf("%x", h.Sum(nil))
+	target := BlobPath(hash)
+	if _, err := os.Stat(target); err == nil {
+		return hash, size, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return "", 0, err
+	}
+	if err := replaceFileAtomic(tmpPath, target); err != nil {
+		if _, statErr := os.Stat(target); statErr == nil {
+			return hash, size, nil
+		}
+		return "", 0, err
+	}
+	return hash, size, nil
+}
+
+func BlobPath(hash string) string {
+	if len(hash) < 2 {
+		return filepath.Join(DataDir(), "blobs", "invalid")
+	}
+	return filepath.Join(DataDir(), "blobs", hash[:2], hash)
+}
+
+func ReadBlob(hash string) ([]byte, error) { return os.ReadFile(BlobPath(hash)) }
+
+func NewJSONStore(dir string) *JSONStore {
+	dir = normalizeDataDir(dir)
+	storeRegistryMu.Lock()
+	local := storeRegistry[dir]
+	if local == nil {
+		local = &sync.RWMutex{}
+		storeRegistry[dir] = local
+	}
+	storeRegistryMu.Unlock()
+	return &JSONStore{
+		dir:         dir,
+		local:       local,
+		lockTimeout: defaultJSONLockTimeout,
+	}
+}
+
+func DefaultJSONStore() *JSONStore {
+	return NewJSONStore(DataDir())
+}
+
+func (s *JSONStore) Read(ctx context.Context, fn func(*JSONTx) error) error {
+	return s.withLock(ctx, false, fn)
+}
+
+func (s *JSONStore) Write(ctx context.Context, fn func(*JSONTx) error) error {
+	return s.withLock(ctx, true, fn)
+}
+
+func (s *JSONStore) withLock(ctx context.Context, write bool, fn func(*JSONTx) error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timeout := s.lockTimeout
+	if timeout <= 0 {
+		timeout = defaultJSONLockTimeout
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if err := s.acquireLocal(waitCtx, write); err != nil {
+		return err
+	}
+	if write {
+		defer s.local.Unlock()
+	} else {
+		defer s.local.RUnlock()
+	}
+
+	if err := os.MkdirAll(s.dir, 0755); err != nil {
+		return err
+	}
+	release, err := acquireFileLock(waitCtx, filepath.Join(s.dir, ".tracker-data.lock"), write)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	return fn(&JSONTx{dir: s.dir, writable: write})
+}
+
+func (s *JSONStore) acquireLocal(ctx context.Context, write bool) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var acquired bool
+		if write {
+			acquired = s.local.TryLock()
+		} else {
+			acquired = s.local.TryRLock()
+		}
+		if acquired {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return dataLockError(ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func acquireFileLock(ctx context.Context, path string, exclusive bool) (func(), error) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		release, err := tryFileLock(path, exclusive)
+		if err == nil {
+			return release, nil
+		}
+		if !errors.Is(err, errLockBusy) {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, dataLockError(ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func dataLockError(cause error) error {
+	return fmt.Errorf("%w: %v", ErrDataBusy, cause)
+}
+
+func (tx *JSONTx) Load(filename string, target interface{}) error {
+	path, err := tx.path(filename)
+	if err != nil {
+		return err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // 文件不存在不算错
+			return nil
 		}
 		return err
 	}
 	return json.Unmarshal(data, target)
 }
 
-// SaveJSON 把数据写入 data 目录的 JSON 文件
-// indent 让文件可读性好（格式化输出）
-func SaveJSON(filename string, data interface{}) error {
-	if err := ensureDataDir(); err != nil {
-		return err
+func (tx *JSONTx) Save(filename string, value interface{}) error {
+	if !tx.writable {
+		return errors.New("JSON read transaction cannot write")
 	}
-	path := filepath.Join(dataDir, filename)
-	jsonData, err := json.MarshalIndent(data, "", "  ")
+	path, err := tx.path(filename)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, jsonData, 0644)
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(path, data, 0644)
 }
 
-// DataDir 返回数据目录路径，如果目录不存在则自动创建
-func DataDir() string {
-	_ = os.MkdirAll(dataDir, 0755)
-	return dataDir
+func (tx *JSONTx) path(filename string) (string, error) {
+	if filename == "" || filepath.Base(filename) != filename {
+		return "", fmt.Errorf("无效 JSON 文件名：%s", filename)
+	}
+	return filepath.Join(tx.dir, filename), nil
 }
 
-// Path 返回数据文件的完整路径，如果目录不存在则自动创建
-func Path(filename string) string {
-	_ = os.MkdirAll(dataDir, 0755)
-	return filepath.Join(dataDir, filename)
+func writeFileAtomic(target string, data []byte, mode os.FileMode) (err error) {
+	dir := filepath.Dir(target)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(target)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+	if err := tmp.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return replaceFileAtomic(tmpPath, target)
+}
+
+func normalizeDataDir(dir string) string {
+	if dir == "" {
+		dir = "data"
+	}
+	absolute, err := filepath.Abs(filepath.Clean(dir))
+	if err != nil {
+		return filepath.Clean(dir)
+	}
+	return absolute
+}
+
+// LoadJSON and SaveJSON remain for compatibility. Read-modify-write callers
+// should use one JSONStore transaction instead of calling these separately.
+func LoadJSON(filename string, target interface{}) error {
+	return DefaultJSONStore().Read(context.Background(), func(tx *JSONTx) error {
+		return tx.Load(filename, target)
+	})
+}
+
+func SaveJSON(filename string, value interface{}) error {
+	return DefaultJSONStore().Write(context.Background(), func(tx *JSONTx) error {
+		return tx.Save(filename, value)
+	})
 }

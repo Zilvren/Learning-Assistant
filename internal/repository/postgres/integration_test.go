@@ -76,7 +76,8 @@ func TestPostgresRepositoriesIntegration(t *testing.T) {
 		t.Fatalf("unexpected filtered errors: %#v", filtered)
 	}
 
-	reviewed, err := repos.Errors.UpdateReview(ctx, item.ID, "2026-07-01 12:10:00", 1, 1, "2026-07-02")
+	reviewedAt := time.Date(2026, 7, 1, 12, 10, 0, 0, time.Local)
+	reviewed, err := repos.Errors.Review(ctx, item.ID, reviewedAt, []int{0, 1, 2, 4, 7, 15})
 	if err != nil {
 		t.Fatal(err)
 	}

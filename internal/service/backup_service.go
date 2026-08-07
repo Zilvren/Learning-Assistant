@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	models "study-tracker-go/internal/model"
@@ -17,9 +18,9 @@ import (
 )
 
 const BackupMaxFileSize = 10 * 1024 * 1024
-const BackupMaxUploadSize = 50 * 1024 * 1024
+const BackupMaxUploadSize = 512 * 1024 * 1024
 
-var backupFileNames = []string{"config.json", "errors.json", "knowledge.json", "subjects.json"}
+var backupFileNames = []string{"config.json", "errors.json", "knowledge.json", "subjects.json", "library.json"}
 
 type ImportBackupResult struct {
 	Files    []string `json:"files"`
@@ -55,6 +56,20 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 	if err := repos.Backup.Import(ctx, data); err != nil {
 		return ImportBackupResult{}, err
 	}
+	for expected, body := range data.Blobs {
+		actual, _, blobErr := store.StoreBlob(bytes.NewReader(body))
+		if blobErr != nil {
+			return ImportBackupResult{}, blobErr
+		}
+		if actual != expected {
+			return ImportBackupResult{}, fmt.Errorf("Blob 校验失败：%s", expected)
+		}
+	}
+	if len(data.LibraryJSON) > 0 {
+		if err := store.SaveJSON("library.json", json.RawMessage(data.LibraryJSON)); err != nil {
+			return ImportBackupResult{}, err
+		}
+	}
 	sort.Strings(files)
 	return ImportBackupResult{
 		Files:    files,
@@ -80,7 +95,29 @@ func loadBackupData(ctx context.Context) (store.BackupData, error) {
 	if err != nil {
 		return store.BackupData{}, err
 	}
-	return repos.Backup.Export(ctx)
+	data, err := repos.Backup.Export(ctx)
+	if err != nil {
+		return data, err
+	}
+	if raw, readErr := os.ReadFile(filepath.Join(store.DataDir(), "library.json")); readErr == nil {
+		data.LibraryJSON = raw
+		data.Blobs = map[string][]byte{}
+		_ = filepath.WalkDir(filepath.Join(store.DataDir(), "blobs"), func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil || entry.IsDir() || strings.Contains(path, string(filepath.Separator)+".tmp"+string(filepath.Separator)) {
+				return nil
+			}
+			name := entry.Name()
+			if len(name) != 64 {
+				return nil
+			}
+			body, e := os.ReadFile(path)
+			if e == nil {
+				data.Blobs[name] = body
+			}
+			return nil
+		})
+	}
+	return data, nil
 }
 
 func encodeBackupZip(data store.BackupData) ([]byte, error) {
@@ -106,6 +143,28 @@ func encodeBackupZip(data store.BackupData) ([]byte, error) {
 	}
 	if data.Subjects != nil {
 		if err := writeBackupJSON(zw, "subjects.json", data.Subjects); err != nil {
+			zw.Close()
+			return nil, err
+		}
+	}
+	if len(data.LibraryJSON) > 0 {
+		w, err := zw.Create("library.json")
+		if err != nil {
+			zw.Close()
+			return nil, err
+		}
+		if _, err = w.Write(data.LibraryJSON); err != nil {
+			zw.Close()
+			return nil, err
+		}
+	}
+	for hash, body := range data.Blobs {
+		w, err := zw.Create("blobs/" + hash)
+		if err != nil {
+			zw.Close()
+			return nil, err
+		}
+		if _, err = w.Write(body); err != nil {
 			zw.Close()
 			return nil, err
 		}
@@ -145,6 +204,21 @@ func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 			continue
 		}
 		name := filepath.Base(file.Name)
+		if strings.HasPrefix(filepath.ToSlash(file.Name), "blobs/") {
+			if len(name) != 64 || file.UncompressedSize64 > libraryMaxBackupBlobSize {
+				return store.BackupData{}, nil, fmt.Errorf("备份包含无效 Blob")
+			}
+			raw, readErr := readBackupZipFileLimit(file, libraryMaxBackupBlobSize)
+			if readErr != nil {
+				return store.BackupData{}, nil, readErr
+			}
+			if data.Blobs == nil {
+				data.Blobs = map[string][]byte{}
+			}
+			data.Blobs[name] = raw
+			files = append(files, "blobs/"+name)
+			continue
+		}
 		if !isBackupFile(name) {
 			if filepath.Ext(name) == ".json" {
 				return store.BackupData{}, nil, fmt.Errorf("备份包包含不支持的数据文件：%s", file.Name)
@@ -211,8 +285,32 @@ func decodeBackupJSON(name string, raw []byte, data *store.BackupData) error {
 			return fmt.Errorf("knowledge.json 不是有效 JSON 文件")
 		}
 		data.Knowledge = &knowledge
+	case "library.json":
+		var value interface{}
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return fmt.Errorf("library.json 不是有效 JSON 文件")
+		}
+		data.LibraryJSON = append([]byte(nil), raw...)
 	}
 	return nil
+}
+
+const libraryMaxBackupBlobSize = 200 * 1024 * 1024
+
+func readBackupZipFileLimit(file *zip.File, limit int64) ([]byte, error) {
+	rc, e := file.Open()
+	if e != nil {
+		return nil, e
+	}
+	defer rc.Close()
+	body, e := io.ReadAll(io.LimitReader(rc, limit+1))
+	if e != nil {
+		return nil, e
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("%s 文件过大", file.Name)
+	}
+	return body, nil
 }
 
 func isBackupFile(name string) bool {

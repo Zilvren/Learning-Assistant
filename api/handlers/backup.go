@@ -13,7 +13,7 @@ import (
 func ExportBackup(c *gin.Context) {
 	content, filename, err := service.ExportBackupZip(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
@@ -35,7 +35,7 @@ func ImportBackup(c *gin.Context) {
 
 	result, err := service.ImportBackupZip(c.Request.Context(), body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

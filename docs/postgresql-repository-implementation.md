@@ -39,7 +39,7 @@ data/knowledge.json
 
 ```powershell
 $env:TRACKER_STORAGE="postgres"
-$env:TRACKER_DATABASE_URL="postgres://study_tracker_app:你的密码@localhost:5432/study_tracker?sslmode=disable"
+$env:TRACKER_DATABASE_URL="postgres://postgres:knockknock@localhost:5432/study_tracker?sslmode=disable"
 go run .
 ```
 

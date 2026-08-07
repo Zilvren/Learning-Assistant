@@ -12,7 +12,7 @@ func GetSubjects(c *gin.Context) {
 	subjects, err := service.GetAllSubjects(c.Request.Context())
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"subjects": subjects})
@@ -29,7 +29,7 @@ func Addsubject(c *gin.Context) {
 
 	subjects, err := service.AddSubject(c.Request.Context(), body.Name)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"subjects": subjects})
@@ -40,7 +40,7 @@ func DeleteSubject(c *gin.Context) {
 	name := c.Param("name") // 从 URL 路径中取参数
 	subjects, err := service.DeleteSubject(c.Request.Context(), name)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusNotFound, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"subjects": subjects})

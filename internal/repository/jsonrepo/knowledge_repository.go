@@ -6,22 +6,23 @@ import (
 	base "study-tracker-go/internal/repository"
 )
 
-type KnowledgeRepository struct{}
+type KnowledgeRepository struct {
+	store *base.JSONStore
+}
 
 func (r *KnowledgeRepository) Load(ctx context.Context) (map[string][]string, error) {
-	var knowledge map[string][]string
-	if err := base.LoadJSON("knowledge.json", &knowledge); err != nil {
-		return nil, err
-	}
-	if knowledge == nil {
-		return map[string][]string{}, nil
-	}
-	return knowledge, nil
+	knowledge := map[string][]string{}
+	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
+		return tx.Load("knowledge.json", &knowledge)
+	})
+	return knowledge, err
 }
 
 func (r *KnowledgeRepository) Replace(ctx context.Context, knowledge map[string][]string) error {
 	if knowledge == nil {
 		knowledge = map[string][]string{}
 	}
-	return base.SaveJSON("knowledge.json", knowledge)
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		return tx.Save("knowledge.json", knowledge)
+	})
 }

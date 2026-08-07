@@ -3,6 +3,7 @@ package jsonrepo
 import base "study-tracker-go/internal/repository"
 
 type Repositories struct {
+	store     *base.JSONStore
 	subjects  *SubjectRepository
 	errors    *ErrorRepository
 	settings  *SettingsRepository
@@ -10,21 +11,21 @@ type Repositories struct {
 	ocrTasks  *OCRTaskRepository
 	backup    *BackupRepository
 	auth      *AuthRepository
+	library   *LibraryRepository
 }
 
 func NewRepositories() base.Repositories {
-	repos := &Repositories{}
-	repos.subjects = &SubjectRepository{}
-	repos.errors = &ErrorRepository{}
-	repos.settings = &SettingsRepository{}
-	repos.knowledge = &KnowledgeRepository{}
+	store := base.DefaultJSONStore()
+	repos := &Repositories{store: store}
+	repos.subjects = &SubjectRepository{store: store}
+	repos.errors = &ErrorRepository{store: store}
+	repos.settings = &SettingsRepository{store: store}
+	repos.knowledge = &KnowledgeRepository{store: store}
 	repos.ocrTasks = &OCRTaskRepository{}
 	repos.auth = &AuthRepository{}
+	repos.library = &LibraryRepository{store: store}
 	repos.backup = &BackupRepository{
-		subjects:  repos.subjects,
-		errors:    repos.errors,
-		settings:  repos.settings,
-		knowledge: repos.knowledge,
+		store: store,
 	}
 	return base.Repositories{
 		Auth:      repos.auth,
@@ -34,5 +35,6 @@ func NewRepositories() base.Repositories {
 		Knowledge: repos.knowledge,
 		OCRTasks:  repos.ocrTasks,
 		Backup:    repos.backup,
+		Library:   repos.library,
 	}
 }

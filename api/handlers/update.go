@@ -20,7 +20,7 @@ func CheckUpdate(c *gin.Context) {
 func ApplyUpdate(c *gin.Context) {
 	result, err := service.ApplyUpdate(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)

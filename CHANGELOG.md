@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [2026.08.07-1034] - 2026-08-07
+
 ### Added
 
 - 新增 Go 后端分层架构：`api/handlers`、`internal/service`、`internal/repository`、`internal/model`、`internal/middleware`、`pkg/config`、`pkg/logger`。

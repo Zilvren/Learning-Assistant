@@ -11,7 +11,7 @@ import (
 func GetToken(c *gin.Context) {
 	info, err := service.GetTokenInfo(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, info) // 直接用结构体序列化，JSON 标签跟前端期望一致
@@ -26,7 +26,7 @@ func SetToken(c *gin.Context) {
 		return
 	}
 	if err := service.SetToken(c.Request.Context(), body.Token); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Token saved"})
@@ -34,7 +34,7 @@ func SetToken(c *gin.Context) {
 
 func DeleteToken(c *gin.Context) {
 	if err := service.ClearToken(c.Request.Context()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Token cleared"})
@@ -49,7 +49,7 @@ func SetUsername(c *gin.Context) {
 		return
 	}
 	if err := service.SetUsername(c.Request.Context(), body.Name); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Username saved"})

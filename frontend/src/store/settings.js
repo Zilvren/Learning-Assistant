@@ -3,7 +3,7 @@ import { api } from "../api/index.js"
 
 const usernameRef = ref("")
 const THEME_KEY = "studyTrackerThemeV2"
-const THEME_TRANSITION_MS = 1900
+const THEME_TRANSITION_MS = 220
 
 function initialDarkMode() {
   try {

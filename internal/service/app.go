@@ -24,7 +24,7 @@ func Init(repos repository.Repositories) error {
 }
 
 func InitApp(cfg config.Config, repos repository.Repositories, pool *pgxpool.Pool) error {
-	if repos.Auth == nil || repos.Subjects == nil || repos.Errors == nil || repos.Settings == nil || repos.Knowledge == nil || repos.OCRTasks == nil || repos.Backup == nil {
+	if repos.Auth == nil || repos.Subjects == nil || repos.Errors == nil || repos.Settings == nil || repos.Knowledge == nil || repos.OCRTasks == nil || repos.Backup == nil || repos.Library == nil {
 		return fmt.Errorf("repository 初始化不完整")
 	}
 	defaultMu.Lock()
@@ -41,7 +41,7 @@ func repositories(ctx context.Context) (repository.Repositories, error) {
 	cfg := appConfig
 	pool := pgPool
 	defaultMu.RUnlock()
-	if repos.Auth == nil || repos.Subjects == nil || repos.Errors == nil || repos.Settings == nil || repos.Knowledge == nil || repos.OCRTasks == nil || repos.Backup == nil {
+	if repos.Auth == nil || repos.Subjects == nil || repos.Errors == nil || repos.Settings == nil || repos.Knowledge == nil || repos.OCRTasks == nil || repos.Backup == nil || repos.Library == nil {
 		return repository.Repositories{}, fmt.Errorf("service 尚未初始化")
 	}
 	if cfg.AuthEnabled {
