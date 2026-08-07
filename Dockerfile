@@ -3,10 +3,10 @@ FROM docker.m.daocloud.io/library/node:22-bookworm-slim AS frontend-builder
 WORKDIR /src/frontend
 
 COPY frontend/package.json frontend/package-lock.json ./
-# Keep first-time China-based builds off the npm public registry.  npm still
-# verifies every package with the integrity hash recorded in package-lock.json.
-RUN npm config set registry https://registry.npmmirror.com \
-    && npm ci --no-audit --no-fund
+# The image is built on GitHub-hosted runners, where the official npm registry
+# is more reliable than a mainland mirror. npm still verifies the lockfile's
+# integrity hashes.
+RUN npm ci --no-audit --no-fund --registry=https://registry.npmjs.org
 
 COPY frontend/ ./
 ENV NODE_OPTIONS=--max-old-space-size=512
