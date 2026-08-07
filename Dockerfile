@@ -1,11 +1,12 @@
-# syntax=docker/dockerfile:1
-
 # DaoCloud proxy keeps China-based deployments independent of Docker Hub access.
 FROM docker.m.daocloud.io/library/node:22-bookworm-slim AS frontend-builder
 WORKDIR /src/frontend
 
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# Keep first-time China-based builds off the npm public registry.  npm still
+# verifies every package with the integrity hash recorded in package-lock.json.
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm ci --no-audit --no-fund
 
 COPY frontend/ ./
 ENV NODE_OPTIONS=--max-old-space-size=512
@@ -15,6 +16,10 @@ FROM docker.m.daocloud.io/library/golang:1.26-bookworm AS app-builder
 WORKDIR /src
 
 COPY go.mod go.sum ./
+# Use the mainland checksum endpoint as well, while retaining Go's module
+# integrity verification rather than disabling it.
+ENV GOPROXY=https://goproxy.cn,direct \
+    GOSUMDB=sum.golang.google.cn
 RUN go mod download
 
 COPY . ./
