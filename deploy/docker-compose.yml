@@ -25,6 +25,7 @@ services:
       retries: 12
 
   app:
+    image: ${TRACKER_APP_IMAGE:-learning-assistant:local}
     build:
       context: ..
       dockerfile: Dockerfile

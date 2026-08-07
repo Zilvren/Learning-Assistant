@@ -2,7 +2,8 @@
 # Deploy a checked-out GitHub Actions workspace without touching production data.
 set -Eeuo pipefail
 
-source_dir=${1:?Usage: deploy-from-runner.sh <checked-out-source-directory>}
+source_dir=${1:?Usage: deploy-from-runner.sh <checked-out-source-directory> <app-image>}
+app_image=${2:?Usage: deploy-from-runner.sh <checked-out-source-directory> <app-image>}
 deploy_root=/opt/Learning-Assistant
 compose_dir="$deploy_root/deploy"
 
@@ -18,6 +19,11 @@ fi
 
 docker info >/dev/null
 
+if [[ -z "${GITHUB_TOKEN:-}" || -z "${GITHUB_ACTOR:-}" ]]; then
+  echo "GitHub registry credentials are unavailable." >&2
+  exit 1
+fi
+
 # Keep server-only secrets and volumes intact. --delete makes source files match Git.
 rsync -a --delete \
   --exclude='.git/' \
@@ -29,7 +35,10 @@ rsync -a --delete \
   "$source_dir/" "$deploy_root/"
 
 cd "$compose_dir"
-docker compose up -d --build app
+trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+TRACKER_APP_IMAGE="$app_image" docker compose pull app
+TRACKER_APP_IMAGE="$app_image" docker compose up -d --no-build app
 
 for attempt in $(seq 1 20); do
   if curl --fail --silent --show-error http://127.0.0.1/api/health; then
