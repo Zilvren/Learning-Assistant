@@ -109,7 +109,8 @@ func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibrary
 	if req.ReviewEnabled {
 		nextReview = time.Now().Format("2006-01-02")
 	}
-	out, err = scanLibrary(tx.QueryRow(ctx, "INSERT INTO library_items(user_id,parent_id,kind,name,mime_type,file_size,tags,current_version,blob_hash,review_enabled,next_review) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "+libraryColumns, r.store.userID, req.ParentID, req.Kind, name, req.MimeType, size, req.Tags, boolInt(req.Kind != "folder"), hash, req.ReviewEnabled, nextReview))
+	tags := normalizeLibraryTags(req.Tags)
+	out, err = scanLibrary(tx.QueryRow(ctx, "INSERT INTO library_items(user_id,parent_id,kind,name,mime_type,file_size,tags,current_version,blob_hash,review_enabled,next_review) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "+libraryColumns, r.store.userID, req.ParentID, req.Kind, name, req.MimeType, size, tags, boolInt(req.Kind != "folder"), hash, req.ReviewEnabled, nextReview))
 	if err != nil {
 		return out, err
 	}
@@ -127,6 +128,25 @@ func boolInt(v bool) int {
 	}
 	return 0
 }
+
+func normalizeLibraryTags(tags []string) []string {
+	seen := make(map[string]struct{}, len(tags))
+	result := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		key := strings.ToLower(tag)
+		if tag == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, tag)
+	}
+	return result
+}
+
 func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.UpdateLibraryItemRequest) (models.LibraryItem, error) {
 	item, err := r.Get(ctx, id)
 	if err != nil {
@@ -136,7 +156,7 @@ func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.Upd
 		item.Name = strings.TrimSpace(*req.Name)
 	}
 	if req.Tags != nil {
-		item.Tags = *req.Tags
+		item.Tags = normalizeLibraryTags(*req.Tags)
 	}
 	if req.Pinned != nil {
 		item.Pinned = *req.Pinned
