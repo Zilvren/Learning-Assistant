@@ -1,5 +1,17 @@
 BEGIN;
 
+-- array_to_string is marked STABLE because it is generic over every element
+-- type.  With a text[] input it is deterministic, so this concrete wrapper
+-- makes the document eligible for a PostgreSQL expression index.
+CREATE OR REPLACE FUNCTION library_item_search_document(item_name TEXT, item_tags TEXT[])
+RETURNS TSVECTOR
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT to_tsvector('simple', item_name || ' ' || array_to_string(item_tags, ' '));
+$$;
+
 CREATE TABLE IF NOT EXISTS library_items (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -28,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_library_items_parent
 CREATE INDEX IF NOT EXISTS idx_library_items_trash
   ON library_items(user_id, deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_library_items_search
-  ON library_items USING GIN (to_tsvector('simple', name || ' ' || array_to_string(tags, ' ')));
+  ON library_items USING GIN (library_item_search_document(name, tags));
 
 CREATE TABLE IF NOT EXISTS library_versions (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
