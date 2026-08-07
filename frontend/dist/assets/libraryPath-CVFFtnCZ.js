@@ -1,1 +1,0 @@
-const t="library:last-path";function a(r){return r?`/library/${encodeURIComponent(String(r))}`:"/library"}function e(r){try{localStorage.setItem(t,a(r))}catch{}}function n(){try{const r=localStorage.getItem(t);return/^\/library(?:\/[^/?#]+)?$/.test(r||"")?r:"/library"}catch{return"/library"}}export{e as a,a as l,n as r};

@@ -3,6 +3,7 @@
 /.tools/
 /tmp/
 /frontend/node_modules/
+/frontend/dist/
 /frontend/.vite/
 /frontend/vite.log
 /frontend/vite_err.log

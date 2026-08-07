@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { ArchiveRestore, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tags, Trash2, Upload } from "lucide-vue-next"
+import { ArchiveRestore, ChevronDown, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tags, Trash2, Upload } from "lucide-vue-next"
 import { api } from "../../api/index.js"
 import { useToast } from "../../store/toast.js"
 import { rememberLibraryPath } from "../../utils/libraryPath.js"
@@ -14,8 +14,13 @@ const items = ref([]); const loading = ref(false); const query = ref(""); const 
 const currentFolder = ref(null); const breadcrumbs = ref([]); const selected = ref(new Set()); const menuId = ref(null); const fileInput = ref(null)
 const dialog = ref(""); const formName = ref(""); const formTags = ref(""); const formReview = ref(false); const editing = ref(null); const busy = ref(false); const deleting = ref(false)
 const notePreviews = ref({}); const previewLoading = ref(new Set()); const previewErrors = ref(new Set())
+const activeFilter = ref("")
 const folderId = computed(() => props.trash ? null : Number(props.folderId || route.params.folderId || 0) || null)
 const title = computed(() => props.trash ? "回收站" : currentFolder.value?.name || "我的资料库")
+const kindOptions = [{ value:"all", label:"全部类型" }, { value:"folder", label:"文件夹" }, { value:"note", label:"笔记" }, { value:"file", label:"文件" }]
+const tagOptions = computed(() => [{ value:"", label:"全部标签" }, ...tags.value.map((value) => ({ value, label:`# ${value}` }))])
+const kindLabel = computed(() => kindOptions.find((option) => option.value === kind.value)?.label || "全部类型")
+const tagLabel = computed(() => tagOptions.value.find((option) => option.value === tag.value)?.label || "全部标签")
 
 function itemIcon(item) { return item.kind === "folder" ? Folder : item.kind === "note" ? FileText : File }
 function formatSize(size) { if (!size) return "—"; if (size < 1024) return `${size} B`; if (size < 1048576) return `${(size/1024).toFixed(1)} KB`; return `${(size/1048576).toFixed(1)} MB` }
@@ -96,11 +101,15 @@ function openOrSelect(item) { if (selected.value.size) return toggleSelected(ite
 function toggleSelectAll() { selected.value = selected.value.size === items.value.length ? new Set() : new Set(items.value.map((item) => item.id)) }
 async function batch(action) { const ids=[...selected.value]; if(!ids.length||deleting.value)return; const isPermanentDelete=props.trash&&action==='purge'; if(isPermanentDelete)deleting.value=true; try{await api.batchLibraryItems(action,ids);selected.value=new Set();toast.success(`已处理 ${ids.length} 项`);await load()}catch(e){toast.error(e.message)}finally{if(isPermanentDelete)deleting.value=false} }
 function setView(next) { view.value=next; localStorage.setItem("libraryView",next) }
+function toggleFilter(name) { activeFilter.value = activeFilter.value === name ? "" : name }
+function selectFilter(name, value) { if (name === "kind") kind.value = value; else tag.value = value; activeFilter.value = "" }
+function closeFilter(event) { if (!event.target.closest(".library-filter")) activeFilter.value = "" }
 let searchTimer
 watch(()=>route.query.tag,(value)=>{tag.value=String(value||"")})
 watch([query,kind,tag,folderId,()=>props.trash],()=>{clearTimeout(searchTimer);searchTimer=setTimeout(load,250)})
 watch([folderId,()=>props.trash],([nextFolderId,isTrash])=>{if(!isTrash)rememberLibraryPath(nextFolderId)},{immediate:true})
-onMounted(load)
+onMounted(() => { load(); document.addEventListener("pointerdown", closeFilter) })
+onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
 </script>
 
 <template>
@@ -117,8 +126,8 @@ onMounted(load)
 
     <section class="library-toolbar" aria-label="资料筛选">
       <label class="library-search"><Search :size="18"/><input v-model="query" placeholder="搜索名称、标签和笔记正文" aria-label="搜索资料"/></label>
-      <select v-model="kind" aria-label="资料类型"><option value="all">全部类型</option><option value="folder">文件夹</option><option value="note">笔记</option><option value="file">文件</option></select>
-      <select v-model="tag" aria-label="标签筛选"><option value="">全部标签</option><option v-for="value in tags" :key="value" :value="value"># {{ value }}</option></select>
+      <div class="library-filter" :class="{open:activeFilter==='kind'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='kind'" @click="toggleFilter('kind')"><span>类型</span><strong>{{ kindLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='kind'" class="library-filter__menu" role="listbox" aria-label="资料类型"><button v-for="option in kindOptions" :key="option.value" type="button" role="option" :aria-selected="kind===option.value" :class="{active:kind===option.value}" @click="selectFilter('kind',option.value)">{{ option.label }}</button></div></div>
+      <div class="library-filter" :class="{open:activeFilter==='tag'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='tag'" @click="toggleFilter('tag')"><span>标签</span><strong>{{ tagLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='tag'" class="library-filter__menu" role="listbox" aria-label="标签筛选"><button v-for="option in tagOptions" :key="option.value" type="button" role="option" :aria-selected="tag===option.value" :class="{active:tag===option.value}" @click="selectFilter('tag',option.value)">{{ option.label }}</button></div></div>
       <div class="library-view-toggle"><button :class="{active:view==='grid'}" aria-label="网格视图" @click="setView('grid')"><Grid2X2 :size="17"/></button><button :class="{active:view==='list'}" aria-label="列表视图" @click="setView('list')"><List :size="18"/></button></div>
     </section>
 
@@ -154,9 +163,11 @@ onMounted(load)
 
     <input ref="fileInput" hidden type="file" multiple accept=".md,.txt,.png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx" @change="upload"/>
     <BaseDialog :open="!!dialog" :title="dialog==='rename'?'编辑资料':dialog==='folder'?'新建文件夹':'新建 Markdown 笔记'" size="sm" @close="dialog=''">
-      <label class="library-form-field"><span>名称</span><input v-model="formName" autofocus @keydown.enter="submitDialog"/></label>
-      <label v-if="dialog!=='folder'" class="library-form-field"><span>标签</span><input v-model="formTags" placeholder="用逗号分隔，例如：数学, 导数"/></label>
-      <label v-if="dialog==='note'" class="library-review-toggle"><input v-model="formReview" type="checkbox"/>加入复习计划 <small>创建后会进入今日复习队列</small></label>
+      <div class="library-dialog-form">
+        <label class="library-form-field"><span>名称</span><input v-model="formName" autofocus @keydown.enter="submitDialog"/></label>
+        <label v-if="dialog!=='folder'" class="library-form-field"><span>标签</span><input v-model="formTags" placeholder="用逗号分隔，例如：数学, 导数"/></label>
+        <label v-if="dialog==='note'" class="library-review-toggle"><input v-model="formReview" type="checkbox"/><span><strong>加入复习计划</strong><small>创建后会进入今日复习队列</small></span></label>
+      </div>
       <template #footer><button class="lib-btn" @click="dialog=''">取消</button><button class="lib-btn lib-btn--primary" :disabled="busy" @click="submitDialog">{{ busy?'保存中…':'保存' }}</button></template>
     </BaseDialog>
   </div>
