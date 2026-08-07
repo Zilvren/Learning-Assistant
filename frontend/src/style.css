@@ -2111,6 +2111,12 @@
   .learning-heatmap__header .page-eyebrow { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-dark); }
   .learning-heatmap__header h2 { margin-top: 6px; color: var(--ink); font-family: var(--font-display); font-size: clamp(22px, 2.5vw, 29px); font-weight: 850; letter-spacing: -.04em; }
   .learning-heatmap__header p { margin-top: 6px; color: var(--ink-secondary); font-size: 12px; }
+  .learning-heatmap__year-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 12px; }
+  .learning-heatmap__year-picker > span { margin-right: 2px; color: var(--ink-muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+  .learning-heatmap__year-picker button { min-width: 42px; padding: 5px 8px; border: 1px solid transparent; border-radius: 999px; color: var(--ink-secondary); background: color-mix(in srgb, var(--sheet-soft) 78%, transparent); font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; transition: color .16s ease, background .16s ease, border-color .16s ease, transform .16s ease; }
+  .learning-heatmap__year-picker button:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); color: var(--accent-dark); transform: translateY(-1px); }
+  .learning-heatmap__year-picker button.is-active { border-color: color-mix(in srgb, var(--accent) 43%, var(--line)); color: var(--accent-dark); background: var(--accent-soft); box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 13%, transparent); }
+  .learning-heatmap__year-picker button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .learning-heatmap__metrics { display: flex; align-items: stretch; gap: 7px; }
   .learning-heatmap__metric { min-width: 90px; display: grid; grid-template-columns: 16px auto; grid-template-rows: auto auto; column-gap: 5px; align-items: center; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line)); border-radius: 14px; color: var(--accent-dark); background: color-mix(in srgb, var(--accent-soft) 62%, var(--sheet)); }
   .learning-heatmap__metric svg { grid-row: span 2; color: var(--accent); }
@@ -2122,10 +2128,10 @@
   .learning-heatmap__frame::-webkit-scrollbar { height: 0; }
   .learning-heatmap__frame:hover::-webkit-scrollbar, .learning-heatmap__frame:focus-within::-webkit-scrollbar { height: 7px; }
   .learning-heatmap__frame::-webkit-scrollbar-thumb { border-radius: 999px; background: color-mix(in srgb, var(--accent) 62%, transparent); }
-  .learning-heatmap__frame-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 590px; margin-bottom: 12px; color: var(--ink-muted); font-size: 10px; font-weight: 760; letter-spacing: .035em; }
+  .learning-heatmap__frame-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: var(--heatmap-width, 590px); margin-bottom: 12px; color: var(--ink-muted); font-size: 10px; font-weight: 760; letter-spacing: .035em; }
   .learning-heatmap__frame-head > span { display: inline-flex; align-items: center; gap: 6px; }
   .learning-heatmap__frame-head > span i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
-  .learning-heatmap__scroll { width: max-content; min-width: 0; display: grid; grid-template-columns: 21px auto; gap: 9px; margin: 0 auto; outline: none; }
+  .learning-heatmap__scroll { width: max-content; min-width: 0; display: grid; grid-template-columns: 21px auto; gap: 9px; margin: 0; outline: none; }
   .learning-heatmap__scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: 10px; }
   .learning-heatmap__weekday { display: grid; grid-template-rows: 18px repeat(7, 17px); gap: 4px; color: var(--ink-muted); font-size: 9px; line-height: 17px; text-align: right; }
   .learning-heatmap__weekday span:nth-child(1) { grid-row: 2; }
@@ -2138,6 +2144,8 @@
   .learning-heatmap__cell { width: 17px; height: 17px; min-width: 0; padding: 0; border: 1px solid color-mix(in srgb, var(--accent) 10%, var(--line)); border-radius: 5px; background: color-mix(in srgb, var(--accent-soft) 40%, var(--sheet-soft)); cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
   .learning-heatmap__cell:hover, .learning-heatmap__cell:focus-visible { z-index: 1; outline: 2px solid var(--focus); outline-offset: 1px; transform: scale(1.28); box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 18%, transparent); }
   .learning-heatmap__cell.is-selected { outline: 2px solid color-mix(in srgb, var(--ink) 72%, var(--accent)); outline-offset: 2px; transform: scale(1.12); }
+  .learning-heatmap__cell.is-future { border-style: dashed; border-color: color-mix(in srgb, var(--line) 70%, transparent); background: transparent; cursor: default; opacity: .58; }
+  .learning-heatmap__cell.is-future:hover { transform: none; box-shadow: none; }
   .learning-heatmap__cell.level-1, .learning-heatmap__legend .level-1 { border-color: color-mix(in srgb, var(--accent) 26%, transparent); background: color-mix(in srgb, var(--accent) 28%, var(--sheet)); }
   .learning-heatmap__cell.level-2, .learning-heatmap__legend .level-2 { border-color: color-mix(in srgb, var(--accent) 42%, transparent); background: color-mix(in srgb, var(--accent) 52%, var(--sheet)); }
   .learning-heatmap__cell.level-3, .learning-heatmap__legend .level-3 { border-color: color-mix(in srgb, var(--accent) 68%, transparent); background: color-mix(in srgb, var(--accent) 78%, #3f8d70); }
@@ -2157,7 +2165,7 @@
     .learning-heatmap__metrics { width: 100%; }
     .learning-heatmap__metric { flex: 1; }
     .learning-heatmap__frame { padding-inline: 13px; }
-    .learning-heatmap__frame-head { min-width: 590px; }
+    .learning-heatmap__frame-head { min-width: var(--heatmap-width, 590px); }
     .learning-heatmap footer em { display: none; }
   }
   .dashboard-hero {

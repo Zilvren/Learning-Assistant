@@ -129,9 +129,10 @@ type LearningActivityDay struct {
 }
 
 type LearningActivityResponse struct {
-	StartDate  string                `json:"start_date"`
-	EndDate    string                `json:"end_date"`
-	Total      int                   `json:"total"`
-	ActiveDays int                   `json:"active_days"`
-	Days       []LearningActivityDay `json:"days"`
+	StartDate      string                `json:"start_date"`
+	EndDate        string                `json:"end_date"`
+	Total          int                   `json:"total"`
+	ActiveDays     int                   `json:"active_days"`
+	Days           []LearningActivityDay `json:"days"`
+	AvailableYears []int                 `json:"available_years"`
 }

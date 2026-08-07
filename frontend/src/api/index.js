@@ -161,5 +161,5 @@ export const api = {
   deleteError: (id) => request('DELETE', `/errors/${id}`),
   updateError: (id, data) => request('PUT', `/errors/${id}`, data),
   getDailyPush: () => request('GET', '/daily-push'),
-  getLearningActivity: () => request('GET', '/dashboard/activity'),
+  getLearningActivity: (year = null) => request('GET', `/dashboard/activity${year ? `?year=${encodeURIComponent(year)}` : ''}`),
 }

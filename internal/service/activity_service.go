@@ -3,20 +3,28 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	models "study-tracker-go/internal/model"
 )
 
-const activityCalendarDays = 183
-
-func GetLearningActivity(ctx context.Context) (models.LearningActivityResponse, error) {
-	endDate := time.Now().UTC().Truncate(24 * time.Hour)
-	startDate := endDate.AddDate(0, 0, -(activityCalendarDays - 1))
+func GetLearningActivity(ctx context.Context, requestedYear int) (models.LearningActivityResponse, error) {
+	now := time.Now().UTC()
+	currentYear := now.Year()
+	if requestedYear == 0 {
+		requestedYear = currentYear
+	}
+	if requestedYear < 2000 || requestedYear > currentYear {
+		return models.LearningActivityResponse{}, fmt.Errorf("请选择 2000 至 %d 年之间的学习记录", currentYear)
+	}
+	startDate := time.Date(requestedYear, time.January, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(requestedYear, time.December, 31, 0, 0, 0, 0, time.UTC)
 	result := models.LearningActivityResponse{
-		StartDate: startDate.Format(time.DateOnly),
-		EndDate:   endDate.Format(time.DateOnly),
-		Days:      []models.LearningActivityDay{},
+		StartDate:      startDate.Format(time.DateOnly),
+		EndDate:        endDate.Format(time.DateOnly),
+		Days:           []models.LearningActivityDay{},
+		AvailableYears: []int{requestedYear},
 	}
 	if !AuthEnabled() {
 		return result, nil
@@ -55,5 +63,32 @@ func GetLearningActivity(ctx context.Context) (models.LearningActivityResponse, 
 		return result, err
 	}
 	result.ActiveDays = len(result.Days)
+
+	yearRows, err := pool.Query(ctx, `
+		SELECT DISTINCT EXTRACT(YEAR FROM activity_date)::int
+		FROM user_activity_events
+		WHERE user_id = $1
+		ORDER BY 1 DESC
+	`, userID)
+	if err != nil {
+		return result, err
+	}
+	defer yearRows.Close()
+	yearSet := map[int]struct{}{requestedYear: {}}
+	for yearRows.Next() {
+		var year int
+		if err := yearRows.Scan(&year); err != nil {
+			return result, err
+		}
+		yearSet[year] = struct{}{}
+	}
+	if err := yearRows.Err(); err != nil {
+		return result, err
+	}
+	result.AvailableYears = result.AvailableYears[:0]
+	for year := range yearSet {
+		result.AvailableYears = append(result.AvailableYears, year)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(result.AvailableYears)))
 	return result, nil
 }

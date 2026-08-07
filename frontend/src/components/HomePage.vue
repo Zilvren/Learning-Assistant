@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue"
 import { RouterLink } from "vue-router"
-import { BookOpenCheck, CalendarCheck2 } from "lucide-vue-next"
+import { BookOpenCheck, CalendarCheck2, Tags } from "lucide-vue-next"
 import { api } from "../api/index.js"
 import LearningHeatmap from "./dashboard/LearningHeatmap.vue"
 import { useSettings } from "../store/settings.js"
@@ -13,11 +13,24 @@ const notes = ref([])
 const due = ref([])
 const tags = ref([])
 const activity = ref({ days: [], total: 0, active_days: 0 })
+const selectedActivityYear = ref(new Date().getFullYear())
 const loading = ref(true)
 const hour = new Date().getHours()
 const greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好"
 const reviewed = computed(() => notes.value.filter((item) => item.review_enabled && item.review_count > 0).length)
 const commonTags = computed(() => tags.value.slice(0, 8))
+
+async function loadActivity(year = selectedActivityYear.value) {
+  try {
+    activity.value = await api.getLearningActivity(year)
+  } catch (error) { toast.error(error.message || "学习记录加载失败") }
+}
+
+function selectActivityYear(year) {
+  if (year === selectedActivityYear.value) return
+  selectedActivityYear.value = year
+  loadActivity(year)
+}
 
 onMounted(async () => {
   try {
@@ -26,7 +39,7 @@ onMounted(async () => {
       api.getLibraryItems({ kind: "note", query: " " }),
       api.getLibraryReviews(),
       api.getLibraryTags(),
-      api.getLearningActivity(),
+      api.getLearningActivity(selectedActivityYear.value),
     ])
     notes.value = all.items || []
     due.value = reviews.items || []
@@ -48,7 +61,7 @@ onMounted(async () => {
         <article><BookOpenCheck :size="21"/><span>已复习笔记</span><strong>{{ reviewed }}</strong></article>
       </section>
       <section class="home-activity-layout">
-        <LearningHeatmap :activity="activity" />
+        <LearningHeatmap :activity="activity" :selected-year="selectedActivityYear" @select-year="selectActivityYear" />
         <aside class="home-tag-panel">
           <header><div><span class="page-eyebrow"><Tags :size="13" /> 常用标签</span><h2>知识索引</h2><p>按标签快速回到相关笔记</p></div></header>
           <div v-if="commonTags.length" class="library-tags home-tags"><RouterLink v-for="tag in commonTags" :key="tag" :to="{name:'library',query:{tag}}"># {{ tag }}</RouterLink></div>

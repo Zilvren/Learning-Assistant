@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -9,7 +12,20 @@ import (
 )
 
 func GetLearningActivity(c *gin.Context) {
-	result, err := service.GetLearningActivity(c.Request.Context())
+	year := 0
+	if rawYear := strings.TrimSpace(c.Query("year")); rawYear != "" {
+		parsedYear, parseErr := strconv.Atoi(rawYear)
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "年份格式错误"})
+			return
+		}
+		year = parsedYear
+	}
+	if year != 0 && (year < 2000 || year > time.Now().Year()) {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "请选择有效的学习记录年份"})
+		return
+	}
+	result, err := service.GetLearningActivity(c.Request.Context(), year)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err)
 		return
