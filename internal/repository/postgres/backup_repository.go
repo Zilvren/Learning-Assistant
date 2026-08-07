@@ -2,6 +2,9 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -30,11 +33,16 @@ func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) 
 	if err != nil {
 		return base.BackupData{}, err
 	}
+	library, err := r.exportLibrary(ctx)
+	if err != nil {
+		return base.BackupData{}, err
+	}
 	return base.BackupData{
 		Subjects:  &subjects,
 		Errors:    &errors,
 		Config:    &config,
 		Knowledge: &knowledge,
+		Library:   library,
 	}, nil
 }
 
@@ -46,6 +54,14 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 	defer tx.Rollback(ctx)
 
 	errorRepo := &ErrorRepository{store: r.store}
+	if data.Library != nil {
+		// Versions cascade from their items. Clear this before errors so linked
+		// legacy notes are restored from the incoming archive instead of being
+		// removed as a side effect of deleting error_problems.
+		if _, err := tx.Exec(ctx, `DELETE FROM library_items WHERE user_id = $1`, r.store.userID); err != nil {
+			return err
+		}
+	}
 	if data.Errors != nil {
 		if err := errorRepo.clearUserErrors(ctx, tx); err != nil {
 			return err
@@ -82,6 +98,7 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 			return err
 		}
 	}
+	errorIDMap := map[int]int64{}
 	if data.Errors != nil {
 		for _, item := range *data.Errors {
 			normalizeProblem(&item)
@@ -92,6 +109,9 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 			id, err := errorRepo.insertProblem(ctx, tx, item, subjectID, item.ID > 0)
 			if err != nil {
 				return err
+			}
+			if item.ID > 0 {
+				errorIDMap[item.ID] = id
 			}
 			if err := errorRepo.replaceTags(ctx, tx, id, "question", item.Tags); err != nil {
 				return err
@@ -125,7 +145,185 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 			}
 		}
 	}
+	if data.Library != nil {
+		if err := r.importLibrary(ctx, tx, *data.Library, errorIDMap); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
+}
+
+func (r *BackupRepository) exportLibrary(ctx context.Context) (*base.LibraryBackup, error) {
+	library := &base.LibraryBackup{
+		SchemaVersion: 2,
+		NextID:        1,
+		NextVersionID: 1,
+		Items:         []models.LibraryItem{},
+		Versions:      []models.LibraryVersion{},
+	}
+	rows, err := r.store.pool.Query(ctx, "SELECT "+libraryColumns+" FROM library_items WHERE user_id = $1 ORDER BY id", r.store.userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		item, scanErr := scanLibraryRows(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		library.Items = append(library.Items, item)
+		if item.ID >= library.NextID {
+			library.NextID = item.ID + 1
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	versionRows, err := r.store.pool.Query(ctx, `
+		SELECT id, item_id, version, blob_hash, file_size, created_at
+		FROM library_versions
+		WHERE user_id = $1
+		ORDER BY id
+	`, r.store.userID)
+	if err != nil {
+		return nil, err
+	}
+	defer versionRows.Close()
+	for versionRows.Next() {
+		var version models.LibraryVersion
+		if err := versionRows.Scan(&version.ID, &version.ItemID, &version.Version, &version.BlobHash, &version.Size, &version.CreatedAt); err != nil {
+			return nil, err
+		}
+		library.Versions = append(library.Versions, version)
+		if version.ID >= library.NextVersionID {
+			library.NextVersionID = version.ID + 1
+		}
+	}
+	if err := versionRows.Err(); err != nil {
+		return nil, err
+	}
+	return library, nil
+}
+
+func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library base.LibraryBackup, errorIDMap map[int]int64) error {
+	items := append([]models.LibraryItem(nil), library.Items...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	itemIDMap := make(map[int64]int64, len(items))
+	remaining := append([]models.LibraryItem(nil), items...)
+
+	for len(remaining) > 0 {
+		next := remaining[:0]
+		inserted := false
+		for _, item := range remaining {
+			if item.ID <= 0 {
+				return fmt.Errorf("资料库备份包含无效项目 ID")
+			}
+			if _, exists := itemIDMap[item.ID]; exists {
+				return fmt.Errorf("资料库备份包含重复项目 ID：%d", item.ID)
+			}
+			if !validBackupLibraryKind(item.Kind) {
+				return fmt.Errorf("资料库备份包含无效项目类型：%s", item.Kind)
+			}
+			var parentID any
+			if item.ParentID != nil {
+				mappedParent, ok := itemIDMap[*item.ParentID]
+				if !ok {
+					next = append(next, item)
+					continue
+				}
+				parentID = mappedParent
+			}
+
+			createdAt := backupLibraryTimestamp(item.CreatedAt)
+			updatedAt := backupLibraryTimestamp(item.UpdatedAt)
+			currentVersion := item.CurrentVersion
+			if currentVersion < 0 {
+				currentVersion = 0
+			}
+			fileSize := item.Size
+			if fileSize < 0 {
+				fileSize = 0
+			}
+			var errorProblemID any
+			if item.ErrorProblemID != nil {
+				if mappedErrorID, ok := errorIDMap[*item.ErrorProblemID]; ok {
+					errorProblemID = mappedErrorID
+				}
+			}
+			var newID int64
+			err := tx.QueryRow(ctx, `
+				INSERT INTO library_items (
+					user_id, parent_id, kind, name, mime_type, file_size, tags, pinned,
+					current_version, error_problem_id, blob_hash, review_enabled,
+					review_count, review_stage, last_review, next_review, created_at,
+					updated_at, deleted_at
+				)
+				VALUES (
+					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+					$13, $14, $15, $16, $17, $18, $19
+				)
+				RETURNING id
+			`, r.store.userID, parentID, item.Kind, item.Name, item.MimeType, fileSize,
+				normalizeLibraryTags(item.Tags), item.Pinned, currentVersion, errorProblemID,
+				item.BlobHash, item.ReviewEnabled, item.ReviewCount, item.ReviewStage,
+				item.LastReview, item.NextReview, createdAt, updatedAt, item.DeletedAt,
+			).Scan(&newID)
+			if err != nil {
+				return err
+			}
+			itemIDMap[item.ID] = newID
+			inserted = true
+		}
+		if !inserted {
+			return fmt.Errorf("资料库备份存在缺失或循环的文件夹层级")
+		}
+		remaining = next
+	}
+
+	for _, item := range items {
+		if item.OriginalParent == nil {
+			continue
+		}
+		newID := itemIDMap[item.ID]
+		if originalParentID, ok := itemIDMap[*item.OriginalParent]; ok {
+			if _, err := tx.Exec(ctx, `UPDATE library_items SET original_parent_id = $3 WHERE user_id = $1 AND id = $2`, r.store.userID, newID, originalParentID); err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, version := range library.Versions {
+		itemID, ok := itemIDMap[version.ItemID]
+		if !ok {
+			return fmt.Errorf("资料库备份版本引用了不存在的项目：%d", version.ItemID)
+		}
+		if version.Version <= 0 {
+			return fmt.Errorf("资料库备份包含无效版本号")
+		}
+		fileSize := version.Size
+		if fileSize < 0 {
+			fileSize = 0
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO library_versions (user_id, item_id, version, blob_hash, file_size, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, r.store.userID, itemID, version.Version, version.BlobHash, fileSize, backupLibraryTimestamp(version.CreatedAt)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validBackupLibraryKind(kind string) bool {
+	return kind == "folder" || kind == "note" || kind == "file" || kind == "error"
+}
+
+func backupLibraryTimestamp(value time.Time) time.Time {
+	if value.IsZero() {
+		return time.Now().UTC()
+	}
+	return value
 }
 
 func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
@@ -139,6 +337,8 @@ func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
 			SELECT 1 FROM user_settings WHERE user_id = $1
 			UNION ALL
 			SELECT 1 FROM knowledge_items WHERE user_id = $1 AND deleted_at IS NULL
+			UNION ALL
+			SELECT 1 FROM library_items WHERE user_id = $1
 		)
 	`, r.store.userID).Scan(&exists)
 	return exists, err

@@ -53,9 +53,9 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 	if err != nil {
 		return ImportBackupResult{}, err
 	}
-	if err := repos.Backup.Import(ctx, data); err != nil {
-		return ImportBackupResult{}, err
-	}
+	// Blob files live outside PostgreSQL. Store and verify them before creating
+	// database rows that reference their hashes, so a failed blob never leaves
+	// an imported note or file unreadable.
 	for expected, body := range data.Blobs {
 		actual, _, blobErr := store.StoreBlob(bytes.NewReader(body))
 		if blobErr != nil {
@@ -65,8 +65,13 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 			return ImportBackupResult{}, fmt.Errorf("Blob 校验失败：%s", expected)
 		}
 	}
-	if len(data.LibraryJSON) > 0 {
-		if err := store.SaveJSON("library.json", json.RawMessage(data.LibraryJSON)); err != nil {
+	if err := repos.Backup.Import(ctx, data); err != nil {
+		return ImportBackupResult{}, err
+	}
+	// JSON mode keeps its library index in library.json. PostgreSQL mode
+	// restores it through BackupRepository.Import into library_items instead.
+	if data.Library != nil && currentConfig().StorageDriver != "postgres" {
+		if err := store.SaveJSON("library.json", data.Library); err != nil {
 			return ImportBackupResult{}, err
 		}
 	}
@@ -99,25 +104,32 @@ func loadBackupData(ctx context.Context) (store.BackupData, error) {
 	if err != nil {
 		return data, err
 	}
-	if raw, readErr := os.ReadFile(filepath.Join(store.DataDir(), "library.json")); readErr == nil {
-		data.LibraryJSON = raw
+	if data.Library != nil {
 		data.Blobs = map[string][]byte{}
-		_ = filepath.WalkDir(filepath.Join(store.DataDir(), "blobs"), func(path string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil || entry.IsDir() || strings.Contains(path, string(filepath.Separator)+".tmp"+string(filepath.Separator)) {
-				return nil
+		for hash := range libraryBlobHashes(*data.Library) {
+			body, readErr := store.ReadBlob(hash)
+			if readErr != nil {
+				return data, fmt.Errorf("读取资料附件失败：%s", hash)
 			}
-			name := entry.Name()
-			if len(name) != 64 {
-				return nil
-			}
-			body, e := os.ReadFile(path)
-			if e == nil {
-				data.Blobs[name] = body
-			}
-			return nil
-		})
+			data.Blobs[hash] = body
+		}
 	}
 	return data, nil
+}
+
+func libraryBlobHashes(library store.LibraryBackup) map[string]struct{} {
+	hashes := map[string]struct{}{}
+	for _, item := range library.Items {
+		if len(item.BlobHash) == 64 {
+			hashes[item.BlobHash] = struct{}{}
+		}
+	}
+	for _, version := range library.Versions {
+		if len(version.BlobHash) == 64 {
+			hashes[version.BlobHash] = struct{}{}
+		}
+	}
+	return hashes
 }
 
 func encodeBackupZip(data store.BackupData) ([]byte, error) {
@@ -147,13 +159,8 @@ func encodeBackupZip(data store.BackupData) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if len(data.LibraryJSON) > 0 {
-		w, err := zw.Create("library.json")
-		if err != nil {
-			zw.Close()
-			return nil, err
-		}
-		if _, err = w.Write(data.LibraryJSON); err != nil {
+	if data.Library != nil {
+		if err := writeBackupJSON(zw, "library.json", data.Library); err != nil {
 			zw.Close()
 			return nil, err
 		}
@@ -286,11 +293,17 @@ func decodeBackupJSON(name string, raw []byte, data *store.BackupData) error {
 		}
 		data.Knowledge = &knowledge
 	case "library.json":
-		var value interface{}
-		if err := json.Unmarshal(raw, &value); err != nil {
+		var library store.LibraryBackup
+		if err := json.Unmarshal(raw, &library); err != nil {
 			return fmt.Errorf("library.json 不是有效 JSON 文件")
 		}
-		data.LibraryJSON = append([]byte(nil), raw...)
+		if library.Items == nil {
+			library.Items = []models.LibraryItem{}
+		}
+		if library.Versions == nil {
+			library.Versions = []models.LibraryVersion{}
+		}
+		data.Library = &library
 	}
 	return nil
 }

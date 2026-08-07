@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	models "study-tracker-go/internal/model"
@@ -119,12 +118,23 @@ type OCRTaskRepository interface {
 }
 
 type BackupData struct {
-	Errors      *[]models.ErrorProblem
-	Subjects    *[]string
-	Config      *models.Config
-	Knowledge   *map[string][]string
-	LibraryJSON json.RawMessage
-	Blobs       map[string][]byte
+	Errors    *[]models.ErrorProblem
+	Subjects  *[]string
+	Config    *models.Config
+	Knowledge *map[string][]string
+	Library   *LibraryBackup
+	Blobs     map[string][]byte
+}
+
+// LibraryBackup is the portable representation stored in library.json inside
+// a backup archive. Item and version IDs describe relationships within the
+// archive only; repositories allocate new database IDs during import.
+type LibraryBackup struct {
+	SchemaVersion int                     `json:"schema_version"`
+	NextID        int64                   `json:"next_id"`
+	NextVersionID int64                   `json:"next_version_id"`
+	Items         []models.LibraryItem    `json:"items"`
+	Versions      []models.LibraryVersion `json:"versions"`
 }
 
 type BackupRepository interface {

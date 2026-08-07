@@ -44,6 +44,7 @@ func run(dataDir string, databaseURL string, username string, dryRun bool, repla
 	subjectCount := 0
 	errorCount := 0
 	knowledgeCount := 0
+	libraryCount := 0
 	if data.Subjects != nil {
 		subjectCount = len(*data.Subjects)
 	}
@@ -55,8 +56,11 @@ func run(dataDir string, databaseURL string, username string, dryRun bool, repla
 			knowledgeCount += len(items)
 		}
 	}
+	if data.Library != nil {
+		libraryCount = len(data.Library.Items)
+	}
 
-	fmt.Printf("准备导入：subjects=%d errors=%d knowledge_items=%d\n", subjectCount, errorCount, knowledgeCount)
+	fmt.Printf("准备导入：subjects=%d errors=%d knowledge_items=%d library_items=%d\n", subjectCount, errorCount, knowledgeCount, libraryCount)
 	if dryRun {
 		fmt.Println("dry-run 已完成，未写入数据库")
 		return nil

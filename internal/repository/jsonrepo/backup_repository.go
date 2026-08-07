@@ -18,6 +18,13 @@ func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) 
 		errors := []models.ErrorProblem{}
 		var config models.Config
 		knowledge := map[string][]string{}
+		library := base.LibraryBackup{
+			SchemaVersion: librarySchemaVersion,
+			NextID:        1,
+			NextVersionID: 1,
+			Items:         []models.LibraryItem{},
+			Versions:      []models.LibraryVersion{},
+		}
 		if err := tx.Load("subjects.json", &subjects); err != nil {
 			return err
 		}
@@ -30,11 +37,15 @@ func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) 
 		if err := tx.Load("knowledge.json", &knowledge); err != nil {
 			return err
 		}
+		if err := tx.Load("library.json", &library); err != nil {
+			return err
+		}
 		result = base.BackupData{
 			Subjects:  &subjects,
 			Errors:    &errors,
 			Config:    &config,
 			Knowledge: &knowledge,
+			Library:   &library,
 		}
 		return nil
 	})

@@ -210,3 +210,74 @@ func TestPostgresImportAllowsDuplicateLegacyIDsAcrossUsers(t *testing.T) {
 		t.Fatalf("expected duplicate legacy id to be regenerated, got %d", imported[0].ID)
 	}
 }
+
+func TestPostgresBackupImportRestoresLibraryItemsAndVersions(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+
+	ctx := context.Background()
+	pool, err := NewPool(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	var userID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (username, password_hash, status)
+		VALUES ($1, 'test-only', 'active')
+		RETURNING id
+	`, fmt.Sprintf("library_backup_%d", time.Now().UnixNano())).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, userID)
+	})
+
+	folderID, noteID := int64(41), int64(42)
+	hash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	repos := NewRepositories(pool, userID)
+	data := base.BackupData{Library: &base.LibraryBackup{
+		SchemaVersion: 2,
+		Items: []models.LibraryItem{
+			{ID: folderID, Kind: "folder", Name: "微积分", Tags: []string{"数学"}},
+			{ID: noteID, ParentID: &folderID, Kind: "note", Name: "极限笔记", MimeType: "text/markdown", Size: 12, Tags: []string{"极限"}, CurrentVersion: 1, BlobHash: hash, ReviewEnabled: true},
+		},
+		Versions: []models.LibraryVersion{{ID: 9, ItemID: noteID, Version: 1, BlobHash: hash, Size: 12}},
+	}}
+	if err := repos.Backup.Import(ctx, data); err != nil {
+		t.Fatal(err)
+	}
+
+	roots, err := repos.Library.List(ctx, base.LibraryFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roots) != 1 || roots[0].Name != "微积分" {
+		t.Fatalf("unexpected restored library roots: %#v", roots)
+	}
+	children, err := repos.Library.List(ctx, base.LibraryFilter{ParentID: &roots[0].ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 1 || children[0].Name != "极限笔记" || children[0].BlobHash != hash {
+		t.Fatalf("unexpected restored library children: %#v", children)
+	}
+	versions, err := repos.Library.Versions(ctx, children[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) != 1 || versions[0].Version != 1 || versions[0].BlobHash != hash {
+		t.Fatalf("unexpected restored library versions: %#v", versions)
+	}
+
+	exported, err := repos.Backup.Export(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.Library == nil || len(exported.Library.Items) != 2 || len(exported.Library.Versions) != 1 {
+		t.Fatalf("library was not included in backup export: %#v", exported.Library)
+	}
+}
