@@ -1,4 +1,4 @@
-name: CI
+name: CI and Deploy
 
 on:
   push:
@@ -45,3 +45,24 @@ jobs:
 
       - name: Build Updater
         run: go build -o dist/Updater.exe ./cmd/updater
+
+  deploy:
+    name: Deploy to production
+    needs: test-and-build
+    # Never run repository pull-request code on the production server.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    concurrency:
+      group: learning-assistant-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@v4
+
+      - name: Deploy application
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/deploy/deploy-from-runner.sh" "$GITHUB_WORKSPACE"
