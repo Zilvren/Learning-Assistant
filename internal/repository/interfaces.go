@@ -38,6 +38,7 @@ type LibraryRepository interface {
 	Trash(ctx context.Context, id int64) error
 	Restore(ctx context.Context, id int64) (models.LibraryItem, error)
 	Purge(ctx context.Context, id int64) error
+	Batch(ctx context.Context, action string, ids []int64, parentID *int64) error
 	Duplicate(ctx context.Context, id int64, parentID *int64) (models.LibraryItem, error)
 	Versions(ctx context.Context, id int64) ([]models.LibraryVersion, error)
 	RestoreVersion(ctx context.Context, id, versionID int64) (models.LibraryItem, error)

@@ -21,7 +21,7 @@ func LocalCORS() gin.HandlerFunc {
 		if origin == "http://127.0.0.1:5173" || origin == "http://localhost:5173" {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
 		if c.Request.Method == http.MethodOptions {

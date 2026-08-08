@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -22,25 +21,28 @@ func ExportBackup(c *gin.Context) {
 
 func ImportBackup(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.BackupMaxUploadSize)
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil || len(body) == 0 {
+	result, err := service.ImportBackupReader(c.Request.Context(), c.Request.Body)
+	if err != nil {
 		var sizeErr *http.MaxBytesError
 		if errors.As(err, &sizeErr) {
-			c.JSON(http.StatusBadRequest, gin.H{"detail": "备份文件不能超过 50MB"})
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "备份文件不能超过 512MB"})
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "备份文件不能为空"})
+		respondError(c, http.StatusBadRequest, err)
 		return
 	}
+	respondImportedBackup(c, result, nil)
+}
 
-	result, err := service.ImportBackupZip(c.Request.Context(), body)
+func respondImportedBackup(c *gin.Context, result service.ImportBackupResult, err error) {
 	if err != nil {
 		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "备份导入成功",
-		"files":    result.Files,
-		"snapshot": result.Snapshot,
+		"message":       "备份导入成功",
+		"files":         result.Files,
+		"snapshot":      result.Snapshot,
+		"library_items": result.LibraryItems,
 	})
 }

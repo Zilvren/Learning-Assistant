@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type LibraryItem struct {
 	ID             int64      `json:"id"`
@@ -41,15 +44,50 @@ type CreateLibraryItemRequest struct {
 	MimeType      string   `json:"mime_type"`
 	Tags          []string `json:"tags"`
 	ReviewEnabled bool     `json:"review_enabled"`
+	// ErrorProblemID is reserved for the internal legacy-error bridge.  It must
+	// never be accepted from the public create-item API.
+	ErrorProblemID *int `json:"-"`
 }
 
 type UpdateLibraryItemRequest struct {
-	Name          *string   `json:"name"`
-	Tags          *[]string `json:"tags"`
-	Pinned        *bool     `json:"pinned"`
-	ParentID      *int64    `json:"parent_id"`
-	Conflict      string    `json:"conflict"`
-	ReviewEnabled *bool     `json:"review_enabled"`
+	Name     *string   `json:"name"`
+	Tags     *[]string `json:"tags"`
+	Pinned   *bool     `json:"pinned"`
+	ParentID *int64    `json:"parent_id"`
+	// ParentSet distinguishes an omitted parent_id from an explicit JSON null.
+	// The latter means “move to the root folder”.
+	ParentSet     bool   `json:"-"`
+	Conflict      string `json:"conflict"`
+	ReviewEnabled *bool  `json:"review_enabled"`
+}
+
+func (r *UpdateLibraryItemRequest) UnmarshalJSON(data []byte) error {
+	type request struct {
+		Name          *string         `json:"name"`
+		Tags          *[]string       `json:"tags"`
+		Pinned        *bool           `json:"pinned"`
+		ParentID      json.RawMessage `json:"parent_id"`
+		Conflict      string          `json:"conflict"`
+		ReviewEnabled *bool           `json:"review_enabled"`
+	}
+	var raw request
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.Name, r.Tags, r.Pinned = raw.Name, raw.Tags, raw.Pinned
+	r.Conflict, r.ReviewEnabled = raw.Conflict, raw.ReviewEnabled
+	r.ParentID, r.ParentSet = nil, false
+	if raw.ParentID != nil {
+		r.ParentSet = true
+		if string(raw.ParentID) != "null" {
+			var parent int64
+			if err := json.Unmarshal(raw.ParentID, &parent); err != nil {
+				return err
+			}
+			r.ParentID = &parent
+		}
+	}
+	return nil
 }
 
 type SaveLibraryContentRequest struct {

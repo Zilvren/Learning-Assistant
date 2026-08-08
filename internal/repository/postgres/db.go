@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	base "study-tracker-go/internal/repository"
+	"study-tracker-go/migrations"
 )
 
 type Store struct {
@@ -40,15 +41,10 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 		pool.Close()
 		return nil, err
 	}
-	if err := EnsureEmailVerificationSchema(ctx, pool); err != nil {
+	if err := ApplyMigrations(ctx, pool, migrations.FS); err != nil {
 		pool.Close()
 		return nil, err
 	}
-	if err := EnsureActivitySchema(ctx, pool); err != nil {
-		pool.Close()
-		return nil, err
-	}
-
 	return pool, nil
 }
 

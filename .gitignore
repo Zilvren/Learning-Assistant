@@ -1,4 +1,5 @@
 /data/
+/internal/repository/postgres/data/
 /dist/
 /.tools/
 /tmp/
@@ -9,6 +10,7 @@
 /frontend/vite_err.log
 /.env
 /.env.local
+/deploy/.env
 /push.bat
 /push.ps1
 /TUTORIAL.review.md

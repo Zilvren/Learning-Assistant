@@ -32,6 +32,15 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	where := []string{"user_id=$1"}
 	if f.Trashed {
 		where = append(where, "deleted_at IS NOT NULL")
+		if f.ParentID == nil {
+			where = append(where, `NOT EXISTS (
+				SELECT 1
+				FROM library_items parent
+				WHERE parent.user_id = library_items.user_id
+				  AND parent.id = library_items.parent_id
+				  AND parent.deleted_at IS NOT NULL
+			)`)
+		}
 	} else {
 		where = append(where, "deleted_at IS NULL")
 	}
@@ -110,7 +119,7 @@ func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibrary
 		nextReview = time.Now().Format("2006-01-02")
 	}
 	tags := normalizeLibraryTags(req.Tags)
-	out, err = scanLibrary(tx.QueryRow(ctx, "INSERT INTO library_items(user_id,parent_id,kind,name,mime_type,file_size,tags,current_version,blob_hash,review_enabled,next_review) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "+libraryColumns, r.store.userID, req.ParentID, req.Kind, name, req.MimeType, size, tags, boolInt(req.Kind != "folder"), hash, req.ReviewEnabled, nextReview))
+	out, err = scanLibrary(tx.QueryRow(ctx, "INSERT INTO library_items(user_id,parent_id,kind,name,mime_type,file_size,tags,current_version,blob_hash,review_enabled,next_review,error_problem_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING "+libraryColumns, r.store.userID, req.ParentID, req.Kind, name, req.MimeType, size, tags, boolInt(req.Kind != "folder"), hash, req.ReviewEnabled, nextReview, req.ErrorProblemID))
 	if err != nil {
 		return out, err
 	}
@@ -167,16 +176,20 @@ func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.Upd
 			item.NextReview = time.Now().Format("2006-01-02")
 		}
 	}
-	if req.ParentID != nil {
-		var invalid bool
-		err = r.store.pool.QueryRow(ctx, `WITH RECURSIVE tree AS (SELECT id FROM library_items WHERE user_id=$1 AND id=$2 UNION ALL SELECT c.id FROM library_items c JOIN tree p ON c.parent_id=p.id WHERE c.user_id=$1) SELECT NOT EXISTS(SELECT 1 FROM library_items WHERE user_id=$1 AND id=$3 AND kind='folder' AND deleted_at IS NULL) OR EXISTS(SELECT 1 FROM tree WHERE id=$3)`, r.store.userID, id, *req.ParentID).Scan(&invalid)
-		if err != nil {
-			return item, err
+	if req.ParentSet || req.ParentID != nil {
+		if req.ParentID == nil {
+			item.ParentID = nil
+		} else {
+			var invalid bool
+			err = r.store.pool.QueryRow(ctx, `WITH RECURSIVE tree AS (SELECT id FROM library_items WHERE user_id=$1 AND id=$2 UNION SELECT c.id FROM library_items c JOIN tree p ON c.parent_id=p.id WHERE c.user_id=$1) SELECT NOT EXISTS(SELECT 1 FROM library_items WHERE user_id=$1 AND id=$3 AND kind='folder' AND deleted_at IS NULL) OR EXISTS(SELECT 1 FROM tree WHERE id=$3)`, r.store.userID, id, *req.ParentID).Scan(&invalid)
+			if err != nil {
+				return item, err
+			}
+			if invalid {
+				return item, fmt.Errorf("不能移动到自身或子文件夹")
+			}
+			item.ParentID = req.ParentID
 		}
-		if invalid {
-			return item, fmt.Errorf("不能移动到自身或子文件夹")
-		}
-		item.ParentID = req.ParentID
 	}
 	item.Name, err = r.uniqueName(ctx, r.store.pool, item.ParentID, item.Name, id)
 	if err != nil {
@@ -253,6 +266,171 @@ func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
 	_, err := r.store.pool.Exec(ctx, "WITH RECURSIVE tree AS (SELECT id FROM library_items WHERE user_id=$1 AND id=$2 AND deleted_at IS NOT NULL UNION ALL SELECT c.id FROM library_items c JOIN tree p ON c.parent_id=p.id WHERE c.user_id=$1) DELETE FROM library_items WHERE id IN(SELECT id FROM tree)", r.store.userID, id)
 	return err
 }
+
+type batchLibraryItem struct {
+	ID        int64
+	ParentID  *int64
+	Kind      string
+	DeletedAt *time.Time
+}
+
+// Batch performs all validation and mutations inside one database transaction.
+// A failed member therefore never leaves a partially moved, restored, or
+// deleted selection behind.
+func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int64, parentID *int64) error {
+	ids = uniqueLibraryIDs(ids)
+	if len(ids) == 0 {
+		return fmt.Errorf("至少选择一项资料")
+	}
+	tx, err := r.store.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, "SELECT id,parent_id,kind,deleted_at FROM library_items WHERE user_id=$1 AND id=ANY($2) FOR UPDATE", r.store.userID, ids)
+	if err != nil {
+		return err
+	}
+	items := make(map[int64]batchLibraryItem, len(ids))
+	for rows.Next() {
+		var item batchLibraryItem
+		if err = rows.Scan(&item.ID, &item.ParentID, &item.Kind, &item.DeletedAt); err != nil {
+			rows.Close()
+			return err
+		}
+		items[item.ID] = item
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if len(items) != len(ids) {
+		return fmt.Errorf("所选资料不存在或无权操作")
+	}
+
+	roots := batchLibraryRoots(ids, items)
+	switch action {
+	case "trash":
+		for _, id := range roots {
+			if items[id].DeletedAt != nil {
+				return fmt.Errorf("所选资料已在回收站中")
+			}
+		}
+		_, err = tx.Exec(ctx, `WITH RECURSIVE tree AS (
+			SELECT id FROM library_items WHERE user_id=$1 AND id=ANY($2)
+			UNION
+			SELECT child.id FROM library_items child JOIN tree parent ON child.parent_id=parent.id WHERE child.user_id=$1
+		) UPDATE library_items SET original_parent_id=COALESCE(original_parent_id,parent_id), deleted_at=now(), updated_at=now() WHERE user_id=$1 AND id IN(SELECT id FROM tree)`, r.store.userID, roots)
+	case "restore":
+		for _, id := range roots {
+			if items[id].DeletedAt == nil {
+				return fmt.Errorf("所选资料不在回收站中")
+			}
+		}
+		_, err = tx.Exec(ctx, `WITH RECURSIVE tree AS (
+			SELECT id FROM library_items WHERE user_id=$1 AND id=ANY($2)
+			UNION
+			SELECT child.id FROM library_items child JOIN tree parent ON child.parent_id=parent.id WHERE child.user_id=$1
+		) UPDATE library_items SET parent_id=COALESCE(original_parent_id,parent_id), original_parent_id=NULL, deleted_at=NULL, updated_at=now() WHERE user_id=$1 AND id IN(SELECT id FROM tree)`, r.store.userID, roots)
+	case "purge":
+		for _, id := range roots {
+			if items[id].DeletedAt == nil {
+				return fmt.Errorf("只能永久删除回收站中的资料")
+			}
+		}
+		_, err = tx.Exec(ctx, `WITH RECURSIVE tree AS (
+			SELECT id FROM library_items WHERE user_id=$1 AND id=ANY($2) AND deleted_at IS NOT NULL
+			UNION
+			SELECT child.id FROM library_items child JOIN tree parent ON child.parent_id=parent.id WHERE child.user_id=$1
+		) DELETE FROM library_items WHERE user_id=$1 AND id IN(SELECT id FROM tree)`, r.store.userID, roots)
+	case "move":
+		for _, id := range roots {
+			if items[id].DeletedAt != nil {
+				return fmt.Errorf("不能移动回收站中的资料")
+			}
+		}
+		if parentID != nil {
+			var targetIsFolder bool
+			if err = tx.QueryRow(ctx, "SELECT kind='folder' AND deleted_at IS NULL FROM library_items WHERE user_id=$1 AND id=$2", r.store.userID, *parentID).Scan(&targetIsFolder); err != nil || !targetIsFolder {
+				if err == pgx.ErrNoRows {
+					return fmt.Errorf("目标文件夹不存在")
+				}
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("目标不是可用文件夹")
+			}
+			var intoOwnTree bool
+			err = tx.QueryRow(ctx, `WITH RECURSIVE tree AS (
+				SELECT id FROM library_items WHERE user_id=$1 AND id=ANY($2)
+				UNION
+				SELECT child.id FROM library_items child JOIN tree parent ON child.parent_id=parent.id WHERE child.user_id=$1
+			) SELECT EXISTS(SELECT 1 FROM tree WHERE id=$3)`, r.store.userID, roots, *parentID).Scan(&intoOwnTree)
+			if err != nil {
+				return err
+			}
+			if intoOwnTree {
+				return fmt.Errorf("不能移动到自身或子文件夹")
+			}
+		}
+		for _, id := range roots {
+			item, readErr := scanLibrary(tx.QueryRow(ctx, "SELECT "+libraryColumns+" FROM library_items WHERE user_id=$1 AND id=$2 FOR UPDATE", r.store.userID, id))
+			if readErr != nil {
+				return readErr
+			}
+			name, nameErr := r.uniqueName(ctx, tx, parentID, item.Name, id)
+			if nameErr != nil {
+				return nameErr
+			}
+			if _, err = tx.Exec(ctx, "UPDATE library_items SET parent_id=$3,name=$4,updated_at=now() WHERE user_id=$1 AND id=$2", r.store.userID, id, parentID, name); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("不支持的批量操作")
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func uniqueLibraryIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func batchLibraryRoots(ids []int64, items map[int64]batchLibraryItem) []int64 {
+	roots := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		isChild := false
+		for parentID := items[id].ParentID; parentID != nil; {
+			parent, selected := items[*parentID]
+			if !selected {
+				break
+			}
+			isChild = true
+			parentID = parent.ParentID
+		}
+		if !isChild {
+			roots = append(roots, id)
+		}
+	}
+	return roots
+}
 func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parent *int64) (models.LibraryItem, error) {
 	b, x, e := r.ReadContent(ctx, id)
 	if e != nil {
@@ -318,7 +496,8 @@ func (r *LibraryRepository) EnsureLegacy(ctx context.Context, errs []models.Erro
 			nextReview = time.Now().Format("2006-01-02")
 		}
 		if err == pgx.ErrNoRows {
-			item, createErr := r.Create(ctx, models.CreateLibraryItemRequest{Kind: "note", Name: name, MimeType: "text/markdown; charset=utf-8", Tags: tags, ReviewEnabled: true}, body)
+			errorID := p.ID
+			item, createErr := r.Create(ctx, models.CreateLibraryItemRequest{Kind: "note", Name: name, MimeType: "text/markdown; charset=utf-8", Tags: tags, ReviewEnabled: true, ErrorProblemID: &errorID}, body)
 			if createErr != nil {
 				return createErr
 			}

@@ -50,7 +50,7 @@ func DataDir() string {
 	dataDirMu.RLock()
 	dir := normalizeDataDir(dataDir)
 	dataDirMu.RUnlock()
-	_ = os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0700)
 	return dir
 }
 
@@ -60,7 +60,7 @@ func Path(filename string) string {
 
 func StoreBlob(r io.Reader) (string, int64, error) {
 	tmpDir := filepath.Join(DataDir(), "blobs", ".tmp")
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0700); err != nil {
 		return "", 0, err
 	}
 	tmp, err := os.CreateTemp(tmpDir, "blob-*")
@@ -87,7 +87,7 @@ func StoreBlob(r io.Reader) (string, int64, error) {
 	if _, err := os.Stat(target); err == nil {
 		return hash, size, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 		return "", 0, err
 	}
 	if err := replaceFileAtomic(tmpPath, target); err != nil {
@@ -156,7 +156,7 @@ func (s *JSONStore) withLock(ctx context.Context, write bool, fn func(*JSONTx) e
 		defer s.local.RUnlock()
 	}
 
-	if err := os.MkdirAll(s.dir, 0755); err != nil {
+	if err := os.MkdirAll(s.dir, 0700); err != nil {
 		return err
 	}
 	release, err := acquireFileLock(waitCtx, filepath.Join(s.dir, ".tracker-data.lock"), write)
@@ -239,7 +239,7 @@ func (tx *JSONTx) Save(filename string, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(path, data, 0644)
+	return writeFileAtomic(path, data, 0600)
 }
 
 func (tx *JSONTx) path(filename string) (string, error) {
@@ -251,7 +251,7 @@ func (tx *JSONTx) path(filename string) (string, error) {
 
 func writeFileAtomic(target string, data []byte, mode os.FileMode) (err error) {
 	dir := filepath.Dir(target)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(target)+".tmp-*")

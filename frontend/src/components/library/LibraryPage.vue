@@ -15,8 +15,13 @@ const currentFolder = ref(null); const breadcrumbs = ref([]); const selected = r
 const dialog = ref(""); const formName = ref(""); const formTags = ref(""); const formReview = ref(false); const editing = ref(null); const busy = ref(false); const deleting = ref(false)
 const notePreviews = ref({}); const previewLoading = ref(new Set()); const previewErrors = ref(new Set())
 const activeFilter = ref("")
-const folderId = computed(() => props.trash ? null : Number(props.folderId || route.params.folderId || 0) || null)
-const title = computed(() => props.trash ? "回收站" : currentFolder.value?.name || "我的资料库")
+let loadVersion = 0
+const folderId = computed(() => Number(props.folderId || route.params.folderId || 0) || null)
+const title = computed(() => currentFolder.value?.name || (props.trash ? "回收站" : "我的资料库"))
+const description = computed(() => {
+  if (!props.trash) return "用文件夹和标签整理笔记与学习文件。"
+  return folderId.value ? "文件夹内容仍在回收站中，可随文件夹一起恢复或永久删除。" : "删除内容保留 30 天；文件夹及其内容会作为一个项目恢复或永久删除。"
+})
 const kindOptions = [{ value:"all", label:"全部类型" }, { value:"folder", label:"文件夹" }, { value:"note", label:"笔记" }, { value:"file", label:"文件" }]
 const tagOptions = computed(() => [{ value:"", label:"全部标签" }, ...tags.value.map((value) => ({ value, label:`# ${value}` }))])
 const kindLabel = computed(() => kindOptions.find((option) => option.value === kind.value)?.label || "全部类型")
@@ -24,7 +29,8 @@ const tagLabel = computed(() => tagOptions.value.find((option) => option.value =
 
 function itemIcon(item) { return item.kind === "folder" ? Folder : item.kind === "note" ? FileText : File }
 function formatSize(size) { if (!size) return "—"; if (size < 1024) return `${size} B`; if (size < 1048576) return `${(size/1024).toFixed(1)} KB`; return `${(size/1048576).toFixed(1)} MB` }
-function formatDate(value) { return value ? new Date(value).toLocaleString("zh-CN", { month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }) : "" }
+function formatDate(value) { return value ? new Date(value).toLocaleString("zh-CN", { month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }) : "—" }
+function creationDate(item) { return formatDate(item.created_at || item.updated_at) }
 
 async function loadNotePreview(item) {
   if (item.kind !== "note" || view.value !== "grid" || Object.hasOwn(notePreviews.value, item.id) || previewLoading.value.has(item.id)) return
@@ -40,26 +46,53 @@ async function loadNotePreview(item) {
 }
 
 async function load() {
+  const requestVersion = ++loadVersion
   loading.value = true
   try {
+    let folder = null
+    if (folderId.value) {
+      try {
+        folder = await api.getLibraryItem(folderId.value)
+      } catch {
+        // Backup restoration assigns fresh database IDs. A stale folder URL
+        // must never make a populated library look empty.
+        if (requestVersion === loadVersion) {
+          await router.replace({ name: props.trash ? "trash" : "library", query: route.query })
+        }
+        return
+      }
+    }
     const result = await api.getLibraryItems({ parentId: folderId.value, kind: kind.value, query: query.value, tag: tag.value, trashed: props.trash })
+    if (requestVersion !== loadVersion) return
     items.value = result.items || []
-    tags.value = (await api.getLibraryTags()).tags || []
-    currentFolder.value = folderId.value ? await api.getLibraryItem(folderId.value) : null
+    currentFolder.value = folder
     await loadBreadcrumbs()
+    try {
+      const tagResult = await api.getLibraryTags()
+      if (requestVersion === loadVersion) tags.value = tagResult.tags || []
+    } catch {
+      // Tags are an optional filter. A transient tags request must not hide
+      // otherwise valid library items that have already loaded.
+    }
   } catch (error) { toast.error(error.message || "资料库加载失败") }
-  finally { loading.value = false }
+  finally {
+    if (requestVersion === loadVersion) loading.value = false
+  }
 }
 
 async function loadBreadcrumbs() {
   const trail = []; let cursor = currentFolder.value; let guard = 0
-  while (cursor && guard++ < 30) { trail.unshift(cursor); cursor = cursor.parent_id ? await api.getLibraryItem(cursor.parent_id).catch(() => null) : null }
+  while (cursor && guard++ < 30) {
+    trail.unshift(cursor)
+    const parent = cursor.parent_id ? await api.getLibraryItem(cursor.parent_id).catch(() => null) : null
+    cursor = props.trash && parent && !parent.deleted_at ? null : parent
+  }
   breadcrumbs.value = trail
 }
 
 function openItem(item) {
   menuId.value = null
-  if (item.kind === "folder") return router.push({ name:"library", params:{ folderId:item.id } })
+  if (item.kind === "folder") return router.push({ name: props.trash ? "trash" : "library", params:{ folderId:item.id } })
   return router.push({ name:"library-item", params:{ itemId:item.id } })
 }
 
@@ -78,9 +111,9 @@ async function submitDialog() {
   finally { busy.value = false }
 }
 
-async function trashItem(item) { menuId.value=null; try { await api.trashLibraryItem(item.id); toast.success("已移入回收站"); await load() } catch(e){ toast.error(e.message) } }
-async function restoreItem(item) { try { await api.restoreLibraryItem(item.id); toast.success("已恢复"); await load() } catch(e){ toast.error(e.message) } }
-async function purgeItem(item) { if (deleting.value || !confirm(`永久删除“${item.name}”？此操作无法撤销。`)) return; deleting.value=true; try { await api.purgeLibraryItem(item.id); toast.success("已永久删除"); await load() } catch(e){ toast.error(e.message) } finally { deleting.value=false } }
+async function trashItem(item) { menuId.value=null; try { await api.trashLibraryItem(item.id); toast.success(item.kind==='folder' ? "文件夹及其内容已移入回收站" : "已移入回收站"); await load() } catch(e){ toast.error(e.message) } }
+async function restoreItem(item) { try { await api.restoreLibraryItem(item.id); toast.success(item.kind==='folder' ? "文件夹及其内容已恢复" : "已恢复"); await load() } catch(e){ toast.error(e.message) } }
+async function purgeItem(item) { const label=item.kind==='folder' ? `永久删除“${item.name}”及其全部内容？` : `永久删除“${item.name}”？`; if (deleting.value || !confirm(`${label}此操作无法撤销。`)) return; deleting.value=true; try { await api.purgeLibraryItem(item.id); toast.success(item.kind==='folder' ? "文件夹及其内容已永久删除" : "已永久删除"); await load() } catch(e){ toast.error(e.message) } finally { deleting.value=false } }
 async function duplicate(item) { menuId.value=null; try { await api.duplicateLibraryItem(item.id, folderId.value); toast.success("已创建副本"); await load() } catch(e){ toast.error(e.message) } }
 async function togglePin(item) { menuId.value=null; await api.updateLibraryItem(item.id,{ pinned:!item.pinned }); await load() }
 async function toggleReview(item) { menuId.value=null; try { await api.updateLibraryItem(item.id,{ review_enabled:!item.review_enabled }); toast.success(item.review_enabled ? "已移出复习计划" : "已加入复习计划"); await load() } catch(e){ toast.error(e.message || "更新复习计划失败") } }
@@ -116,10 +149,10 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
   <div class="library-page page-stage" @click.self="menuId=null">
     <header class="library-head">
       <nav class="library-crumbs" aria-label="当前位置">
-        <RouterLink :to="{name:'library'}">资料库</RouterLink>
-        <template v-for="crumb in breadcrumbs" :key="crumb.id"><ChevronRight :size="14"/><RouterLink :to="{name:'library',params:{folderId:crumb.id}}">{{ crumb.name }}</RouterLink></template>
+        <RouterLink :to="{name: props.trash ? 'trash' : 'library'}">{{ props.trash ? '回收站' : '资料库' }}</RouterLink>
+        <template v-for="crumb in breadcrumbs" :key="crumb.id"><ChevronRight :size="14"/><RouterLink :to="{name: props.trash ? 'trash' : 'library',params:{folderId:crumb.id}}">{{ crumb.name }}</RouterLink></template>
       </nav>
-      <div class="library-title-row"><div><h1>{{ title }}</h1><p>{{ props.trash ? '删除内容保留 30 天，可在这里恢复。' : '用文件夹和标签整理笔记与学习文件。' }}</p></div>
+      <div class="library-title-row"><div><h1>{{ title }}</h1><p>{{ description }}</p></div>
         <div v-if="!props.trash" class="library-actions"><button class="lib-btn" @click="fileInput?.click()"><Upload :size="17"/>上传</button><button class="lib-btn lib-btn--primary" @click="openCreate('note')"><Plus :size="17"/>笔记</button><button class="lib-btn" @click="openCreate('folder')"><Folder :size="17"/>文件夹</button></div>
       </div>
     </header>
@@ -142,7 +175,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
           <div class="library-card__face library-card__front">
             <div class="library-card__top"><span class="library-card__icon" :class="`is-${item.kind}`"><component :is="itemIcon(item)" :size="21"/></span></div>
             <div class="library-card__body"><strong>{{ item.name }}</strong><span>{{ item.kind==='folder'?'文件夹':item.kind==='note'?'Markdown 笔记':item.mime_type || '文件' }}</span></div>
-            <footer><span>{{ formatDate(item.updated_at) }}</span><span v-if="item.tags?.length" class="library-card__footer-tags" :title="`标签：${item.tags.join('、')}`"><Tags :size="11" aria-hidden="true"/><span v-for="value in item.tags" :key="value">{{ value }}</span></span><span class="library-card__size">{{ item.kind==='folder'?'':formatSize(item.size) }}</span></footer>
+            <footer><span class="library-card__created" :title="`创建时间：${creationDate(item)}`">{{ creationDate(item) }}</span><span v-if="item.tags?.length" class="library-card__footer-tags" :title="`标签：${item.tags.join('、')}`"><Tags :size="11" aria-hidden="true"/><span v-for="value in item.tags" :key="value">{{ value }}</span></span><span class="library-card__size">{{ item.kind==='folder'?'':formatSize(item.size) }}</span></footer>
           </div>
           <div v-if="item.kind==='note'" class="library-card__face library-card__back" role="button" tabindex="-1">
             <span class="library-card__preview-label">Markdown 预览</span>

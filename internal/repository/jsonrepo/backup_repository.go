@@ -73,7 +73,20 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 			}
 		}
 		if data.Config != nil {
-			if err := tx.Save("config.json", *data.Config); err != nil {
+			config := *data.Config
+			if config.MineruToken == "" {
+				var current models.Config
+				if err := tx.Load("config.json", &current); err != nil {
+					return err
+				}
+				config.MineruToken = current.MineruToken
+			}
+			sealedToken, err := base.SealSecret(config.MineruToken)
+			if err != nil {
+				return err
+			}
+			config.MineruToken = sealedToken
+			if err := tx.Save("config.json", config); err != nil {
 				return err
 			}
 		}

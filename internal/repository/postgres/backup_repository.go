@@ -55,11 +55,25 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 
 	errorRepo := &ErrorRepository{store: r.store}
 	if data.Library != nil {
-		// Versions cascade from their items. Clear this before errors so linked
-		// legacy notes are restored from the incoming archive instead of being
-		// removed as a side effect of deleting error_problems.
-		if _, err := tx.Exec(ctx, `DELETE FROM library_items WHERE user_id = $1`, r.store.userID); err != nil {
-			return err
+		// parent_id uses ON DELETE RESTRICT. Remove leaves in order so importing
+		// a ZIP also works when the current library already has folders.
+		for {
+			result, deleteErr := tx.Exec(ctx, `
+				DELETE FROM library_items item
+				WHERE item.user_id = $1
+				  AND NOT EXISTS (
+					  SELECT 1
+					  FROM library_items child
+					  WHERE child.user_id = item.user_id
+					    AND child.parent_id = item.id
+				  )
+			`, r.store.userID)
+			if deleteErr != nil {
+				return deleteErr
+			}
+			if result.RowsAffected() == 0 {
+				break
+			}
 		}
 	}
 	if data.Errors != nil {
@@ -147,6 +161,9 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 	}
 	if data.Library != nil {
 		if err := r.importLibrary(ctx, tx, *data.Library, errorIDMap); err != nil {
+			return err
+		}
+		if err := r.recordLibraryImportActivity(ctx, tx, *data.Library); err != nil {
 			return err
 		}
 	}
@@ -319,6 +336,31 @@ func validBackupLibraryKind(kind string) bool {
 	return kind == "folder" || kind == "note" || kind == "file" || kind == "error"
 }
 
+// recordLibraryImportActivity records the act of bringing learning material
+// into the current account. Imported files retain their original timestamps,
+// so relying only on item triggers would otherwise place every activity on an
+// old date and leave today's dashboard empty after a restore.
+func (r *BackupRepository) recordLibraryImportActivity(ctx context.Context, tx pgx.Tx, library base.LibraryBackup) error {
+	location := time.FixedZone("CST", 8*60*60)
+	now := time.Now().In(location)
+	day := now.Format(time.DateOnly)
+	prefix := fmt.Sprintf("library-import:%d:%d", r.store.userID, now.UnixNano())
+	index := 0
+	for _, item := range library.Items {
+		if item.Kind == "folder" {
+			continue
+		}
+		index++
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO user_activity_events (user_id, activity_date, event_type, source_key)
+			VALUES ($1, $2::date, 'library_import', $3)
+		`, r.store.userID, day, fmt.Sprintf("%s:%d", prefix, index)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func backupLibraryTimestamp(value time.Time) time.Time {
 	if value.IsZero() {
 		return time.Now().UTC()
@@ -345,12 +387,19 @@ func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
 }
 
 func (r *BackupRepository) saveConfig(ctx context.Context, tx pgx.Tx, config *models.Config) error {
-	_, err := tx.Exec(ctx, `
+	sealedToken, err := base.SealSecret(config.MineruToken)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		INSERT INTO user_settings (user_id, display_name, mineru_token_cipher, settings)
 		VALUES ($1, $2, $3, '{}'::jsonb)
 		ON CONFLICT (user_id) DO UPDATE
 		SET display_name = excluded.display_name,
-		    mineru_token_cipher = excluded.mineru_token_cipher
-	`, r.store.userID, config.Username, config.MineruToken)
+		    mineru_token_cipher = CASE
+				WHEN excluded.mineru_token_cipher = '' THEN user_settings.mineru_token_cipher
+				ELSE excluded.mineru_token_cipher
+			END
+	`, r.store.userID, config.Username, sealedToken)
 	return err
 }

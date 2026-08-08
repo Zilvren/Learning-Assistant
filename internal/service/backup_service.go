@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,12 +20,16 @@ import (
 
 const BackupMaxFileSize = 10 * 1024 * 1024
 const BackupMaxUploadSize = 512 * 1024 * 1024
+const BackupMaxUncompressedSize = 512 * 1024 * 1024
+const BackupMaxArchiveEntries = 1000
+const BackupMaxCompressionRatio = 100
 
 var backupFileNames = []string{"config.json", "errors.json", "knowledge.json", "subjects.json", "library.json"}
 
 type ImportBackupResult struct {
-	Files    []string `json:"files"`
-	Snapshot string   `json:"snapshot"`
+	Files        []string `json:"files"`
+	Snapshot     string   `json:"snapshot"`
+	LibraryItems int      `json:"library_items"`
 }
 
 func ExportBackupZip(ctx context.Context) ([]byte, string, error) {
@@ -32,6 +37,9 @@ func ExportBackupZip(ctx context.Context) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	// Credentials are deliberately not portable. Restoring a backup should
+	// never leak or overwrite the OCR token; users can reconnect it in settings.
+	redactBackupCredentials(&data)
 	content, err := encodeBackupZip(data)
 	if err != nil {
 		return nil, "", err
@@ -45,6 +53,43 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 	if err != nil {
 		return ImportBackupResult{}, err
 	}
+	return restoreBackupData(ctx, data, files)
+}
+
+// ImportBackupReader keeps uploaded archives out of process memory. zip.Reader
+// needs random access, so the bounded stream is staged in an OS temp file and
+// removed immediately after validation and import.
+func ImportBackupReader(ctx context.Context, input io.Reader) (ImportBackupResult, error) {
+	temp, err := os.CreateTemp("", "study-tracker-backup-*.zip")
+	if err != nil {
+		return ImportBackupResult{}, err
+	}
+	name := temp.Name()
+	defer os.Remove(name)
+	defer temp.Close()
+
+	written, err := io.Copy(temp, io.LimitReader(input, BackupMaxUploadSize+1))
+	if err != nil {
+		return ImportBackupResult{}, err
+	}
+	if written == 0 {
+		return ImportBackupResult{}, fmt.Errorf("备份文件不能为空")
+	}
+	if written > BackupMaxUploadSize {
+		return ImportBackupResult{}, fmt.Errorf("备份文件不能超过 512MB")
+	}
+	reader, err := zip.NewReader(temp, written)
+	if err != nil {
+		return ImportBackupResult{}, fmt.Errorf("请上传有效的 zip 备份文件")
+	}
+	data, files, err := decodeBackupZipReader(reader)
+	if err != nil {
+		return ImportBackupResult{}, err
+	}
+	return restoreBackupData(ctx, data, files)
+}
+
+func restoreBackupData(ctx context.Context, data store.BackupData, files []string) (ImportBackupResult, error) {
 	snapshot, err := SaveCurrentBackupSnapshot(ctx, "pre-import")
 	if err != nil {
 		return ImportBackupResult{}, err
@@ -76,9 +121,14 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 		}
 	}
 	sort.Strings(files)
+	libraryItems := 0
+	if data.Library != nil {
+		libraryItems = len(data.Library.Items)
+	}
 	return ImportBackupResult{
-		Files:    files,
-		Snapshot: filepath.Base(snapshot),
+		Files:        files,
+		Snapshot:     filepath.Base(snapshot),
+		LibraryItems: libraryItems,
 	}, nil
 }
 
@@ -88,11 +138,11 @@ func SaveCurrentBackupSnapshot(ctx context.Context, prefix string) (string, erro
 		return "", err
 	}
 	backupDir := filepath.Join(store.DataDir(), "backups")
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
 		return "", err
 	}
 	snapshot := filepath.Join(backupDir, fmt.Sprintf("%s-%s.zip", prefix, time.Now().Format("20060102-150405")))
-	return snapshot, os.WriteFile(snapshot, content, 0644)
+	return snapshot, os.WriteFile(snapshot, content, 0600)
 }
 
 func loadBackupData(ctx context.Context) (store.BackupData, error) {
@@ -204,16 +254,35 @@ func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 		return store.BackupData{}, nil, fmt.Errorf("请上传有效的 zip 备份文件")
 	}
 
+	return decodeBackupZipReader(reader)
+}
+
+func decodeBackupZipReader(reader *zip.Reader) (store.BackupData, []string, error) {
+	if len(reader.File) > BackupMaxArchiveEntries {
+		return store.BackupData{}, nil, fmt.Errorf("备份包中的文件数量超过限制")
+	}
 	data := store.BackupData{}
 	files := []string{}
+	seen := map[string]struct{}{}
+	var totalSize uint64
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
 		}
-		name := filepath.Base(file.Name)
+		if file.UncompressedSize64 > BackupMaxUncompressedSize || totalSize > BackupMaxUncompressedSize-file.UncompressedSize64 {
+			return store.BackupData{}, nil, fmt.Errorf("备份解压后的总大小超过限制")
+		}
+		if file.UncompressedSize64 > 0 && (file.CompressedSize64 == 0 || file.UncompressedSize64/file.CompressedSize64 > BackupMaxCompressionRatio) {
+			return store.BackupData{}, nil, fmt.Errorf("备份压缩比例异常")
+		}
+		totalSize += file.UncompressedSize64
+		name := backupInputName(file.Name)
 		if strings.HasPrefix(filepath.ToSlash(file.Name), "blobs/") {
-			if len(name) != 64 || file.UncompressedSize64 > libraryMaxBackupBlobSize {
+			if !isBackupBlobName(name) || file.UncompressedSize64 > libraryMaxBackupBlobSize {
 				return store.BackupData{}, nil, fmt.Errorf("备份包含无效 Blob")
+			}
+			if _, exists := seen["blobs/"+name]; exists {
+				return store.BackupData{}, nil, fmt.Errorf("备份包含重复文件：blobs/%s", name)
 			}
 			raw, readErr := readBackupZipFileLimit(file, libraryMaxBackupBlobSize)
 			if readErr != nil {
@@ -223,6 +292,7 @@ func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 				data.Blobs = map[string][]byte{}
 			}
 			data.Blobs[name] = raw
+			seen["blobs/"+name] = struct{}{}
 			files = append(files, "blobs/"+name)
 			continue
 		}
@@ -231,6 +301,9 @@ func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 				return store.BackupData{}, nil, fmt.Errorf("备份包包含不支持的数据文件：%s", file.Name)
 			}
 			continue
+		}
+		if _, exists := seen[name]; exists {
+			return store.BackupData{}, nil, fmt.Errorf("备份包含重复文件：%s", name)
 		}
 		if file.UncompressedSize64 > BackupMaxFileSize {
 			return store.BackupData{}, nil, fmt.Errorf("%s 文件过大", name)
@@ -242,12 +315,30 @@ func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 		if err := decodeBackupJSON(name, raw, &data); err != nil {
 			return store.BackupData{}, nil, err
 		}
+		seen[name] = struct{}{}
 		files = append(files, name)
 	}
 	if len(files) == 0 {
 		return store.BackupData{}, nil, fmt.Errorf("备份包中没有可恢复的数据文件")
 	}
+	for _, required := range backupFileNames {
+		if _, exists := seen[required]; !exists {
+			return store.BackupData{}, nil, fmt.Errorf("备份不完整，缺少 %s", required)
+		}
+	}
+	if err := validateBackupBlobs(data); err != nil {
+		return store.BackupData{}, nil, err
+	}
 	return data, files, nil
+}
+
+func redactBackupCredentials(data *store.BackupData) {
+	if data.Config == nil {
+		return
+	}
+	config := *data.Config
+	config.MineruToken = ""
+	data.Config = &config
 }
 
 func readBackupZipFile(file *zip.File) ([]byte, error) {
@@ -333,4 +424,32 @@ func isBackupFile(name string) bool {
 		}
 	}
 	return false
+}
+
+func backupInputName(value string) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
+	if slash := strings.LastIndex(value, "/"); slash >= 0 {
+		value = value[slash+1:]
+	}
+	return strings.ToLower(value)
+}
+
+func isBackupBlobName(name string) bool {
+	if len(name) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(name)
+	return err == nil
+}
+
+func validateBackupBlobs(data store.BackupData) error {
+	if data.Library == nil {
+		return nil
+	}
+	for hash := range libraryBlobHashes(*data.Library) {
+		if _, exists := data.Blobs[hash]; !exists {
+			return fmt.Errorf("资料库附件缺失：blobs/%s。请选择完整 ZIP 备份", hash)
+		}
+	}
+	return nil
 }

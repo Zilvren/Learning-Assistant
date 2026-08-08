@@ -40,7 +40,7 @@ export const routes = [
       { path: "", name: "home", component: HomePage },
       { path: "library/items/:itemId", name: "library-item", component: LibraryItemPage, props: true },
       { path: "library/:folderId?", name: "library", component: LibraryPage, props: true },
-      { path: "trash", name: "trash", component: LibraryPage, props: { trash: true } },
+      { path: "trash/:folderId?", name: "trash", component: LibraryPage, props: (route) => ({ trash: true, folderId: route.params.folderId }) },
       { path: "review", name: "review", component: ReviewPage },
       { path: "errors/:id?", redirect: { name: "library" } },
       { path: "settings", name: "settings", component: SettingsPage },

@@ -14,7 +14,7 @@ internal/model/        领域模型和请求/响应结构
 internal/middleware/   Gin 中间件，包括安全头、CORS、Cookie 来源检查和认证
 pkg/config/            配置读取，支持命令行参数和环境变量
 pkg/logger/            日志封装
-cmd/import-json/       将本地 JSON 数据导入 PostgreSQL
+cmd/import-json/       显式执行的旧 JSON 导入工具（正常启动不会读取或迁移 data/）
 cmd/updater/           独立更新器入口
 frontend/              Vue 前端源码
 scripts/               构建和发布脚本
@@ -30,7 +30,7 @@ main
       -> internal/model
 ```
 
-上层可以依赖下层，下层不反向依赖上层。Service 只依赖 Repository 接口，启动时根据配置装配 JSON 或 PostgreSQL 实现，因此业务逻辑不需要感知具体存储方式。
+上层可以依赖下层，下层不反向依赖上层。Service 通过 Repository 接口工作；在 PostgreSQL 模式中，认证中间件把用户 ID 写入请求上下文，Service 为该用户创建隔离的 Repository。
 
 ## Storage Modes
 
@@ -56,18 +56,12 @@ go run .
 PostgreSQL 模式已经实现，适合多用户或服务端部署。该模式会启用登录注册，并通过认证中间件将当前用户 ID 传入 Service；Service 再为该用户创建 Repository，确保科目、错题、设置、知识点、OCR 任务和备份数据相互隔离。
 
 ```powershell
-$env:TRACKER_STORAGE="postgres"
 $env:TRACKER_DATABASE_URL="postgres://study_tracker_app:password@localhost:5432/study_tracker?sslmode=disable"
-$env:TRACKER_JWT_SECRET="请使用固定的强随机密钥"
-go run .
+.\start-postgres.ps1 -DatabaseUrl $env:TRACKER_DATABASE_URL
 ```
 
-数据库需要先执行：
+该启动脚本会设置 `TRACKER_STORAGE=postgres` 和 `TRACKER_REQUIRE_POSTGRES=true`；配置不完整时拒绝降级为 JSON。应用会使用内嵌的 `migrations/*.sql` 和 `schema_migrations` 账本按版本自动升级数据库，启动本身不会再写入活动记录或重复创建业务数据。
 
-```text
-migrations/001_init_postgres.sql
-```
-
-本地 JSON 数据可以通过 `cmd/import-json` 导入 PostgreSQL。
+旧 JSON 数据不会被自动读取或迁移。确有迁移需要时，使用 ZIP 备份恢复，或明确执行 `cmd/import-json`。
 
 数据库设计见 `docs/database.md`，初始化脚本见 `migrations/001_init_postgres.sql`，本地使用教程见 `docs/postgresql-tutorial.md`，接入过程见 `docs/postgresql-integration-tutorial.md` 和 `docs/postgresql-integration-beginner.md`，最终实现说明见 `docs/postgresql-repository-implementation.md`。

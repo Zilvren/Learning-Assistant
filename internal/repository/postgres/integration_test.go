@@ -250,6 +250,17 @@ func TestPostgresBackupImportRestoresLibraryItemsAndVersions(t *testing.T) {
 	if err := repos.Backup.Import(ctx, data); err != nil {
 		t.Fatal(err)
 	}
+	var importedActivity int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*)
+		FROM user_activity_events
+		WHERE user_id = $1 AND event_type = 'library_import'
+	`, userID).Scan(&importedActivity); err != nil {
+		t.Fatal(err)
+	}
+	if importedActivity != 1 {
+		t.Fatalf("expected one import activity for the restored note, got %d", importedActivity)
+	}
 
 	roots, err := repos.Library.List(ctx, base.LibraryFilter{})
 	if err != nil {
@@ -279,5 +290,74 @@ func TestPostgresBackupImportRestoresLibraryItemsAndVersions(t *testing.T) {
 	}
 	if exported.Library == nil || len(exported.Library.Items) != 2 || len(exported.Library.Versions) != 1 {
 		t.Fatalf("library was not included in backup export: %#v", exported.Library)
+	}
+	if err := repos.Library.Trash(ctx, roots[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	trashed, err := repos.Library.List(ctx, base.LibraryFilter{Trashed: true})
+	if err != nil || len(trashed) != 1 || trashed[0].ID != roots[0].ID {
+		t.Fatalf("expected only trashed library root: %#v %v", trashed, err)
+	}
+	if _, err := repos.Library.Restore(ctx, roots[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repos.Backup.Import(ctx, data); err != nil {
+		t.Fatalf("restoring over an existing folder tree failed: %v", err)
+	}
+	roots, err = repos.Library.List(ctx, base.LibraryFilter{})
+	if err != nil || len(roots) != 1 || roots[0].Name != "微积分" {
+		t.Fatalf("restored ZIP library root is not visible: %#v, %v", roots, err)
+	}
+}
+
+func TestPostgresPoolReopenDoesNotCreateActivity(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+
+	ctx := context.Background()
+	pool, err := NewPool(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	username := fmt.Sprintf("restart_activity_%d", time.Now().UnixNano())
+	var userID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (username, password_hash, status)
+		VALUES ($1, 'test-only', 'active')
+		RETURNING id
+	`, username).Scan(&userID); err != nil {
+		pool.Close()
+		t.Fatal(err)
+	}
+
+	repos := NewRepositories(pool, userID)
+	if _, err := repos.Library.Create(ctx, models.CreateLibraryItemRequest{Kind: "note", Name: "重启测试"}, []byte("# 测试")); err != nil {
+		pool.Close()
+		t.Fatal(err)
+	}
+	var before int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM user_activity_events WHERE user_id = $1`, userID).Scan(&before); err != nil {
+		pool.Close()
+		t.Fatal(err)
+	}
+	pool.Close()
+
+	reopened, err := NewPool(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	t.Cleanup(func() {
+		_, _ = reopened.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, userID)
+	})
+	var after int
+	if err := reopened.QueryRow(ctx, `SELECT count(*) FROM user_activity_events WHERE user_id = $1`, userID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("reopening the pool wrote activity rows: before=%d after=%d", before, after)
 	}
 }

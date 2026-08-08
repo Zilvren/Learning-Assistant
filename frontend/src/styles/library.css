@@ -33,4 +33,5 @@
   @media(max-width:1179px){.home-activity-layout{grid-template-columns:minmax(0,2fr) minmax(260px,1fr);justify-content:start}.home-tag-panel{min-height:0}}
   @media(max-width:899px){.home-activity-layout{grid-template-columns:1fr}.home-tag-panel{min-height:190px}}
   @media(prefers-reduced-motion:reduce){.library-card,.library-card__flip,.lib-btn{transition:none}.library-card{animation:none}}
+  .library-card__preview :where(img){display:block;width:auto!important;max-width:100%;height:auto!important;max-height:58px;object-fit:contain;object-position:left center}
 }

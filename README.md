@@ -73,7 +73,7 @@ go run .
 - 支持 Markdown、纯文本、图片、PDF 与常见 Office 文档，单文件最大 200MB。
 - Markdown 笔记自动保存，并保留最近 50 个检查点版本。
 - 支持搜索、网格/列表视图、拖拽移动、复制、置顶和回收站恢复。
-- 删除内容进入回收站，默认保留 30 天。
+- 删除内容进入回收站，默认保留 30 天；移入回收站的文件夹只显示为一个项目，恢复或永久删除会同时作用于其中全部内容。
 
 ### 仪表盘
 
@@ -81,6 +81,7 @@ go run .
 - 查看当前薄弱科目和复习建议。
 - 在“今日优先复习”中点击错题即可查看完整题目、错解、正解和错因。
 - 标记复习后会自动计算下一次复习日期。
+- “学习记录”以全年热力图展示学习活动，支持横向滑动浏览、切换年份和查看指定日期；当年默认定位在今天靠右的位置。
 
 ### 错题管理
 
@@ -126,6 +127,8 @@ data/
 - `subjects.json`：科目列表。
 - `config.json`：用户名、MinerU Token 等配置。
 - `knowledge.json`：可选，自定义每日知识点。
+- `library.json`：资料库的文件夹、笔记和文件索引。
+- `blobs/`：资料库上传文件及 Markdown 笔记内容。
 - `backups/`：导入或更新前自动生成的恢复点。
 - `updates/`：自动更新下载包和更新日志。
 
@@ -153,11 +156,12 @@ JSON 本地模式默认免登录，适合单机自用。
 PostgreSQL 模式会启用登录注册，所有业务数据按用户隔离。启动前需要准备 PostgreSQL 数据库，并设置环境变量：
 
 ```powershell
-$env:TRACKER_STORAGE="postgres"
 $env:TRACKER_DATABASE_URL="postgres://study_tracker_app:你的密码@localhost:5432/study_tracker?sslmode=disable"
 $env:TRACKER_JWT_SECRET="请换成一段固定的强随机密钥"
-go run .
+.\start-postgres.ps1 -DatabaseUrl $env:TRACKER_DATABASE_URL
 ```
+
+该脚本会强制使用 PostgreSQL；连接配置缺失或错误时不会回退到 JSON 模式。数据库迁移会在应用启动时从内嵌的 SQL 文件自动、按版本执行。
 
 相关环境变量：
 
@@ -165,12 +169,21 @@ go run .
 | ---- | ---- |
 | `TRACKER_STORAGE` | `json` 或 `postgres`，默认 `json` |
 | `TRACKER_DATABASE_URL` | PostgreSQL 连接字符串，`postgres` 模式必填 |
+| `TRACKER_REQUIRE_POSTGRES` | 为 `true` 时禁止服务意外以 JSON 模式启动；Docker 部署已默认开启 |
 | `TRACKER_JWT_SECRET` | 登录 Cookie/JWT 签名密钥，生产环境必须设置固定强密钥 |
+| `TRACKER_EMAIL_VERIFICATION_ENABLED` | 设为 `true` 后，新用户必须先验证邮箱才可登录 |
+| `TRACKER_PUBLIC_URL` | 生产环境对外访问地址，例如 `https://study.example.com`，用于生成验证链接 |
+| `TRACKER_SMTP_HOST` / `TRACKER_SMTP_PORT` | SMTP 主机与端口；端口默认 `465` |
+| `TRACKER_SMTP_USERNAME` / `TRACKER_SMTP_PASSWORD` | SMTP 登录账号和授权码；两者需同时设置 |
+| `TRACKER_SMTP_FROM` | 发件人邮箱地址，启用邮箱验证时必填 |
+| `TRACKER_SMTP_TLS_MODE` | `implicit`（默认）、`starttls` 或 `none`；使用 SMTP 账号时必须启用 TLS |
 | `TRACKER_HOST` | 服务监听地址，默认 `127.0.0.1` |
 | `TRACKER_PORT` | 服务端口，默认 `8000` |
 | `GIN_MODE` | Gin 运行模式，例如 `release` |
 
-JSON 数据导入 PostgreSQL：
+在 PostgreSQL 模式下，在设置页选择已导出的 ZIP 备份即可恢复资料库、笔记版本、附件、错题、标签和设置。系统会先创建 `pre-import` 快照，恢复完成后自动打开资料库。
+
+服务器端自动化场景也可以使用命令行导入：
 
 ```powershell
 go run ./cmd/import-json --data-dir data --database-url "postgres://study_tracker_app:你的密码@localhost:5432/study_tracker?sslmode=disable" --dry-run
@@ -178,6 +191,23 @@ go run ./cmd/import-json --data-dir data --database-url "postgres://study_tracke
 ```
 
 `--dry-run` 只预览导入数量，`--replace` 会替换当前用户的数据。
+
+### 启用注册邮箱验证（可选）
+
+邮箱验证仅在 PostgreSQL 模式下生效。配置可用 SMTP 后设置：
+
+```powershell
+$env:TRACKER_EMAIL_VERIFICATION_ENABLED="true"
+$env:TRACKER_PUBLIC_URL="https://你的域名"
+$env:TRACKER_SMTP_HOST="smtp.example.com"
+$env:TRACKER_SMTP_PORT="465"
+$env:TRACKER_SMTP_USERNAME="你的邮箱账号"
+$env:TRACKER_SMTP_PASSWORD="邮箱授权码"
+$env:TRACKER_SMTP_FROM="你的邮箱账号"
+$env:TRACKER_SMTP_TLS_MODE="implicit"
+```
+
+如果不启用邮箱验证，无需配置 SMTP。生产环境应使用能从公网访问的 `TRACKER_PUBLIC_URL`，否则邮件中的验证链接无法打开。
 
 ## 自动更新
 

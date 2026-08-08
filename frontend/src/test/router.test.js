@@ -6,7 +6,7 @@ import { installAuthGuard, routes } from "../router/index.js"
 const View = { template: "<div />" }
 const testRoutes = [
   { path: "/", name: "home", component: View },
-  { path: "/login", name: "login", component: View },
+  { path: "/login", name: "login", component: View, meta: { public: true } },
   { path: "/errors/:id?", name: "errors", component: View },
   { path: "/design-preview/errors/:id?", name: "design-preview-errors", component: View },
   { path: "/design-preview/knowt/errors/:id?", name: "knowt-preview-errors", component: View },

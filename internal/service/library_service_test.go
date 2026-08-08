@@ -31,6 +31,13 @@ func TestPurgeLegacyReviewDoesNotReappear(t *testing.T) {
 	if _, err := repos.Errors.Create(ctx, models.ErrorProblem{Title: "旧错题"}); err != nil {
 		t.Fatal(err)
 	}
+	legacy, err := repos.Errors.List(ctx, base.ErrorFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repos.Library.EnsureLegacy(ctx, legacy, nil); err != nil {
+		t.Fatal(err)
+	}
 
 	due, err := DueLibraryReviews(ctx)
 	if err != nil || len(due) != 1 {
@@ -49,8 +56,41 @@ func TestPurgeLegacyReviewDoesNotReappear(t *testing.T) {
 	if due, err = DueLibraryReviews(ctx); err != nil || len(due) != 0 {
 		t.Fatalf("purged legacy note must not reappear in reviews: %#v, %v", due, err)
 	}
-	legacy, err := repos.Errors.List(ctx, base.ErrorFilter{})
-	if err != nil || len(legacy) != 0 {
-		t.Fatalf("legacy source should be removed with permanent deletion: %#v, %v", legacy, err)
+	legacy, err = repos.Errors.List(ctx, base.ErrorFilter{})
+	if err != nil || len(legacy) != 1 {
+		t.Fatalf("permanently deleting a note must preserve its source error: %#v, %v", legacy, err)
+	}
+}
+
+func TestPostgresLibraryBrowsingDoesNotMigrateLegacyErrors(t *testing.T) {
+	previousDir := base.DataDir()
+	defaultMu.RLock()
+	previousRepos, previousConfig, previousPool := defaultRepos, appConfig, pgPool
+	defaultMu.RUnlock()
+	t.Cleanup(func() {
+		base.SetDataDir(previousDir)
+		defaultMu.Lock()
+		defaultRepos, appConfig, pgPool = previousRepos, previousConfig, previousPool
+		defaultMu.Unlock()
+	})
+
+	base.SetDataDir(t.TempDir())
+	repos := jsonrepo.NewRepositories()
+	// Keep the in-memory test repositories while exercising PostgreSQL-mode
+	// service behaviour: browsing must not write legacy error notes.
+	if err := InitApp(config.Config{StorageDriver: "postgres"}, repos, nil); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := repos.Errors.Create(ctx, models.ErrorProblem{Title: "旧错题"}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := ListLibrary(ctx, base.LibraryFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("browsing PostgreSQL-mode library must not migrate legacy errors: %#v", items)
 	}
 }

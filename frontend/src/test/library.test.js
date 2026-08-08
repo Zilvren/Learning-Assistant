@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { flushPromises, mount } from "@vue/test-utils"
 import { createMemoryHistory, createRouter } from "vue-router"
 import LibraryPage from "../components/library/LibraryPage.vue"
+import LibraryItemPage from "../components/library/LibraryItemPage.vue"
 import { api } from "../api/index.js"
 import { extractOutline, renderMd } from "../utils/markdown.js"
 import { rememberLibraryPath, rememberedLibraryPath } from "../utils/libraryPath.js"
@@ -16,13 +17,39 @@ describe("personal library", () => {
   })
 
   it("shows folders and opens them through the library route", async () => {
-    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:2,kind:"folder",name:"课程笔记",tags:[],updated_at:"2026-08-02"}]})
+    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:2,kind:"folder",name:"课程笔记",tags:[],created_at:"2026-08-01T09:30:00+08:00",updated_at:"2026-08-02"}]})
     const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/:folderId?",name:"library",component:LibraryPage},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
     await router.push("/library");await router.isReady()
     const wrapper=mount(LibraryPage,{global:{plugins:[router],stubs:{BaseDialog:true}}});await flushPromises()
     expect(wrapper.text()).toContain("课程笔记")
+    expect(wrapper.get(".library-card__created").text()).toContain("08/01")
     await wrapper.get(".library-card__body").trigger("click");await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe("/library/2")
+  })
+
+  it("opens a trashed folder inside the trash route", async () => {
+    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:5,kind:"folder",name:"Note",tags:[],deleted_at:"2026-08-08T10:00:00+08:00"}]})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/trash/:folderId?",name:"trash",component:LibraryPage,props:route=>({trash:true,folderId:route.params.folderId})},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
+    await router.push("/trash");await router.isReady()
+    const wrapper=mount(LibraryPage,{props:{trash:true},global:{plugins:[router],stubs:{BaseDialog:true}}});await flushPromises()
+    await wrapper.get(".library-card__body").trigger("click");await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe("/trash/5")
+  })
+
+  it("returns to the root when a saved folder URL no longer exists", async () => {
+    vi.useFakeTimers()
+    vi.spyOn(api,"getLibraryItem").mockRejectedValue(new Error("not found"))
+    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:4724,kind:"folder",name:"daily",tags:[]}]})
+    vi.spyOn(api,"getLibraryTags").mockResolvedValue({tags:[]})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/:folderId?",name:"library",component:LibraryPage},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
+    await router.push("/library/3");await router.isReady()
+    const wrapper=mount(LibraryPage,{global:{plugins:[router],stubs:{BaseDialog:true}}})
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe("/library")
+    expect(wrapper.text()).toContain("daily")
+    vi.useRealTimers()
   })
 
   it("loads a Markdown preview only when a note card is hovered", async () => {
@@ -36,6 +63,47 @@ describe("personal library", () => {
     expect(content).toHaveBeenCalledWith(9)
     expect(wrapper.get(".library-card__back").text()).toContain("缓存学习笔记")
     expect(wrapper.find('input[type="file"]').attributes("hidden")).toBeDefined()
+  })
+
+  it("saves the first edit made to a newly created empty note", async () => {
+    vi.useFakeTimers()
+    vi.spyOn(api,"getLibraryItem").mockResolvedValue({id:42,kind:"note",name:"未命名笔记",tags:[],current_version:1})
+    vi.spyOn(api,"getLibraryContent").mockResolvedValue({content:"",version:1})
+    const save=vi.spyOn(api,"saveLibraryContent").mockResolvedValue({id:42,kind:"note",name:"未命名笔记",current_version:2,tags:[]})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/items/:itemId",name:"library-item",component:LibraryItemPage,props:true},{path:"/library",name:"library",component:{template:"<div/>"}}]})
+    await router.push("/library/items/42");await router.isReady()
+    const wrapper=mount({template:"<router-view/>"},{global:{plugins:[router],stubs:{MarkdownEditor:{props:["modelValue"],emits:["update:modelValue"],template:'<button data-test="first-edit" @click="$emit(\'update:modelValue\', \'第一条学习记录\')"/>'},MarkdownRenderer:true}}})
+    await flushPromises()
+
+    await wrapper.findAll(".item-head-actions .lib-btn")[1].trigger("click")
+    await wrapper.get('[data-test="first-edit"]').trigger("click")
+    await vi.advanceTimersByTimeAsync(800)
+
+    expect(save).toHaveBeenCalledWith("42",{content:"第一条学习记录",base_version:1,checkpoint:false,force:false})
+    vi.useRealTimers()
+  })
+
+  it("persists text typed while an earlier autosave is still in flight", async () => {
+    vi.useFakeTimers()
+    vi.spyOn(api,"getLibraryItem").mockResolvedValue({id:42,kind:"note",name:"并发保存",tags:[],current_version:1})
+    vi.spyOn(api,"getLibraryContent").mockResolvedValue({content:"",version:1})
+    let resolveFirst
+    const firstSave = new Promise((resolve) => { resolveFirst = resolve })
+    const save = vi.spyOn(api,"saveLibraryContent")
+      .mockReturnValueOnce(firstSave)
+      .mockResolvedValueOnce({id:42,kind:"note",name:"并发保存",current_version:3,tags:[]})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/items/:itemId",name:"library-item",component:LibraryItemPage,props:true}]})
+    await router.push("/library/items/42");await router.isReady()
+    const wrapper=mount({template:"<router-view/>"},{global:{plugins:[router],stubs:{MarkdownEditor:{props:["modelValue"],emits:["update:modelValue"],template:'<div><button data-test="edit-a" @click="$emit(\'update:modelValue\', \'A\')"/><button data-test="edit-b" @click="$emit(\'update:modelValue\', \'B\')"/></div>'},MarkdownRenderer:true}}})
+    await flushPromises()
+    await wrapper.get(".item-head-actions .lib-btn:nth-child(2)").trigger("click")
+    await wrapper.get('[data-test="edit-a"]').trigger("click")
+    await vi.advanceTimersByTimeAsync(800)
+    await wrapper.get('[data-test="edit-b"]').trigger("click")
+    resolveFirst({id:42,kind:"note",name:"并发保存",current_version:2,tags:[]})
+    await flushPromises()
+    expect(save).toHaveBeenNthCalledWith(2,"42",{content:"B",base_version:2,checkpoint:false,force:false})
+    vi.useRealTimers()
   })
 
   it("selects whole cards and can select every visible item", async () => {

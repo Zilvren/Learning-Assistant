@@ -78,3 +78,12 @@ func TestLoadKeepsJSONAuthDisabled(t *testing.T) {
 		t.Fatal("expected auth to be disabled for json storage")
 	}
 }
+
+func TestValidateRejectsJSONWhenPostgresIsRequired(t *testing.T) {
+	t.Setenv("TRACKER_STORAGE", "json")
+	t.Setenv("TRACKER_REQUIRE_POSTGRES", "true")
+
+	if err := Load(nil).Validate(); err == nil {
+		t.Fatal("expected a required PostgreSQL configuration to reject JSON storage")
+	}
+}

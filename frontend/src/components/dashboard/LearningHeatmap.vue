@@ -45,7 +45,11 @@ const activityMap = computed(() => new Map((props.activity?.days || []).map((day
 const total = computed(() => Number(props.activity?.total || 0))
 const activeDays = computed(() => Number(props.activity?.active_days || 0))
 const isCurrentYear = computed(() => year.value === today.value.getFullYear())
-const todayKey = computed(() => isoDate(today.value))
+const timelineAnchorKey = computed(() => {
+  const month = today.value.getMonth()
+  const lastDay = new Date(year.value, month + 1, 0).getDate()
+  return isoDate(new Date(year.value, month, Math.min(today.value.getDate(), lastDay)))
+})
 const rangeLabel = computed(() => isCurrentYear.value ? `${year.value} 年全年视图 · 未来日期留白` : `${year.value} 年全年学习活动`)
 const yearOptions = computed(() => {
   const currentYear = today.value.getFullYear()
@@ -114,12 +118,7 @@ function selectYear(nextYear) {
 function positionTimeline() {
   const container = frame.value
   if (!container) return
-  if (!isCurrentYear.value) {
-    container.scrollLeft = 0
-    return
-  }
-
-  const currentDay = container.querySelector(`[data-activity-date="${todayKey.value}"]`)
+  const currentDay = container.querySelector(`[data-activity-date="${timelineAnchorKey.value}"]`)
   if (!currentDay) return
   const frameRect = container.getBoundingClientRect()
   const dayRect = currentDay.getBoundingClientRect()

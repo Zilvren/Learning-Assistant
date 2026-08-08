@@ -48,12 +48,19 @@ func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter)
 		if err != nil {
 			return err
 		}
+		itemsByID := make(map[int64]models.LibraryItem, len(state.Items))
+		for _, item := range state.Items {
+			itemsByID[item.ID] = item
+		}
 		q := strings.ToLower(strings.TrimSpace(filter.Query))
 		for _, item := range state.Items {
 			if filter.Trashed != (item.DeletedAt != nil) {
 				continue
 			}
 			if filter.ParentID != nil && (item.ParentID == nil || *item.ParentID != *filter.ParentID) {
+				continue
+			}
+			if filter.Trashed && filter.ParentID == nil && hasTrashedLibraryAncestor(item, itemsByID) {
 				continue
 			}
 			if filter.ParentID == nil && filter.Query == "" && !filter.Trashed && !filter.ReviewOnly && item.ParentID != nil {
@@ -91,6 +98,24 @@ func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter)
 		return result[i].UpdatedAt.After(result[j].UpdatedAt)
 	})
 	return result, err
+}
+
+// hasTrashedLibraryAncestor keeps a trashed folder tree together in the
+// recycle-bin view: only the deleted tree root is listed. An individually
+// deleted note whose parent is still active remains visible and recoverable.
+func hasTrashedLibraryAncestor(item models.LibraryItem, itemsByID map[int64]models.LibraryItem) bool {
+	parentID := item.ParentID
+	for parentID != nil {
+		parent, exists := itemsByID[*parentID]
+		if !exists {
+			return false
+		}
+		if parent.DeletedAt != nil {
+			return true
+		}
+		parentID = parent.ParentID
+	}
+	return false
 }
 
 func (r *LibraryRepository) Get(ctx context.Context, id int64) (models.LibraryItem, error) {
@@ -138,7 +163,7 @@ func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibrary
 		}
 		name = uniqueName(state.Items, req.ParentID, name, 0)
 		now := time.Now().UTC()
-		result = models.LibraryItem{ID: state.NextID, ParentID: req.ParentID, Kind: req.Kind, Name: name, MimeType: req.MimeType, Size: size, Tags: normalizeTags(req.Tags), BlobHash: hash, ReviewEnabled: req.ReviewEnabled, CreatedAt: now, UpdatedAt: now}
+		result = models.LibraryItem{ID: state.NextID, ParentID: req.ParentID, Kind: req.Kind, Name: name, MimeType: req.MimeType, Size: size, Tags: normalizeTags(req.Tags), ErrorProblemID: req.ErrorProblemID, BlobHash: hash, ReviewEnabled: req.ReviewEnabled, CreatedAt: now, UpdatedAt: now}
 		if req.ReviewEnabled {
 			result.NextReview = now.Format("2006-01-02")
 		}
@@ -179,12 +204,11 @@ func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.Upd
 		if req.Pinned != nil {
 			item.Pinned = *req.Pinned
 		}
-		if req.ParentID != nil {
-			p := *req.ParentID
-			if e = validateParent(state.Items, &p, id); e != nil {
+		if req.ParentSet || req.ParentID != nil {
+			if e = validateParent(state.Items, req.ParentID, id); e != nil {
 				return e
 			}
-			item.ParentID = &p
+			item.ParentID = req.ParentID
 		}
 		if req.ReviewEnabled != nil {
 			item.ReviewEnabled = *req.ReviewEnabled
@@ -338,6 +362,149 @@ func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
 		s.Versions = vk
 		return saveLibrary(tx, s)
 	})
+}
+
+// Batch makes the JSON implementation match PostgreSQL semantics: all input
+// is validated before the state is saved, so a failing selection is never
+// partially applied.
+func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int64, parentID *int64) error {
+	ids = uniqueLibraryIDs(ids)
+	if len(ids) == 0 {
+		return fmt.Errorf("至少选择一项资料")
+	}
+	return r.store.Write(ctx, func(tx *base.JSONTx) error {
+		state, err := loadLibrary(tx)
+		if err != nil {
+			return err
+		}
+		selected := make(map[int64]models.LibraryItem, len(ids))
+		for _, id := range ids {
+			index := itemIndex(state.Items, id)
+			if index < 0 {
+				return fmt.Errorf("所选资料不存在或无权操作")
+			}
+			selected[id] = state.Items[index]
+		}
+		roots := batchLibraryRoots(ids, state.Items)
+		switch action {
+		case "trash":
+			for _, id := range roots {
+				if selected[id].DeletedAt != nil {
+					return fmt.Errorf("所选资料已在回收站中")
+				}
+			}
+			now := time.Now().UTC()
+			for index := range state.Items {
+				for _, rootID := range roots {
+					if state.Items[index].ID == rootID || isDescendant(state.Items, state.Items[index].ID, rootID) {
+						if state.Items[index].OriginalParent == nil {
+							state.Items[index].OriginalParent = state.Items[index].ParentID
+						}
+						state.Items[index].DeletedAt = &now
+						state.Items[index].UpdatedAt = now
+						break
+					}
+				}
+			}
+		case "restore":
+			for _, id := range roots {
+				if selected[id].DeletedAt == nil {
+					return fmt.Errorf("所选资料不在回收站中")
+				}
+			}
+			now := time.Now().UTC()
+			for index := range state.Items {
+				for _, rootID := range roots {
+					if state.Items[index].ID == rootID || isDescendant(state.Items, state.Items[index].ID, rootID) {
+						if state.Items[index].OriginalParent != nil {
+							state.Items[index].ParentID = state.Items[index].OriginalParent
+						}
+						state.Items[index].OriginalParent = nil
+						state.Items[index].DeletedAt = nil
+						state.Items[index].UpdatedAt = now
+						break
+					}
+				}
+			}
+		case "purge":
+			for _, id := range roots {
+				if selected[id].DeletedAt == nil {
+					return fmt.Errorf("只能永久删除回收站中的资料")
+				}
+			}
+			removed := make(map[int64]bool)
+			for _, item := range state.Items {
+				for _, rootID := range roots {
+					if item.ID == rootID || isDescendant(state.Items, item.ID, rootID) {
+						removed[item.ID] = true
+						break
+					}
+				}
+			}
+			items := state.Items[:0]
+			for _, item := range state.Items {
+				if !removed[item.ID] {
+					items = append(items, item)
+				}
+			}
+			state.Items = items
+			versions := state.Versions[:0]
+			for _, version := range state.Versions {
+				if !removed[version.ItemID] {
+					versions = append(versions, version)
+				}
+			}
+			state.Versions = versions
+		case "move":
+			for _, id := range roots {
+				if selected[id].DeletedAt != nil {
+					return fmt.Errorf("不能移动回收站中的资料")
+				}
+				if err = validateParent(state.Items, parentID, id); err != nil {
+					return err
+				}
+			}
+			for _, id := range roots {
+				index := itemIndex(state.Items, id)
+				state.Items[index].ParentID = parentID
+				state.Items[index].Name = uniqueName(state.Items, parentID, state.Items[index].Name, id)
+				state.Items[index].UpdatedAt = time.Now().UTC()
+			}
+		default:
+			return fmt.Errorf("不支持的批量操作")
+		}
+		return saveLibrary(tx, state)
+	})
+}
+
+func uniqueLibraryIDs(ids []int64) []int64 {
+	seen := make(map[int64]bool, len(ids))
+	unique := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	return unique
+}
+
+func batchLibraryRoots(ids []int64, items []models.LibraryItem) []int64 {
+	roots := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		child := false
+		for _, candidate := range ids {
+			if id != candidate && isDescendant(items, id, candidate) {
+				child = true
+				break
+			}
+		}
+		if !child {
+			roots = append(roots, id)
+		}
+	}
+	return roots
 }
 func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parentID *int64) (models.LibraryItem, error) {
 	body, item, err := r.ReadContent(ctx, id)

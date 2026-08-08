@@ -80,7 +80,7 @@ func CreateError(ctx context.Context, req models.AddErrorRequest) (models.ErrorP
 		matches, _ := repos.Library.List(ctx, repository.LibraryFilter{Kind: "error", Query: created.Title})
 		for _, node := range matches {
 			if node.ErrorProblemID != nil && *node.ErrorProblemID == created.ID {
-				_, err = repos.Library.Update(ctx, node.ID, models.UpdateLibraryItemRequest{ParentID: req.ParentID})
+				_, err = repos.Library.Update(ctx, node.ID, models.UpdateLibraryItemRequest{ParentID: req.ParentID, ParentSet: true})
 				break
 			}
 		}

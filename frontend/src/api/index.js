@@ -64,17 +64,25 @@ async function requestBackupImport(file) {
   return res.json()
 }
 
-async function requestLibraryContent(id) {
+async function requestLibraryContent(id, retry = true) {
   const res = await fetch(`${BASE}/library/items/${id}/content`, { credentials: 'include' })
+  if (res.status === 401 && retry) {
+    const ok = await refreshAuth()
+    if (ok) return requestLibraryContent(id, false)
+  }
   if (!res.ok) throw await responseError(res, '读取资料失败')
   return { content: await res.text(), version: Number((res.headers.get('etag') || '').replace(/\D/g, '') || 0), type: res.headers.get('content-type') || '' }
 }
 
-async function uploadLibraryFile(file, parentId) {
+async function uploadLibraryFile(file, parentId, retry = true) {
   const form = new FormData()
   form.append('file', file)
   if (parentId) form.append('parent_id', String(parentId))
   const res = await fetch(`${BASE}/library/uploads`, { method: 'POST', body: form, credentials: 'include' })
+  if (res.status === 401 && retry) {
+    const ok = await refreshAuth()
+    if (ok) return uploadLibraryFile(file, parentId, false)
+  }
   if (!res.ok) throw await responseError(res, '上传失败')
   return res.json()
 }
@@ -130,7 +138,9 @@ export const api = {
   deleteSubject: (name) => request('DELETE', '/subjects/' + encodeURIComponent(name)),
   ocrImage: async (file) => {
     const blob = file instanceof Blob ? file : new Blob([file])
-    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob, credentials: 'include' })
+    const headers = {}
+    if (file?.name) headers['X-OCR-Filename'] = encodeURIComponent(file.name)
+    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob, headers, credentials: 'include' })
     if (resp.status === 401) {
       const ok = await refreshAuth()
       if (ok) return api.ocrImage(file)

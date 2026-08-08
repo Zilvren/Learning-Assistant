@@ -86,10 +86,17 @@ func TestLibraryFoldersVersionsTrashAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	trash, err := repo.List(ctx, base.LibraryFilter{Trashed: true})
-	if err != nil || len(trash) < 2 {
-		t.Fatalf("expected trashed tree: %#v %v", trash, err)
+	if err != nil || len(trash) != 1 || trash[0].ID != folder.ID {
+		t.Fatalf("expected only trashed folder root: %#v %v", trash, err)
 	}
 	if _, err = repo.Restore(ctx, folder.ID); err != nil {
 		t.Fatal(err)
+	}
+	if err = repo.Trash(ctx, note.ID); err != nil {
+		t.Fatal(err)
+	}
+	trash, err = repo.List(ctx, base.LibraryFilter{Trashed: true})
+	if err != nil || len(trash) != 1 || trash[0].ID != note.ID {
+		t.Fatalf("expected individually trashed note: %#v %v", trash, err)
 	}
 }

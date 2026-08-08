@@ -30,6 +30,10 @@ import (
 func main() {
 	cfg := config.Load(os.Args[1:])
 	log := logger.New()
+	if err := cfg.Validate(); err != nil {
+		log.Errorf("invalid configuration: %v", err)
+		os.Exit(1)
+	}
 	if cfg.GinMode != "" {
 		gin.SetMode(cfg.GinMode)
 	}
@@ -44,7 +48,7 @@ func main() {
 		os.Exit(1)
 	}
 	if cfg.AuthEnabled && os.Getenv("TRACKER_JWT_SECRET") == "" {
-		log.Infof("TRACKER_JWT_SECRET is empty; using a temporary in-memory auth secret for this run.")
+		log.Infof("TRACKER_JWT_SECRET is empty; a stable local secret is stored in the data directory for this installation.")
 	}
 
 	listener, port, err := listenWithFallback(cfg.Host, cfg.Port)
@@ -55,7 +59,7 @@ func main() {
 
 	r := gin.Default()
 	r.Use(middleware.SecurityHeaders(), middleware.LocalCORS(), middleware.CookieOriginGuard())
-	registerRoutes(r)
+	registerRoutes(r, cfg)
 
 	url := fmt.Sprintf("http://%s:%d/", cfg.Host, port)
 	if port != cfg.Port {
@@ -110,18 +114,26 @@ func listenWithFallback(host string, preferredPort int) (net.Listener, int, erro
 	return nil, 0, fmt.Errorf("ports %d-%d are unavailable", preferredPort, preferredPort+attempts-1)
 }
 
-func registerRoutes(r *gin.Engine) {
+func registerRoutes(r *gin.Engine, configs ...config.Config) {
+	cfg := config.Config{StorageDriver: "json"}
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 	//健康检查
 	r.GET("/api/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"storage": cfg.StorageDriver,
+		})
 	})
 
 	//认证接口
 	r.GET("/api/auth/status", handlers.AuthStatus)
-	r.POST("/api/auth/register", handlers.Register)
-	r.POST("/api/auth/verify-email", handlers.VerifyEmail)
-	r.POST("/api/auth/resend-verification", handlers.ResendEmailVerification)
-	r.POST("/api/auth/login", handlers.Login)
+	publicAuthLimit := middleware.RateLimit(10, time.Minute)
+	r.POST("/api/auth/register", publicAuthLimit, handlers.Register)
+	r.POST("/api/auth/verify-email", publicAuthLimit, handlers.VerifyEmail)
+	r.POST("/api/auth/resend-verification", publicAuthLimit, handlers.ResendEmailVerification)
+	r.POST("/api/auth/login", publicAuthLimit, handlers.Login)
 	r.POST("/api/auth/refresh", handlers.Refresh)
 	r.POST("/api/auth/logout", handlers.Logout)
 
@@ -213,8 +225,6 @@ func openBrowser(url string) error {
 
 // serveFrontend 处理前端页面请求
 func serveFrontend(c *gin.Context) {
-	setFrontendCacheHeaders(c)
-
 	// /api 开头但没匹配到路由 → 404
 	if strings.HasPrefix(c.Request.URL.Path, "/api") {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "接口不存在"})
@@ -231,6 +241,7 @@ func serveFrontend(c *gin.Context) {
 	data, err := fs.ReadFile(frontendFS, filePath)
 	if err != nil {
 		if isFrontendAssetRequest(requestPath) {
+			setFrontendCacheHeaders(c, false)
 			c.String(http.StatusNotFound, "frontend asset not found")
 			return
 		}
@@ -241,6 +252,7 @@ func serveFrontend(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "frontend/dist/index.html not found")
 			return
 		}
+		setFrontendCacheHeaders(c, false)
 		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 
 		return
@@ -250,6 +262,7 @@ func serveFrontend(c *gin.Context) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
+	setFrontendCacheHeaders(c, strings.HasPrefix(requestPath, "assets/"))
 	c.Data(http.StatusOK, contentType, data)
 }
 
@@ -257,7 +270,11 @@ func isFrontendAssetRequest(requestPath string) bool {
 	return strings.HasPrefix(requestPath, "assets/") || path.Ext(requestPath) != ""
 }
 
-func setFrontendCacheHeaders(c *gin.Context) {
+func setFrontendCacheHeaders(c *gin.Context, immutable bool) {
+	if immutable {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
 	c.Header("Cache-Control", "no-store, max-age=0")
 	c.Header("Pragma", "no-cache")
 }

@@ -15,17 +15,9 @@ func libraryRepository(ctx context.Context) (repository.LibraryRepository, error
 	if err != nil {
 		return nil, err
 	}
-	errors, err := repos.Errors.List(ctx, repository.ErrorFilter{})
-	if err != nil {
-		return nil, err
-	}
-	subjects, err := repos.Subjects.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := repos.Library.EnsureLegacy(ctx, errors, subjects); err != nil {
-		return nil, err
-	}
+	// Browsing is strictly read-only. Legacy error-to-note migration used to run
+	// here and could recreate a note after the user had permanently deleted it.
+	// Backup/import is now the explicit migration path for both storage modes.
 	if err := repos.Library.Cleanup(ctx, time.Now().AddDate(0, 0, -30)); err != nil {
 		return nil, err
 	}
@@ -100,73 +92,18 @@ func PurgeLibraryItem(ctx context.Context, id int64) error {
 	if e != nil {
 		return e
 	}
-	// 旧错题迁移出的笔记仍保留 error_problem_id 作为兼容来源。永久删除
-	// 时必须一并移除该来源，否则下一次 EnsureLegacy 会把笔记重新生成。
-	trashed, e := r.List(ctx, repository.LibraryFilter{Trashed: true})
-	if e != nil {
-		return e
-	}
-	legacyErrorIDs := legacyErrorIDsInTree(id, trashed)
-	if e = r.Purge(ctx, id); e != nil {
-		return e
-	}
-	if len(legacyErrorIDs) == 0 {
-		return nil
-	}
-	repos, e := repositories(ctx)
-	if e != nil {
-		return e
-	}
-	legacyErrors, e := repos.Errors.List(ctx, repository.ErrorFilter{})
-	if e != nil {
-		return e
-	}
-	active := make(map[int]struct{}, len(legacyErrors))
-	for _, legacy := range legacyErrors {
-		active[legacy.ID] = struct{}{}
-	}
-	for _, legacyID := range legacyErrorIDs {
-		if _, ok := active[legacyID]; !ok {
-			continue
-		}
-		if e = repos.Errors.Delete(ctx, legacyID); e != nil {
-			return e
-		}
-	}
-	return nil
+	// A library note may retain an error_problem_id for legacy compatibility,
+	// but it is not ownership. Permanently deleting a note must never delete
+	// the user's source error record.
+	return r.Purge(ctx, id)
 }
 
-func legacyErrorIDsInTree(rootID int64, items []models.LibraryItem) []int {
-	tree := map[int64]struct{}{rootID: {}}
-	for changed := true; changed; {
-		changed = false
-		for _, item := range items {
-			if item.ParentID == nil {
-				continue
-			}
-			if _, parentIncluded := tree[*item.ParentID]; !parentIncluded {
-				continue
-			}
-			if _, included := tree[item.ID]; !included {
-				tree[item.ID] = struct{}{}
-				changed = true
-			}
-		}
+func BatchLibraryItems(ctx context.Context, action string, ids []int64, parentID *int64) error {
+	r, err := libraryRepository(ctx)
+	if err != nil {
+		return err
 	}
-	ids := make([]int, 0)
-	seen := make(map[int]struct{})
-	for _, item := range items {
-		if _, included := tree[item.ID]; !included || item.ErrorProblemID == nil {
-			continue
-		}
-		legacyID := int(*item.ErrorProblemID)
-		if _, duplicate := seen[legacyID]; duplicate {
-			continue
-		}
-		seen[legacyID] = struct{}{}
-		ids = append(ids, legacyID)
-	}
-	return ids
+	return r.Batch(ctx, action, ids, parentID)
 }
 func DuplicateLibraryItem(ctx context.Context, id int64, parent *int64) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)

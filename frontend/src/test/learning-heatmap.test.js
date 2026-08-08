@@ -26,14 +26,16 @@ describe("learning heatmap", () => {
     expect(wrapper.emitted("select-year")).toEqual([[2024]])
   })
 
-  it("marks the current day as the default right-edge alignment target", () => {
+  it("uses the same month and day as the default right-edge target in every year", () => {
     const now = new Date()
     const currentYear = now.getFullYear()
-    const today = `${currentYear}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const previousYear = currentYear - 1
+    const day = Math.min(now.getDate(), new Date(previousYear, now.getMonth() + 1, 0).getDate())
+    const anchor = `${previousYear}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
     const wrapper = mount(LearningHeatmap, {
-      props: { activity: { ...activity, start_date: `${currentYear}-01-01`, end_date: `${currentYear}-12-31` }, selectedYear: currentYear },
+      props: { activity: { ...activity, start_date: `${previousYear}-01-01`, end_date: `${previousYear}-12-31` }, selectedYear: previousYear },
     })
 
-    expect(wrapper.get(`[data-activity-date="${today}"]`)).toBeTruthy()
+    expect(wrapper.get(`[data-activity-date="${anchor}"]`)).toBeTruthy()
   })
 })

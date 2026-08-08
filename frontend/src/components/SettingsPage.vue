@@ -101,19 +101,27 @@ async function exportBackup() {
 }
 
 function chooseBackup(event) {
-  pendingBackup.value = event.target.files?.[0] || null
+  const file = event.target.files?.[0] || null
   event.target.value = ""
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    toast.warning("请选择 .zip 格式的备份文件")
+    return
+  }
+  pendingBackup.value = file
 }
 
 async function importBackup() {
-  if (!pendingBackup.value) return
+  const file = pendingBackup.value
+  if (!file) return
   backupBusy.value = true
   try {
-    const result = await api.importBackup(pendingBackup.value)
+    const result = await api.importBackup(file)
     pendingBackup.value = null
     const suffix = result.snapshot ? `；导入前快照：${result.snapshot}` : ""
-    toast.success(`备份导入成功${suffix}`, { timeout: 7000 })
-    window.setTimeout(() => window.location.reload(), 900)
+    const librarySummary = Number(result.library_items || 0) > 0 ? `，已恢复 ${result.library_items} 个资料项目` : ""
+    toast.success(`ZIP 备份恢复成功${librarySummary}${suffix}`, { timeout: 7000 })
+    await router.replace({ name: "library" })
   } catch (error) { toast.error(error.message || "导入失败"); pendingBackup.value = null }
   finally { backupBusy.value = false }
 }
@@ -223,8 +231,8 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
         </section>
 
         <section id="backup" class="settings-section paper-panel">
-          <header><span>03</span><div><h2>备份与恢复</h2><p>备份包含资料库、笔记标签、附件、设置和每日知识札记。</p></div><DatabaseBackup :size="21" /></header>
-          <div class="setting-action-grid"><article><CloudDownload :size="22" /><div><strong>导出完整备份</strong><p>下载带日期的 ZIP 文件，建议在重要整理后执行。</p></div><BaseButton :busy="backupBusy" @click="exportBackup">导出备份</BaseButton></article><article><ArchiveRestore :size="22" /><div><strong>从备份恢复</strong><p>导入会覆盖当前数据，系统会自动保留导入前快照。</p></div><BaseButton :disabled="backupBusy" @click="backupInput?.click()">选择文件</BaseButton><input ref="backupInput" type="file" accept=".zip,application/zip" hidden @change="chooseBackup" /></article></div>
+          <header><span>03</span><div><h2>备份与恢复</h2><p>备份包含资料库、笔记版本、附件、标签、设置和每日知识札记。</p></div><DatabaseBackup :size="21" /></header>
+          <div class="setting-action-grid"><article><CloudDownload :size="22" /><div><strong>导出完整备份</strong><p>下载带日期的 ZIP 文件，建议在重要整理后执行。</p></div><BaseButton :busy="backupBusy" @click="exportBackup">导出备份</BaseButton></article><article><ArchiveRestore :size="22" /><div><strong>从 ZIP 备份恢复</strong><p>选择已导出的 ZIP 包。恢复成功后会直接打开资料库。</p></div><BaseButton :disabled="backupBusy" @click="backupInput?.click()">选择 ZIP</BaseButton><input ref="backupInput" type="file" accept=".zip,application/zip" hidden @change="chooseBackup" /></article></div>
         </section>
 
         <section id="ocr" class="settings-section paper-panel">
@@ -240,7 +248,7 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
       </div>
     </div>
 
-    <ConfirmDialog :open="!!pendingBackup" title="用备份覆盖当前数据？" message="资料库、笔记、标签与设置会被替换。系统会先自动创建 pre-import 快照。" confirm-text="确认导入" danger :busy="backupBusy" @close="pendingBackup = null" @confirm="importBackup" />
+    <ConfirmDialog :open="!!pendingBackup" title="用 ZIP 备份覆盖当前数据？" :message="pendingBackup ? `将恢复“${pendingBackup.name}”中的资料库、笔记版本、附件、标签与设置。系统会先自动创建 pre-import 快照。` : ''" confirm-text="确认恢复" danger :busy="backupBusy" @close="pendingBackup = null" @confirm="importBackup" />
     <ConfirmDialog v-if="updateEnabled" :open="confirmUpdate" title="立即安装更新？" message="程序会先备份数据，然后下载更新并自动重启。" confirm-text="开始更新" :busy="updateApplying" @close="confirmUpdate = false" @confirm="applyUpdate" />
   </div>
 </template>

@@ -21,6 +21,7 @@ import (
 const mineruBaseURL = "https://mineru.net/api/v4"
 
 const (
+	OCRMaxUploadSize     = 50 * 1024 * 1024
 	ocrResultZipMaxSize  = 200 * 1024 * 1024
 	ocrMarkdownMaxSize   = 5 * 1024 * 1024
 	ocrImageMaxSize      = 12 * 1024 * 1024
@@ -31,17 +32,34 @@ var ocrHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 // OCRImageBytes 对图片字节数据进行 OCR 识别，返回 Markdown
 func OCRImageBytes(ctx context.Context, imageBytes []byte, fileName string) (string, error) {
+	return OCRFileBytes(ctx, imageBytes, fileName, "image/png")
+}
+
+// OCRFileBytes accepts the validated source name and MIME type from the API.
+// Keeping those values intact is essential for PDFs: sending every upload as
+// a PNG makes MinerU reject otherwise valid documents.
+func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType string) (string, error) {
+	if len(imageBytes) == 0 || len(imageBytes) > OCRMaxUploadSize {
+		return "", fmt.Errorf("OCR 文件必须在 1B 到 50MB 之间")
+	}
+	fileName, mimeType, err := normalizeOCRSource(fileName, mimeType)
+	if err != nil {
+		return "", err
+	}
 	repos, err := repositories(ctx)
 	if err != nil {
 		return "", err
 	}
-	taskID, _ := repos.OCRTasks.Create(ctx, repository.OCRTask{
+	taskID, err := repos.OCRTasks.Create(ctx, repository.OCRTask{
 		Provider:       "mineru",
 		Status:         "pending",
 		SourceFilename: fileName,
-		MimeType:       "image/png",
+		MimeType:       mimeType,
 		FileSize:       int64(len(imageBytes)),
 	})
+	if err != nil {
+		return "", err
+	}
 
 	token, err := getMinerUToken(ctx)
 	if err != nil {
@@ -49,21 +67,24 @@ func OCRImageBytes(ctx context.Context, imageBytes []byte, fileName string) (str
 		return "", err
 	}
 
-	batchID, uploadURL, err := createMinerUBatch(token, fileName)
+	batchID, uploadURL, err := createMinerUBatch(ctx, token, fileName)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
 		return "", err
 	}
-	_ = repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
+	if err := repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
 		Status:  "uploading",
 		BatchID: batchID,
-	})
+	}); err != nil {
+		return "", err
+	}
 
 	// 上传图片到 MinerU 返回的预签名 URL
-	req, err := http.NewRequest(http.MethodPut, uploadURL, bytes.NewReader(imageBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, bytes.NewReader(imageBytes))
 	if err != nil {
 		return "", err
 	}
+	req.Header.Set("Content-Type", mimeType)
 	resp, err := ocrHTTPClient.Do(req)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
@@ -76,27 +97,51 @@ func OCRImageBytes(ctx context.Context, imageBytes []byte, fileName string) (str
 		return "", err
 	}
 
-	_ = repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{Status: "processing"})
+	if err := repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{Status: "processing"}); err != nil {
+		return "", err
+	}
 
 	// 轮询等待识别完成
-	zipURL, err := pollMinerUResult(token, batchID)
+	zipURL, err := pollMinerUResult(ctx, token, batchID)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
 		return "", err
 	}
 
-	markdown, err := downloadAndExtractMarkdown(zipURL)
+	markdown, err := downloadAndExtractMarkdown(ctx, zipURL)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
 		return "", err
 	}
 	now := time.Now()
-	_ = repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
+	if err := repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
 		Status:         "succeeded",
 		ResultMarkdown: markdown,
 		FinishedAt:     &now,
-	})
+	}); err != nil {
+		return "", err
+	}
 	return markdown, nil
+}
+
+func normalizeOCRSource(fileName, mimeType string) (string, string, error) {
+	fileName = filepath.Base(strings.TrimSpace(fileName))
+	if fileName == "." || fileName == "" {
+		return "", "", fmt.Errorf("OCR 文件名无效")
+	}
+	ext := strings.ToLower(filepath.Ext(fileName))
+	allowed := map[string]string{
+		".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+		".webp": "image/webp", ".gif": "image/gif", ".pdf": "application/pdf",
+	}
+	expected, ok := allowed[ext]
+	if !ok {
+		return "", "", fmt.Errorf("OCR 仅支持图片和 PDF 文件")
+	}
+	if mimeType != "" && mimeType != "application/octet-stream" && !strings.EqualFold(strings.Split(mimeType, ";")[0], expected) {
+		return "", "", fmt.Errorf("OCR 文件类型与扩展名不匹配")
+	}
+	return fileName, expected, nil
 }
 
 // getMinerUToken 获取 MinerU Token（优先 config.json，其次环境变量）
@@ -121,7 +166,7 @@ func markOCRFailed(ctx context.Context, repos repository.Repositories, taskID in
 	})
 }
 
-func createMinerUBatch(token string, fileName string) (batchID string, uploadURL string, err error) {
+func createMinerUBatch(ctx context.Context, token string, fileName string) (batchID string, uploadURL string, err error) {
 	body := map[string]interface{}{
 		"files":          []map[string]string{{"name": fileName}},
 		"model_version":  "vlm",
@@ -134,7 +179,7 @@ func createMinerUBatch(token string, fileName string) (batchID string, uploadURL
 		return "", "", err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, mineruBaseURL+"/file-urls/batch", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mineruBaseURL+"/file-urls/batch", bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", "", err
 	}
@@ -174,14 +219,18 @@ func createMinerUBatch(token string, fileName string) (batchID string, uploadURL
 	return result.Data.BatchID, result.Data.FileURLs[0], nil
 }
 
-func pollMinerUResult(token string, batchID string) (string, error) {
+func pollMinerUResult(ctx context.Context, token string, batchID string) (string, error) {
 	deadline := time.Now().Add(5 * time.Minute)
 	var lastErr error
 
 	for time.Now().Before(deadline) {
-		time.Sleep(3 * time.Second)
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
 
-		zipURL, state, taskID, err := queryBatchResult(token, batchID)
+		zipURL, state, taskID, err := queryBatchResult(ctx, token, batchID)
 		if err != nil {
 			lastErr = err
 			continue
@@ -193,7 +242,7 @@ func pollMinerUResult(token string, batchID string) (string, error) {
 			return "", fmt.Errorf("MinerU OCR 失败")
 		}
 		if taskID != "" {
-			zipURL, state, err := queryTaskResult(token, taskID)
+			zipURL, state, err := queryTaskResult(ctx, token, taskID)
 			if err != nil {
 				lastErr = err
 				continue
@@ -213,8 +262,8 @@ func pollMinerUResult(token string, batchID string) (string, error) {
 	return "", fmt.Errorf("MinerU OCR 超时")
 }
 
-func queryBatchResult(token string, batchID string) (zipURL string, state string, taskID string, err error) {
-	req, err := http.NewRequest(http.MethodGet, mineruBaseURL+"/extract-results/batch/"+batchID, nil)
+func queryBatchResult(ctx context.Context, token string, batchID string) (zipURL string, state string, taskID string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mineruBaseURL+"/extract-results/batch/"+batchID, nil)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -255,8 +304,8 @@ func queryBatchResult(token string, batchID string) (zipURL string, state string
 	return "", item.State, item.TaskID, nil
 }
 
-func queryTaskResult(token string, taskID string) (zipURL string, state string, err error) {
-	req, err := http.NewRequest(http.MethodGet, mineruBaseURL+"/extract/task/"+taskID, nil)
+func queryTaskResult(ctx context.Context, token string, taskID string) (zipURL string, state string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mineruBaseURL+"/extract/task/"+taskID, nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -290,8 +339,8 @@ func queryTaskResult(token string, taskID string) (zipURL string, state string, 
 	return "", result.Data.State, nil
 }
 
-func downloadAndExtractMarkdown(zipURL string) (string, error) {
-	req, err := http.NewRequest(http.MethodGet, zipURL, nil)
+func downloadAndExtractMarkdown(ctx context.Context, zipURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, zipURL, nil)
 	if err != nil {
 		return "", err
 	}

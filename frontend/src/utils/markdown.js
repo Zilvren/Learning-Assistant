@@ -19,6 +19,30 @@ const md = markdownit({
   highlight: highlightCode,
 }).use(mark)
 
+const safeDataImageSource = /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i
+const defaultImageRenderer = md.renderer.rules.image
+
+function embeddedImageWidth(value) {
+  const match = /(?:^|;)width=(\d{1,4})(?:;|$)/.exec(String(value || ""))
+  const width = Number(match?.[1])
+  return Number.isInteger(width) && width >= 120 && width <= 1200 ? width : 400
+}
+
+function embeddedImageAlignment(value) {
+  return /(?:^|;)align=(left|center|right)(?:;|$)/.exec(String(value || ""))?.[1] || "left"
+}
+
+md.renderer.rules.image = (tokens, index, options, env, self) => {
+  const token = tokens[index]
+  const src = token.attrGet("src") || ""
+  if (!safeDataImageSource.test(src)) return defaultImageRenderer ? defaultImageRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+
+  const alt = token.content || "图片"
+  const width = embeddedImageWidth(token.attrGet("title"))
+  const alignment = embeddedImageAlignment(token.attrGet("title"))
+  return `<img class="markdown-image--align-${alignment}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" width="${width}">`
+}
+
 function headingID(text, index) {
   const slug = String(text || "")
     .toLowerCase()
@@ -93,12 +117,31 @@ function removeLooseDollars(html) {
 function normalizeSafeDataImages(src) {
   return src.replace(
     /<img\s+[^>]*src=["'](data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+)["'][^>]*>/gi,
-    "![image]($1)"
+    (tag, dataUrl) => {
+      const alt = /\balt=["']([^"']*)["']/i.exec(tag)?.[1] || "图片"
+      const widthMatch = /\bwidth=["']?(\d{1,4})/i.exec(tag)
+      const width = embeddedImageWidth(widthMatch ? `width=${widthMatch[1]}` : "")
+      return `![${alt}](${dataUrl} "width=${width}")`
+    }
   )
 }
 
 function mathPlaceholder(index) {
   return `\uE000ST_MATH_${index}\uE000`
+}
+
+function alignmentPlaceholder(index) {
+  return `\uE001ST_ALIGN_${index}\uE001`
+}
+
+function replaceAlignmentBlocks(src) {
+  const blocks = []
+  const result = src.replace(/^\[\[align:(left|center|right)\]\][ \t]*\r?\n([\s\S]*?)\r?\n\[\[\/align\]\][ \t]*$/gm, (_, alignment, content) => {
+    const token = alignmentPlaceholder(blocks.length)
+    blocks.push({ token, alignment, content })
+    return token
+  })
+  return { result, blocks }
 }
 
 function replaceMathWithPlaceholders(src) {
@@ -120,16 +163,18 @@ function replaceMathWithPlaceholders(src) {
 
 export function renderMd(src) {
   if (!src) return ""
-  const normalized = normalizeMathDelimiters(normalizeSafeDataImages(src))
+  const { result: alignedSource, blocks } = replaceAlignmentBlocks(src)
+  const normalized = normalizeMathDelimiters(normalizeSafeDataImages(alignedSource))
   const { result, placeholders } = replaceMathWithPlaceholders(normalized)
   let html = md.render(result)
   for (const item of placeholders) {
     html = html.split(item.token).join(item.html)
   }
+  for (const block of blocks) {
+    const rendered = `<div class="markdown-align markdown-align--${block.alignment}">${renderMd(block.content)}</div>`
+    html = html.replace(`<p>${block.token}</p>\n`, rendered)
+  }
   html = removeLooseDollars(html)
-  // Add default width to base64 data URI images that don't already have width/height
-  html = html.replace(/<img\s+src="(data:image\/[^"]+)"(?![^>]*\bwidth\b)(?![^>]*\bheight\b)([^>]*)>/g,
-    '<img src="$1" width="400"$2>')
   return html
 }
 

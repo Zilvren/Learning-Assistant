@@ -141,7 +141,7 @@ docker compose exec -T db pg_dump -U study_tracker study_tracker | gzip > study-
 以下规则很重要：
 
 - 正式使用后，**不要执行** `docker compose down -v`；`-v` 会删除数据库和资料数据卷。
-- 新增数据库表、字段或索引时，不能只上传 SQL 文件并重启。请先备份，再编写可重复执行的迁移步骤。
+- 新增数据库表、字段或索引时，请先备份，再新增有序、可重复执行的 `migrations/*.sql` 文件。应用会在启动时依据 `schema_migrations` 自动执行未应用的迁移；不要手工在容器初始化目录重复挂载同一套 SQL。
 - 仅当“首次部署、从未注册用户、数据库初始化已明确失败”时，才可以重置数据库卷：
 
   ```bash

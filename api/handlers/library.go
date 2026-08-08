@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -15,7 +16,24 @@ import (
 	"study-tracker-go/internal/service"
 )
 
-const libraryMaxUploadSize = 200 << 20
+const (
+	libraryMaxUploadSize = 200 << 20
+	libraryMaxNoteSize   = 10 << 20
+)
+
+var libraryMIMETypes = map[string]string{
+	".md":   "text/markdown; charset=utf-8",
+	".txt":  "text/plain; charset=utf-8",
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".gif":  "image/gif",
+	".pdf":  "application/pdf",
+	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 func parseLibraryID(c *gin.Context) (int64, bool) {
 	id, e := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -25,19 +43,24 @@ func parseLibraryID(c *gin.Context) (int64, bool) {
 	}
 	return id, true
 }
-func parseParent(raw string) *int64 {
+func parseParent(raw string) (*int64, error) {
 	if raw == "" || raw == "root" {
-		return nil
+		return nil, nil
 	}
 	id, e := strconv.ParseInt(raw, 10, 64)
-	if e != nil {
-		return nil
+	if e != nil || id <= 0 {
+		return nil, fmt.Errorf("父文件夹 ID 格式错误")
 	}
-	return &id
+	return &id, nil
 }
 
 func ListLibraryItems(c *gin.Context) {
-	items, e := service.ListLibrary(c.Request.Context(), repository.LibraryFilter{ParentID: parseParent(c.Query("parent_id")), Kind: c.Query("kind"), Query: c.Query("q"), Tag: c.Query("tag"), ReviewOnly: c.Query("review") == "true", DueOnly: c.Query("due") == "true", Trashed: c.Query("trashed") == "true"})
+	parentID, e := parseParent(c.Query("parent_id"))
+	if e != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": e.Error()})
+		return
+	}
+	items, e := service.ListLibrary(c.Request.Context(), repository.LibraryFilter{ParentID: parentID, Kind: c.Query("kind"), Query: c.Query("q"), Tag: c.Query("tag"), ReviewOnly: c.Query("review") == "true", DueOnly: c.Query("due") == "true", Trashed: c.Query("trashed") == "true"})
 	if e != nil {
 		respondError(c, http.StatusInternalServerError, e)
 		return
@@ -170,7 +193,10 @@ func DuplicateLibraryItem(c *gin.Context) {
 	var body struct {
 		ParentID *int64 `json:"parent_id"`
 	}
-	_ = c.ShouldBindJSON(&body)
+	if e := c.ShouldBindJSON(&body); e != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		return
+	}
 	item, e := service.DuplicateLibraryItem(c.Request.Context(), id, body.ParentID)
 	if e != nil {
 		respondError(c, http.StatusBadRequest, e)
@@ -193,8 +219,13 @@ func GetLibraryContent(c *gin.Context) {
 		ct = "application/octet-stream"
 	}
 	c.Header("ETag", fmt.Sprintf("\"%d\"", item.CurrentVersion))
+	c.Header("X-Content-Type-Options", "nosniff")
 	if item.Kind == "file" {
-		c.Header("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": item.Name}))
+		disposition := "attachment"
+		if strings.HasPrefix(ct, "image/") || ct == "application/pdf" {
+			disposition = "inline"
+		}
+		c.Header("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": item.Name}))
 	}
 	c.Data(http.StatusOK, ct, body)
 }
@@ -203,6 +234,7 @@ func SaveLibraryContent(c *gin.Context) {
 	if !ok {
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, libraryMaxNoteSize)
 	var req models.SaveLibraryContentRequest
 	if e := c.ShouldBindJSON(&req); e != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
@@ -228,8 +260,8 @@ func UploadLibraryFile(c *gin.Context) {
 	}
 	defer file.Close()
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowed := map[string]bool{".md": true, ".txt": true, ".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true, ".pdf": true, ".docx": true, ".xlsx": true, ".pptx": true}
-	if !allowed[ext] {
+	ct, allowed := libraryMIMETypes[ext]
+	if !allowed {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "不支持该文件类型"})
 		return
 	}
@@ -246,11 +278,12 @@ func UploadLibraryFile(c *gin.Context) {
 	if ext == ".md" || ext == ".txt" {
 		kind = "note"
 	}
-	ct := header.Header.Get("Content-Type")
-	if ct == "" {
-		ct = mime.TypeByExtension(ext)
+	parentID, e := parseParent(c.PostForm("parent_id"))
+	if e != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": e.Error()})
+		return
 	}
-	item, e := service.CreateLibraryItem(c.Request.Context(), models.CreateLibraryItemRequest{ParentID: parseParent(c.PostForm("parent_id")), Kind: kind, Name: filepath.Base(header.Filename), MimeType: ct}, data)
+	item, e := service.CreateLibraryItem(c.Request.Context(), models.CreateLibraryItemRequest{ParentID: parentID, Kind: kind, Name: filepath.Base(header.Filename), MimeType: ct}, data)
 	if e != nil {
 		respondError(c, http.StatusBadRequest, e)
 		return
@@ -289,33 +322,26 @@ func RestoreLibraryVersion(c *gin.Context) {
 
 func BatchLibraryItems(c *gin.Context) {
 	var req struct {
-		Action   string  `json:"action"`
-		IDs      []int64 `json:"ids"`
-		ParentID *int64  `json:"parent_id"`
+		Action   string          `json:"action"`
+		IDs      []int64         `json:"ids"`
+		ParentID json.RawMessage `json:"parent_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "批量操作参数错误"})
 		return
 	}
-	for _, id := range req.IDs {
-		var err error
-		switch req.Action {
-		case "trash":
-			err = service.TrashLibraryItem(c.Request.Context(), id)
-		case "restore":
-			_, err = service.RestoreLibraryItem(c.Request.Context(), id)
-		case "purge":
-			err = service.PurgeLibraryItem(c.Request.Context(), id)
-		case "move":
-			_, err = service.UpdateLibraryItem(c.Request.Context(), id, models.UpdateLibraryItemRequest{ParentID: req.ParentID, Conflict: "keep_both"})
-		default:
-			c.JSON(http.StatusBadRequest, gin.H{"detail": "不支持的批量操作"})
+	var parentID *int64
+	if len(req.ParentID) > 0 && string(req.ParentID) != "null" {
+		var id int64
+		if err := json.Unmarshal(req.ParentID, &id); err != nil || id <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "父文件夹 ID 格式错误"})
 			return
 		}
-		if err != nil {
-			respondError(c, http.StatusBadRequest, err)
-			return
-		}
+		parentID = &id
+	}
+	if err := service.BatchLibraryItems(c.Request.Context(), req.Action, req.IDs, parentID); err != nil {
+		respondError(c, http.StatusBadRequest, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "批量操作完成", "count": len(req.IDs)})
 }

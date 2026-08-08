@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,8 +18,9 @@ type Config struct {
 	GinMode     string
 	FrontendDir string
 
-	StorageDriver string
-	DatabaseURL   string
+	StorageDriver   string
+	DatabaseURL     string
+	RequirePostgres bool
 
 	AuthEnabled         bool
 	RegistrationEnabled bool
@@ -46,8 +48,9 @@ func Load(args []string) Config {
 		GinMode:     envString("GIN_MODE", ""),
 		FrontendDir: envString("TRACKER_FRONTEND_DIR", "frontend/dist"),
 
-		StorageDriver: strings.ToLower(envString("TRACKER_STORAGE", "json")),
-		DatabaseURL:   envString("TRACKER_DATABASE_URL", ""),
+		StorageDriver:   strings.ToLower(envString("TRACKER_STORAGE", "json")),
+		DatabaseURL:     envString("TRACKER_DATABASE_URL", ""),
+		RequirePostgres: envBool("TRACKER_REQUIRE_POSTGRES", false),
 
 		JWTSecret:           envString("TRACKER_JWT_SECRET", ""),
 		RegistrationEnabled: envBool("TRACKER_REGISTRATION_ENABLED", true),
@@ -101,9 +104,21 @@ func Load(args []string) Config {
 	}
 	cfg.AuthEnabled = cfg.StorageDriver == "postgres"
 	if cfg.AuthEnabled && strings.TrimSpace(cfg.JWTSecret) == "" {
-		cfg.JWTSecret = randomSecret()
+		cfg.JWTSecret = persistentJWTSecret()
+	}
+	if strings.HasPrefix(strings.ToLower(cfg.PublicURL), "https://") {
+		cfg.CookieSecure = true
 	}
 	return cfg
+}
+
+// Validate rejects a production configuration that would silently fall back
+// to the local JSON store. Local JSON mode remains an explicit supported mode.
+func (c Config) Validate() error {
+	if c.RequirePostgres && c.StorageDriver != "postgres" {
+		return fmt.Errorf("TRACKER_REQUIRE_POSTGRES=true 时 TRACKER_STORAGE 必须为 postgres")
+	}
+	return nil
 }
 
 func (c Config) Address(port int) string {
@@ -159,4 +174,41 @@ func randomSecret() string {
 		return fmt.Sprintf("study-tracker-dev-secret-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(buffer[:])
+}
+
+// persistentJWTSecret keeps local PostgreSQL sessions valid across restarts
+// without requiring a development-only environment variable. Production
+// deployments should still set TRACKER_JWT_SECRET explicitly and keep it in a
+// proper secret manager.
+func persistentJWTSecret() string {
+	dir := strings.TrimSpace(os.Getenv("TRACKER_DATA_DIR"))
+	if dir == "" {
+		dir = "data"
+	}
+	path := filepath.Join(dir, ".tracker-jwt-secret")
+	if existing, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(existing)) != "" {
+		return strings.TrimSpace(string(existing))
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return randomSecret()
+	}
+	secret := randomSecret()
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if os.IsExist(err) {
+		if existing, readErr := os.ReadFile(path); readErr == nil && strings.TrimSpace(string(existing)) != "" {
+			return strings.TrimSpace(string(existing))
+		}
+		return secret
+	}
+	if err != nil {
+		return secret
+	}
+	if _, err = file.WriteString(secret); err == nil {
+		err = file.Sync()
+	}
+	_ = file.Close()
+	if err != nil {
+		_ = os.Remove(path)
+	}
+	return secret
 }
