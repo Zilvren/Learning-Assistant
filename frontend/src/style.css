@@ -3244,13 +3244,117 @@
   }
 
   .app-rail {
+    --mobile-rail-width: min(280px, 82vw);
+    width: var(--mobile-rail-width);
+    min-width: var(--mobile-rail-width);
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
+    border-radius: 0 20px 20px 0;
+    transition: transform 210ms cubic-bezier(.32, .72, 0, 1);
+  }
+
+  .app-rail:hover,
+  .app-rail.is-pinned {
+    width: var(--mobile-rail-width);
+  }
+
+  .app-rail__panel,
+  .app-rail .rail-footer,
+  .app-rail .brand {
+    width: var(--mobile-rail-width);
+  }
+
+  .app-rail .brand {
+    min-height: 64px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    justify-content: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .app-rail .brand__copy {
+    max-width: none;
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    opacity: 1;
+  }
+
+  .app-rail .brand__copy strong {
+    font-size: 15px;
+  }
+
+  .app-rail__panel {
+    padding: 6px 10px 12px;
+  }
+
+  .app-rail .app-nav-section + .app-nav-section {
+    margin-top: 12px;
+  }
+
+  .app-rail .app-nav-heading {
+    height: auto;
+    margin: 8px 10px 6px;
+    line-height: 1.4;
+    text-align: left;
+  }
+
+  .app-rail .primary-nav {
+    gap: 3px;
   }
 
   .app-rail .primary-nav__item,
-  .app-rail .rail-logout {
+  .app-rail .rail-logout,
+  .app-rail .identity-card {
+    width: calc(var(--mobile-rail-width) - 20px);
     min-height: 44px;
+    grid-template-columns: 44px minmax(0, 1fr);
+    place-items: initial;
+    align-items: center;
+    justify-items: stretch;
+    gap: 6px;
+    padding: 0 10px 0 0;
+    text-align: left;
+  }
+
+  .app-rail .app-nav-icon {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+  }
+
+  .app-rail .app-nav-label {
+    max-width: none;
+    display: block;
+    justify-self: start;
+    overflow: hidden;
+    opacity: 1;
+    text-align: left;
+    text-overflow: ellipsis;
+  }
+
+  .app-rail .rail-footer {
+    gap: 3px;
+    padding: 8px 10px;
+  }
+
+  .app-rail .identity-card {
+    padding-block: 3px;
+  }
+
+  .app-rail .identity-card__avatar {
+    width: 32px;
+    height: 32px;
+    margin-inline: 6px;
+  }
+
+  .app-rail .identity-card__copy {
+    max-width: none;
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    opacity: 1;
   }
 
   .app-main {

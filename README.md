@@ -16,6 +16,8 @@ http://127.0.0.1:8000
 
 服务器 Docker 部署、更新 Bug、备份与安全检查请见：[服务器部署与日常维护指南](docs/deployment.md)。
 
+准备接手开发或运维本项目，请先阅读：[项目交接手册](docs/handover.md)。
+
 想从源码理解项目，可按：[项目阅读指南](docs/project-reading-guide.md) 的顺序阅读。
 
 ## 快速开始
