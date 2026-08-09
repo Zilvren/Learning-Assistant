@@ -16,6 +16,7 @@ type BackupRepository struct {
 	store *Store
 }
 
+// Export 在存储层中完成本文件定义的局部处理。
 func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) {
 	subjects, err := (&SubjectRepository{store: r.store}).List(ctx)
 	if err != nil {
@@ -46,6 +47,7 @@ func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) 
 	}, nil
 }
 
+// Import 在存储层中完成本文件定义的局部处理。
 func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) error {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
@@ -170,6 +172,7 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 	return tx.Commit(ctx)
 }
 
+// exportLibrary 在存储层中完成本文件定义的局部处理。
 func (r *BackupRepository) exportLibrary(ctx context.Context) (*base.LibraryBackup, error) {
 	library := &base.LibraryBackup{
 		SchemaVersion: 2,
@@ -223,6 +226,7 @@ func (r *BackupRepository) exportLibrary(ctx context.Context) (*base.LibraryBack
 	return library, nil
 }
 
+// importLibrary 在存储层中完成本文件定义的局部处理。
 func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library base.LibraryBackup, errorIDMap map[int]int64) error {
 	items := append([]models.LibraryItem(nil), library.Items...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].ID < items[j].ID })
@@ -332,6 +336,7 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 	return nil
 }
 
+// validBackupLibraryKind 在存储层中完成本文件定义的局部处理。
 func validBackupLibraryKind(kind string) bool {
 	return kind == "folder" || kind == "note" || kind == "file" || kind == "error"
 }
@@ -340,6 +345,7 @@ func validBackupLibraryKind(kind string) bool {
 // into the current account. Imported files retain their original timestamps,
 // so relying only on item triggers would otherwise place every activity on an
 // old date and leave today's dashboard empty after a restore.
+// recordLibraryImportActivity 为导入的资料库条目记录一次可聚合的学习活动。
 func (r *BackupRepository) recordLibraryImportActivity(ctx context.Context, tx pgx.Tx, library base.LibraryBackup) error {
 	location := time.FixedZone("CST", 8*60*60)
 	now := time.Now().In(location)
@@ -361,6 +367,7 @@ func (r *BackupRepository) recordLibraryImportActivity(ctx context.Context, tx p
 	return nil
 }
 
+// backupLibraryTimestamp 在存储层中完成本文件定义的局部处理。
 func backupLibraryTimestamp(value time.Time) time.Time {
 	if value.IsZero() {
 		return time.Now().UTC()
@@ -368,6 +375,7 @@ func backupLibraryTimestamp(value time.Time) time.Time {
 	return value
 }
 
+// HasData 在存储层中校验输入或判断当前条件。
 func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
 	var exists bool
 	err := r.store.pool.QueryRow(ctx, `
@@ -386,6 +394,7 @@ func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
 	return exists, err
 }
 
+// saveConfig 在存储层中创建或更新相应状态。
 func (r *BackupRepository) saveConfig(ctx context.Context, tx pgx.Tx, config *models.Config) error {
 	sealedToken, err := base.SealSecret(config.MineruToken)
 	if err != nil {

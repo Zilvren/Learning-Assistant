@@ -11,6 +11,7 @@ import (
 	base "study-tracker-go/internal/repository"
 )
 
+// TestPostgresRepositoriesIntegration 在存储层中验证对应场景的行为与边界条件。
 func TestPostgresRepositoriesIntegration(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -130,6 +131,7 @@ func TestPostgresRepositoriesIntegration(t *testing.T) {
 	}
 }
 
+// TestPostgresImportAllowsDuplicateLegacyIDsAcrossUsers 在存储层中验证对应场景的行为与边界条件。
 func TestPostgresImportAllowsDuplicateLegacyIDsAcrossUsers(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -211,6 +213,7 @@ func TestPostgresImportAllowsDuplicateLegacyIDsAcrossUsers(t *testing.T) {
 	}
 }
 
+// TestPostgresBackupImportRestoresLibraryItemsAndVersions 在存储层中验证对应场景的行为与边界条件。
 func TestPostgresBackupImportRestoresLibraryItemsAndVersions(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -310,6 +313,7 @@ func TestPostgresBackupImportRestoresLibraryItemsAndVersions(t *testing.T) {
 	}
 }
 
+// TestPostgresPoolReopenDoesNotCreateActivity 在存储层中验证对应场景的行为与边界条件。
 func TestPostgresPoolReopenDoesNotCreateActivity(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {

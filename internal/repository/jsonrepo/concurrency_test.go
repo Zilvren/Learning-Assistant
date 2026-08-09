@@ -14,6 +14,7 @@ import (
 	base "study-tracker-go/internal/repository"
 )
 
+// TestConcurrentCreatesAndReviews 在存储层中验证对应场景的行为与边界条件。
 func TestConcurrentCreatesAndReviews(t *testing.T) {
 	restoreDataDir(t)
 	base.SetDataDir(t.TempDir())
@@ -84,6 +85,7 @@ func TestConcurrentCreatesAndReviews(t *testing.T) {
 	}
 }
 
+// TestCrossProcessCreates 在存储层中验证对应场景的行为与边界条件。
 func TestCrossProcessCreates(t *testing.T) {
 	if os.Getenv("TRACKER_JSON_HELPER") == "1" {
 		runJSONProcessHelper(t)
@@ -136,6 +138,7 @@ func TestCrossProcessCreates(t *testing.T) {
 	}
 }
 
+// TestBackupExportWaitsForWriteTransaction 在存储层中验证对应场景的行为与边界条件。
 func TestBackupExportWaitsForWriteTransaction(t *testing.T) {
 	store := base.NewJSONStore(t.TempDir())
 	backup := &BackupRepository{store: store}
@@ -170,6 +173,7 @@ func TestBackupExportWaitsForWriteTransaction(t *testing.T) {
 	}
 }
 
+// runJSONProcessHelper 在存储层中执行流程或启动外部操作。
 func runJSONProcessHelper(t *testing.T) {
 	dir := os.Getenv("TRACKER_JSON_DATA_DIR")
 	prefix := os.Getenv("TRACKER_JSON_PREFIX")
@@ -186,6 +190,7 @@ func runJSONProcessHelper(t *testing.T) {
 	}
 }
 
+// jsonHelperCommand 在存储层中完成本文件定义的局部处理。
 func jsonHelperCommand(dir string, prefix string, count int) *exec.Cmd {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCrossProcessCreates$")
 	cmd.Env = append(os.Environ(),
@@ -197,6 +202,7 @@ func jsonHelperCommand(dir string, prefix string, count int) *exec.Cmd {
 	return cmd
 }
 
+// testProblem 在存储层中完成本文件定义的局部处理。
 func testProblem(question string) models.ErrorProblem {
 	return models.ErrorProblem{
 		Subject:    "数学",
@@ -212,6 +218,7 @@ func testProblem(question string) models.ErrorProblem {
 	}
 }
 
+// restoreDataDir 在存储层中完成本文件定义的局部处理。
 func restoreDataDir(t *testing.T) {
 	previous := base.DataDir()
 	t.Cleanup(func() { base.SetDataDir(previous) })

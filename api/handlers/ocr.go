@@ -15,22 +15,23 @@ import (
 
 // OCRImage 处理 POST /api/ocr
 // 注意：前端发的是原始图片 Blob，不是 multipart/form-data
+// OCRImage 接收图片并调用 OCR 服务，将识别结果返回给当前用户。
 func OCRImage(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.OCRMaxUploadSize)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil || len(body) == 0 {
 		var sizeErr *http.MaxBytesError
 		if errors.As(err, &sizeErr) {
-			c.JSON(http.StatusBadRequest, gin.H{"detail": "OCR 文件不能超过 50MB"})
+			respondProblem(c, http.StatusRequestEntityTooLarge, "payload_too_large", "OCR 文件不能超过 50MB")
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "No file uploaded"})
+		respondProblem(c, http.StatusBadRequest, "missing_file", "未上传 OCR 文件")
 		return
 	}
 
 	fileName, err := url.QueryUnescape(c.GetHeader("X-OCR-Filename"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "OCR 文件名无效"})
+		respondProblem(c, http.StatusBadRequest, "invalid_filename", "OCR 文件名无效")
 		return
 	}
 	fileName = filepath.Base(strings.TrimSpace(fileName))
@@ -46,6 +47,7 @@ func OCRImage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"markdown": markdown})
 }
 
+// ocrFallbackFilename 在HTTP 处理层中完成本文件定义的局部处理。
 func ocrFallbackFilename(contentType string) string {
 	switch strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0])) {
 	case "application/pdf":

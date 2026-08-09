@@ -9,6 +9,7 @@ import (
 	models "study-tracker-go/internal/model"
 )
 
+// GetLearningActivity 在业务层中读取并整理所需数据。
 func GetLearningActivity(ctx context.Context, requestedYear int) (models.LearningActivityResponse, error) {
 	now := time.Now().UTC()
 	currentYear := now.Year()
@@ -26,16 +27,18 @@ func GetLearningActivity(ctx context.Context, requestedYear int) (models.Learnin
 		Days:           []models.LearningActivityDay{},
 		AvailableYears: []int{requestedYear},
 	}
-	if !AuthEnabled() {
+	app, err := appFor(ctx)
+	if err != nil {
+		return result, err
+	}
+	if !app.AuthEnabled() {
 		return result, nil
 	}
 	userID, ok := UserIDFromContext(ctx)
 	if !ok || userID <= 0 {
 		return result, fmt.Errorf("未登录")
 	}
-	defaultMu.RLock()
-	pool := pgPool
-	defaultMu.RUnlock()
+	pool := app.pool
 	if pool == nil {
 		return result, fmt.Errorf("PostgreSQL 连接池未初始化")
 	}

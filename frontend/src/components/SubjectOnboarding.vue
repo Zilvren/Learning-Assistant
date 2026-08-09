@@ -13,6 +13,7 @@ const busy = ref(false)
 const subjects = useSubjects()
 const toast = useToast()
 
+// createSubject 协调当前组件的状态和交互。
 async function createSubject() {
   const value = name.value.trim()
   if (!value || busy.value) return

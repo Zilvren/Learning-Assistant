@@ -12,6 +12,7 @@ type SubjectRepository struct {
 	store *base.JSONStore
 }
 
+// List 在存储层中读取并整理所需数据。
 func (r *SubjectRepository) List(ctx context.Context) ([]string, error) {
 	subjects := []string{}
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -20,6 +21,7 @@ func (r *SubjectRepository) List(ctx context.Context) ([]string, error) {
 	return subjects, err
 }
 
+// Exists 在存储层中完成本文件定义的局部处理。
 func (r *SubjectRepository) Exists(ctx context.Context, name string) (bool, error) {
 	subjects, err := r.List(ctx)
 	if err != nil {
@@ -33,6 +35,7 @@ func (r *SubjectRepository) Exists(ctx context.Context, name string) (bool, erro
 	return false, nil
 }
 
+// Create 在存储层中创建或更新相应状态。
 func (r *SubjectRepository) Create(ctx context.Context, name string) ([]string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -54,6 +57,7 @@ func (r *SubjectRepository) Create(ctx context.Context, name string) ([]string, 
 	return subjects, err
 }
 
+// Delete 在存储层中删除、清理或撤销相应状态。
 func (r *SubjectRepository) Delete(ctx context.Context, name string) ([]string, error) {
 	var remaining []string
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
@@ -78,6 +82,7 @@ func (r *SubjectRepository) Delete(ctx context.Context, name string) ([]string, 
 	return remaining, err
 }
 
+// Replace 在存储层中创建或更新相应状态。
 func (r *SubjectRepository) Replace(ctx context.Context, subjects []string) error {
 	if subjects == nil {
 		subjects = []string{}
@@ -87,6 +92,7 @@ func (r *SubjectRepository) Replace(ctx context.Context, subjects []string) erro
 	})
 }
 
+// loadSubjects 在存储层中读取并整理所需数据。
 func loadSubjects(tx *base.JSONTx, subjects *[]string) error {
 	if err := tx.Load("subjects.json", subjects); err != nil {
 		return err

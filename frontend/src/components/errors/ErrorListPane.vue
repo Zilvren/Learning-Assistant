@@ -7,27 +7,32 @@ import EmptyState from "../ui/EmptyState.vue"
 defineProps({ items: { type: Array, default: () => [] }, selectedId: Number, loading: Boolean, today: String })
 defineEmits(["select", "tag"])
 
+// safeTags 协调当前组件的状态和交互。
 function safeTags(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim()) : []
 }
 
+// displaySubject 协调当前组件的状态和交互。
 function displaySubject(item) {
   const subject = typeof item?.subject === "string" ? item.subject.trim() : ""
   return subject && subject !== "暂无" && subject !== "未记录" ? subject : "未分类"
 }
 
+// displayTitle 协调当前组件的状态和交互。
 function displayTitle(item) {
   const title = typeof item?.title === "string" ? item.title.trim() : ""
   if (title && title !== "暂无" && title !== "未记录") return title
   return `错题 #${item?.id ?? "—"}`
 }
 
+// displayExcerpt 协调当前组件的状态和交互。
 function displayExcerpt(item) {
   if (hasContent(item?.question)) return item.question
   if (hasContent(item?.reason)) return item.reason
   return "题面尚未记录"
 }
 
+// displayDate 协调当前组件的状态和交互。
 function displayDate(item) {
   const updated = typeof item?.updated === "string" ? item.updated : ""
   const created = typeof item?.created === "string" ? item.created : ""

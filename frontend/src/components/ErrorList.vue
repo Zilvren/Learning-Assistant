@@ -58,16 +58,19 @@ const pageDescription = computed(() => {
   return `共 ${library.errors.value.length} 道错题，其中 ${pendingReviews.value} 道已到复习时间。`
 })
 
+// reviewLabelForHeader 协调当前组件的状态和交互。
 function reviewLabelForHeader(item) {
   return item.next_review ? `下次复习 ${item.next_review}` : `已复习 ${item.review_count || 0} 轮`
 }
 
+// syncSelected 协调当前组件的状态和交互。
 function syncSelected() {
   const found = library.errors.value.find((item) => item.id === selectedId.value)
   if (found) selectedCache.value = found
   if (!selectedId.value) selectedCache.value = null
 }
 
+// refresh 协调当前组件的状态和交互。
 async function refresh() {
   try {
     await library.refresh({ subject: currentSubject.value, keyword: keyword.value, mode: searchMode.value })
@@ -77,11 +80,13 @@ async function refresh() {
   }
 }
 
+// selectError 协调当前组件的状态和交互。
 async function selectError(item) {
   selectedCache.value = item
   await router.push({ name: "errors", params: { id: item.id } })
 }
 
+// setTagSearch 协调当前组件的状态和交互。
 async function setTagSearch(mode, tag) {
   searchMode.value = mode
   keyword.value = tag
@@ -89,6 +94,7 @@ async function setTagSearch(mode, tag) {
   await refresh()
 }
 
+// openAdd 协调当前组件的状态和交互。
 function openAdd() {
   if (!subjects.subjectRef.value.length) {
     toast.warning("请先在设置中心创建科目")
@@ -98,22 +104,26 @@ function openAdd() {
   editorOpen.value = true
 }
 
+// openEdit 协调当前组件的状态和交互。
 function openEdit() {
   if (!selectedError.value) return toast.warning("请先选择一道错题")
   editorMode.value = "edit"
   editorOpen.value = true
 }
 
+// finishCloseEditor 协调当前组件的状态和交互。
 function finishCloseEditor() {
   editorDirty.value = false
   editorOpen.value = false
 }
 
+// requestCloseEditor 协调当前组件的状态和交互。
 function requestCloseEditor() {
   if (editorDirty.value) discardOpen.value = true
   else finishCloseEditor()
 }
 
+// saveEditor 协调当前组件的状态和交互。
 async function saveEditor(payload) {
   if (editorBusy.value) return
   editorBusy.value = true
@@ -138,6 +148,7 @@ async function saveEditor(payload) {
   }
 }
 
+// markReviewed 协调当前组件的状态和交互。
 async function markReviewed() {
   if (!selectedId.value || reviewBusy.value) return
   reviewBusy.value = true
@@ -152,6 +163,7 @@ async function markReviewed() {
   }
 }
 
+// deleteError 协调当前组件的状态和交互。
 async function deleteError() {
   if (!selectedId.value || deleteBusy.value) return
   deleteBusy.value = true
@@ -170,6 +182,7 @@ async function deleteError() {
   }
 }
 
+// exportPdf 协调当前组件的状态和交互。
 async function exportPdf() {
   if (exportBusy.value) return
   exportBusy.value = true
@@ -186,6 +199,7 @@ async function exportPdf() {
   }
 }
 
+// confirmDiscard 协调当前组件的状态和交互。
 function confirmDiscard() {
   discardOpen.value = false
   finishCloseEditor()
@@ -196,6 +210,7 @@ function confirmDiscard() {
   }
 }
 
+// onBeforeUnload 协调当前组件的状态和交互。
 function onBeforeUnload(event) {
   if (!editorOpen.value || !editorDirty.value) return
   event.preventDefault()

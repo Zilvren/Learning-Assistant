@@ -38,6 +38,7 @@ func OCRImageBytes(ctx context.Context, imageBytes []byte, fileName string) (str
 // OCRFileBytes accepts the validated source name and MIME type from the API.
 // Keeping those values intact is essential for PDFs: sending every upload as
 // a PNG makes MinerU reject otherwise valid documents.
+// OCRFileBytes 对上传的图片字节执行 OCR，并返回可写入笔记的识别文本。
 func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType string) (string, error) {
 	if len(imageBytes) == 0 || len(imageBytes) > OCRMaxUploadSize {
 		return "", fmt.Errorf("OCR 文件必须在 1B 到 50MB 之间")
@@ -124,6 +125,7 @@ func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType str
 	return markdown, nil
 }
 
+// normalizeOCRSource 在业务层中构造、编码或标准化数据。
 func normalizeOCRSource(fileName, mimeType string) (string, string, error) {
 	fileName = filepath.Base(strings.TrimSpace(fileName))
 	if fileName == "." || fileName == "" {
@@ -157,6 +159,7 @@ func getMinerUToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
+// markOCRFailed 在业务层中完成本文件定义的局部处理。
 func markOCRFailed(ctx context.Context, repos repository.Repositories, taskID int64, err error) {
 	now := time.Now()
 	_ = repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
@@ -166,6 +169,7 @@ func markOCRFailed(ctx context.Context, repos repository.Repositories, taskID in
 	})
 }
 
+// createMinerUBatch 在业务层中创建或更新相应状态。
 func createMinerUBatch(ctx context.Context, token string, fileName string) (batchID string, uploadURL string, err error) {
 	body := map[string]interface{}{
 		"files":          []map[string]string{{"name": fileName}},
@@ -219,6 +223,7 @@ func createMinerUBatch(ctx context.Context, token string, fileName string) (batc
 	return result.Data.BatchID, result.Data.FileURLs[0], nil
 }
 
+// pollMinerUResult 在业务层中完成本文件定义的局部处理。
 func pollMinerUResult(ctx context.Context, token string, batchID string) (string, error) {
 	deadline := time.Now().Add(5 * time.Minute)
 	var lastErr error
@@ -262,6 +267,7 @@ func pollMinerUResult(ctx context.Context, token string, batchID string) (string
 	return "", fmt.Errorf("MinerU OCR 超时")
 }
 
+// queryBatchResult 在业务层中完成本文件定义的局部处理。
 func queryBatchResult(ctx context.Context, token string, batchID string) (zipURL string, state string, taskID string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mineruBaseURL+"/extract-results/batch/"+batchID, nil)
 	if err != nil {
@@ -304,6 +310,7 @@ func queryBatchResult(ctx context.Context, token string, batchID string) (zipURL
 	return "", item.State, item.TaskID, nil
 }
 
+// queryTaskResult 在业务层中完成本文件定义的局部处理。
 func queryTaskResult(ctx context.Context, token string, taskID string) (zipURL string, state string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mineruBaseURL+"/extract/task/"+taskID, nil)
 	if err != nil {
@@ -339,6 +346,7 @@ func queryTaskResult(ctx context.Context, token string, taskID string) (zipURL s
 	return "", result.Data.State, nil
 }
 
+// downloadAndExtractMarkdown 在业务层中完成本文件定义的局部处理。
 func downloadAndExtractMarkdown(ctx context.Context, zipURL string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, zipURL, nil)
 	if err != nil {
@@ -404,6 +412,7 @@ func downloadAndExtractMarkdown(ctx context.Context, zipURL string) (string, err
 	return replaceMarkdownImages(markdown, imageMap), nil
 }
 
+// readOCRZipFile 在业务层中读取并整理所需数据。
 func readOCRZipFile(file *zip.File, maxSize int64) ([]byte, error) {
 	rc, err := file.Open()
 	if err != nil {
@@ -420,6 +429,7 @@ func readOCRZipFile(file *zip.File, maxSize int64) ([]byte, error) {
 	return data, nil
 }
 
+// replaceMarkdownImages 在业务层中创建或更新相应状态。
 func replaceMarkdownImages(markdown string, imageMap map[string]string) string {
 	re := regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
 	return re.ReplaceAllStringFunc(markdown, func(match string) string {

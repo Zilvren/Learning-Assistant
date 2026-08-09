@@ -26,6 +26,7 @@ var skipNames = map[string]bool{
 	"__pycache__": true,
 }
 
+// main 在命令行工具中组装应用依赖并启动服务。
 func main() {
 	packagePath := flag.String("package", "", "update package zip")
 	appDir := flag.String("app-dir", "", "application directory")
@@ -43,6 +44,7 @@ func main() {
 	}
 }
 
+// run 在命令行工具中执行流程或启动外部操作。
 func run(packagePath, appDir, appExe string, pid int) error {
 	appDir, err := filepath.Abs(appDir)
 	if err != nil {
@@ -67,6 +69,7 @@ func run(packagePath, appDir, appExe string, pid int) error {
 	return nil
 }
 
+// runUpdate 在命令行工具中执行流程或启动外部操作。
 func runUpdate(packagePath, appDir, appExe string, pid int, extractDir, rollbackDir, logPath string) error {
 	writeLog(logPath, "Updater started")
 	writeLog(logPath, fmt.Sprintf("Waiting for process %d to exit", pid))
@@ -103,6 +106,7 @@ func runUpdate(packagePath, appDir, appExe string, pid int, extractDir, rollback
 	return launchApp(appDir, appExe, logPath)
 }
 
+// pickPayloadRoot 在命令行工具中完成本文件定义的局部处理。
 func pickPayloadRoot(extractDir, appExe string) string {
 	if fileExists(filepath.Join(extractDir, appExe)) {
 		return extractDir
@@ -127,6 +131,7 @@ func pickPayloadRoot(extractDir, appExe string) string {
 	return extractDir
 }
 
+// replaceFromPayload 在命令行工具中创建或更新相应状态。
 func replaceFromPayload(payloadRoot, appDir, rollbackDir, currentExe, logPath string) error {
 	entries, err := os.ReadDir(payloadRoot)
 	if err != nil {
@@ -181,6 +186,7 @@ func replaceFromPayload(payloadRoot, appDir, rollbackDir, currentExe, logPath st
 	return nil
 }
 
+// ensureVersionFile 在命令行工具中完成本文件定义的局部处理。
 func ensureVersionFile(payloadRoot, appDir, rollbackDir, logPath string) error {
 	source := filepath.Join(payloadRoot, "version.json")
 	if !fileExists(source) {
@@ -197,6 +203,7 @@ func ensureVersionFile(payloadRoot, appDir, rollbackDir, logPath string) error {
 	return nil
 }
 
+// extractZipSafe 在命令行工具中完成本文件定义的局部处理。
 func extractZipSafe(packagePath, targetDir string) error {
 	reader, err := zip.OpenReader(packagePath)
 	if err != nil {
@@ -241,6 +248,7 @@ func extractZipSafe(packagePath, targetDir string) error {
 	return nil
 }
 
+// safeZipTarget 在命令行工具中完成本文件定义的局部处理。
 func safeZipTarget(root, name string) (string, error) {
 	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || filepath.IsAbs(name) || filepath.VolumeName(name) != "" {
 		return "", fmt.Errorf("zip contains absolute path: %s", name)
@@ -256,6 +264,7 @@ func safeZipTarget(root, name string) (string, error) {
 	return target, nil
 }
 
+// backupTarget 在命令行工具中完成本文件定义的局部处理。
 func backupTarget(target, rollbackDir, appDir string) error {
 	if !pathExists(target) {
 		return nil
@@ -271,6 +280,7 @@ func backupTarget(target, rollbackDir, appDir string) error {
 	return copyFile(target, backup)
 }
 
+// restoreRollback 在命令行工具中完成本文件定义的局部处理。
 func restoreRollback(rollbackDir, appDir, logPath string) error {
 	if !isDir(rollbackDir) {
 		return nil
@@ -279,6 +289,7 @@ func restoreRollback(rollbackDir, appDir, logPath string) error {
 	return copyTree(rollbackDir, appDir)
 }
 
+// copyTree 在命令行工具中完成本文件定义的局部处理。
 func copyTree(source, target string) error {
 	return filepath.WalkDir(source, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -296,6 +307,7 @@ func copyTree(source, target string) error {
 	})
 }
 
+// copyFile 在命令行工具中完成本文件定义的局部处理。
 func copyFile(source, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return err
@@ -316,6 +328,7 @@ func copyFile(source, target string) error {
 	return dst.Close()
 }
 
+// copyFileWithRetry 在命令行工具中完成本文件定义的局部处理。
 func copyFileWithRetry(source, target, logPath string) error {
 	var lastErr error
 	for attempt := 1; attempt <= retryCount; attempt++ {
@@ -330,6 +343,7 @@ func copyFileWithRetry(source, target, logPath string) error {
 	return lastErr
 }
 
+// removePathWithRetry 在命令行工具中删除、清理或撤销相应状态。
 func removePathWithRetry(path, logPath string) error {
 	var lastErr error
 	for attempt := 1; attempt <= retryCount; attempt++ {
@@ -344,6 +358,7 @@ func removePathWithRetry(path, logPath string) error {
 	return lastErr
 }
 
+// readPayloadVersion 在命令行工具中读取并整理所需数据。
 func readPayloadVersion(root string) string {
 	data, err := os.ReadFile(filepath.Join(root, "version.json"))
 	if err != nil {
@@ -358,6 +373,7 @@ func readPayloadVersion(root string) string {
 	return strings.TrimSpace(payload.Version)
 }
 
+// launchApp 在命令行工具中完成本文件定义的局部处理。
 func launchApp(appDir, appExe, logPath string) error {
 	appPath := filepath.Join(appDir, appExe)
 	if !fileExists(appPath) {
@@ -372,6 +388,7 @@ func launchApp(appDir, appExe, logPath string) error {
 	return cmd.Process.Release()
 }
 
+// writeLog 在命令行工具中创建或更新相应状态。
 func writeLog(logPath, message string) {
 	ensureDir(filepath.Dir(logPath))
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -382,11 +399,13 @@ func writeLog(logPath, message string) {
 	_, _ = fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), message)
 }
 
+// ensureDir 在命令行工具中完成本文件定义的局部处理。
 func ensureDir(path string) string {
 	_ = os.MkdirAll(path, 0755)
 	return path
 }
 
+// ensureWithin 在命令行工具中完成本文件定义的局部处理。
 func ensureWithin(root, target string) error {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
@@ -406,10 +425,12 @@ func ensureWithin(root, target string) error {
 	return fmt.Errorf("path escapes target directory: %s", target)
 }
 
+// shouldSkipName 在命令行工具中完成本文件定义的局部处理。
 func shouldSkipName(name string) bool {
 	return skipNames[strings.ToLower(name)]
 }
 
+// samePath 在命令行工具中完成本文件定义的局部处理。
 func samePath(left, right string) bool {
 	leftAbs, err1 := filepath.Abs(left)
 	rightAbs, err2 := filepath.Abs(right)
@@ -419,16 +440,19 @@ func samePath(left, right string) bool {
 	return strings.EqualFold(leftAbs, rightAbs)
 }
 
+// pathExists 在命令行工具中完成本文件定义的局部处理。
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
+// fileExists 在命令行工具中完成本文件定义的局部处理。
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
 
+// isDir 在命令行工具中校验输入或判断当前条件。
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()

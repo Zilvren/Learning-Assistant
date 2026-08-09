@@ -40,6 +40,7 @@ const LAST_UPDATE_CHECK_KEY = "studyTrackerLastUpdateCheck"
 const canApplyUpdate = computed(() => !!updateInfo.value?.has_update && !!updateInfo.value?.asset_found && !!versionInfo.value.can_auto_update)
 const updateEnabled = computed(() => auth.updateEnabled.value)
 
+// saveUsername 协调当前组件的状态和交互。
 async function saveUsername() {
   if (usernameBusy.value) return
   usernameBusy.value = true
@@ -51,6 +52,7 @@ async function saveUsername() {
   finally { usernameBusy.value = false }
 }
 
+// loadToken 协调当前组件的状态和交互。
 async function loadToken() {
   try {
     const result = await api.getToken()
@@ -59,6 +61,7 @@ async function loadToken() {
   } catch (error) { toast.error(error.message || "OCR 配置读取失败") }
 }
 
+// saveToken 协调当前组件的状态和交互。
 async function saveToken() {
   if (!token.value.trim()) return toast.warning(tokenConfigured.value ? "粘贴新 Token 后再保存" : "请输入 MinerU Token")
   tokenBusy.value = true
@@ -71,6 +74,7 @@ async function saveToken() {
   finally { tokenBusy.value = false }
 }
 
+// clearToken 协调当前组件的状态和交互。
 async function clearToken() {
   tokenBusy.value = true
   try {
@@ -82,7 +86,9 @@ async function clearToken() {
   finally { tokenBusy.value = false }
 }
 
+// backupStamp 协调当前组件的状态和交互。
 function backupStamp() { return new Date().toISOString().slice(0, 10) }
+// exportBackup 协调当前组件的状态和交互。
 async function exportBackup() {
   backupBusy.value = true
   try {
@@ -100,6 +106,7 @@ async function exportBackup() {
   finally { backupBusy.value = false }
 }
 
+// chooseBackup 协调当前组件的状态和交互。
 function chooseBackup(event) {
   const file = event.target.files?.[0] || null
   event.target.value = ""
@@ -111,6 +118,7 @@ function chooseBackup(event) {
   pendingBackup.value = file
 }
 
+// importBackup 协调当前组件的状态和交互。
 async function importBackup() {
   const file = pendingBackup.value
   if (!file) return
@@ -126,7 +134,9 @@ async function importBackup() {
   finally { backupBusy.value = false }
 }
 
+// todayKey 协调当前组件的状态和交互。
 function todayKey() { return new Date().toISOString().slice(0, 10) }
+// loadVersion 协调当前组件的状态和交互。
 async function loadVersion() {
   try {
     versionInfo.value = await api.getVersion()
@@ -138,6 +148,7 @@ async function loadVersion() {
   } catch { updateStatus.value = "版本信息读取失败" }
 }
 
+// checkUpdate 协调当前组件的状态和交互。
 async function checkUpdate(force = true, silent = false) {
   updateBusy.value = true
   if (!silent) updateStatus.value = "正在检查更新…"
@@ -151,6 +162,7 @@ async function checkUpdate(force = true, silent = false) {
   finally { updateBusy.value = false }
 }
 
+// applyUpdate 协调当前组件的状态和交互。
 async function applyUpdate() {
   confirmUpdate.value = false
   if (!canApplyUpdate.value) return
@@ -163,6 +175,7 @@ async function applyUpdate() {
   } catch (error) { updateStatus.value = `更新失败：${error.message}`; updateApplying.value = false }
 }
 
+// waitForRestart 协调当前组件的状态和交互。
 function waitForRestart(targetVersion) {
   const startedAt = Date.now()
   window.clearInterval(restartPollTimer)
@@ -183,6 +196,7 @@ function waitForRestart(targetVersion) {
   }, 1500)
 }
 
+// logout 协调当前组件的状态和交互。
 async function logout() {
   await auth.logout()
   toast.info("已退出登录")

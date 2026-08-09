@@ -117,12 +117,14 @@ describe("personal library", () => {
     const wrapper=mount(LibraryPage,{global:{plugins:[router],stubs:{BaseDialog:true}}});await flushPromises()
     const cards=wrapper.findAll(".library-card")
     expect(cards[0].attributes("style")).toContain("--library-card-enter-delay: 0ms")
-    expect(cards[1].attributes("style")).toContain("--library-card-enter-delay: 42ms")
+    expect(cards[1].attributes("style")).toContain("--library-card-enter-delay: 20ms")
     await wrapper.findAll('input[type="checkbox"]')[0].trigger("click")
     await wrapper.findAll(".library-card")[1].trigger("click")
     expect(wrapper.find(".library-selection-bar").text()).toContain("已选择 2 项")
     await wrapper.get(".library-selection-bar .lib-btn").trigger("click")
     expect(wrapper.find(".library-selection-bar").text()).toContain("已选择 3 项")
+    await wrapper.get('input[aria-label="搜索资料"]').setValue("课程")
+    expect(wrapper.find(".library-selection-bar").exists()).toBe(false)
   })
 
   it("syntax-highlights fenced code without exposing raw HTML", () => {

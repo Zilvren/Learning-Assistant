@@ -10,6 +10,7 @@ import (
 	base "study-tracker-go/internal/repository"
 )
 
+// TestLibraryFoldersVersionsTrashAndMigration 在存储层中验证对应场景的行为与边界条件。
 func TestLibraryFoldersVersionsTrashAndMigration(t *testing.T) {
 	previous := base.DataDir()
 	base.SetDataDir(t.TempDir())

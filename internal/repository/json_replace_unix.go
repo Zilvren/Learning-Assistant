@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 )
 
+// replaceFileAtomic 在存储层中创建或更新相应状态。
 func replaceFileAtomic(source string, target string) error {
 	if err := os.Rename(source, target); err != nil {
 		return err

@@ -20,28 +20,34 @@ type verificationAuthRepository struct {
 	tokenHash string
 }
 
+// CreateUser 在业务层中创建或更新相应状态。
 func (r *verificationAuthRepository) CreateUser(_ context.Context, username string, email string, _ string, emailVerified bool) (models.User, error) {
 	r.user = models.AuthUser{ID: 42, Username: username, Email: email, EmailVerified: emailVerified, PasswordHash: "hash", Status: "active"}
 	return models.User{ID: r.user.ID, Username: username, Email: email, EmailVerified: emailVerified, Status: "active"}, nil
 }
 
+// DeleteUnverifiedUser 在业务层中删除、清理或撤销相应状态。
 func (r *verificationAuthRepository) DeleteUnverifiedUser(_ context.Context, _ int64) error {
 	return nil
 }
 
+// FindUserByAccount 在业务层中读取并整理所需数据。
 func (r *verificationAuthRepository) FindUserByAccount(_ context.Context, _ string) (models.AuthUser, error) {
 	return r.user, nil
 }
 
+// FindUserByID 在业务层中读取并整理所需数据。
 func (r *verificationAuthRepository) FindUserByID(_ context.Context, _ int64) (models.AuthUser, error) {
 	return r.user, nil
 }
 
+// CreateEmailVerificationToken 在业务层中创建或更新相应状态。
 func (r *verificationAuthRepository) CreateEmailVerificationToken(_ context.Context, _ int64, tokenHash string, _ time.Time) error {
 	r.tokenHash = tokenHash
 	return nil
 }
 
+// ConsumeEmailVerificationToken 在业务层中完成本文件定义的局部处理。
 func (r *verificationAuthRepository) ConsumeEmailVerificationToken(_ context.Context, tokenHash string) (models.AuthUser, error) {
 	if tokenHash == "" || tokenHash != r.tokenHash {
 		return models.AuthUser{}, errors.New("invalid token")
@@ -50,22 +56,27 @@ func (r *verificationAuthRepository) ConsumeEmailVerificationToken(_ context.Con
 	return r.user, nil
 }
 
+// TouchLastLogin 在业务层中完成本文件定义的局部处理。
 func (r *verificationAuthRepository) TouchLastLogin(_ context.Context, _ int64) error { return nil }
 
+// CreateRefreshToken 在业务层中创建或更新相应状态。
 func (r *verificationAuthRepository) CreateRefreshToken(_ context.Context, _ int64, _ string, _ string, _ string, _ time.Time) error {
 	return nil
 }
 
+// FindRefreshToken 在业务层中读取并整理所需数据。
 func (r *verificationAuthRepository) FindRefreshToken(_ context.Context, _ string) (int64, time.Time, bool, error) {
 	return 0, time.Time{}, true, errors.New("not implemented")
 }
 
+// RevokeRefreshToken 在业务层中删除、清理或撤销相应状态。
 func (r *verificationAuthRepository) RevokeRefreshToken(_ context.Context, _ string) error {
 	return nil
 }
 
 var _ repository.AuthRepository = (*verificationAuthRepository)(nil)
 
+// TestRegistrationRequiresEmailVerificationBeforeIssuingTokens 在业务层中验证对应场景的行为与边界条件。
 func TestRegistrationRequiresEmailVerificationBeforeIssuingTokens(t *testing.T) {
 	repos := jsonrepo.NewRepositories()
 	authRepo := &verificationAuthRepository{}
@@ -122,6 +133,7 @@ func TestRegistrationRequiresEmailVerificationBeforeIssuingTokens(t *testing.T) 
 	}
 }
 
+// verificationTokenFromMessage 在业务层中完成本文件定义的局部处理。
 func verificationTokenFromMessage(t *testing.T, message []byte) string {
 	t.Helper()
 	parts := strings.Split(string(message), "\r\n\r\n")

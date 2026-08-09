@@ -7,12 +7,14 @@ import { useToast } from "../../store/toast.js"
 import { rememberLibraryPath } from "../../utils/libraryPath.js"
 import MarkdownRenderer from "../MarkdownRenderer.vue"
 import BaseDialog from "../ui/BaseDialog.vue"
+import ConfirmDialog from "../ui/ConfirmDialog.vue"
 
 const props = defineProps({ folderId: [String, Number], trash: Boolean })
 const route = useRoute(); const router = useRouter(); const toast = useToast()
 const items = ref([]); const loading = ref(false); const query = ref(""); const kind = ref("all"); const tag = ref(String(route.query.tag || "")); const tags = ref([]); const view = ref(localStorage.getItem("libraryView") || "grid")
 const currentFolder = ref(null); const breadcrumbs = ref([]); const selected = ref(new Set()); const menuId = ref(null); const fileInput = ref(null)
 const dialog = ref(""); const formName = ref(""); const formTags = ref(""); const formReview = ref(false); const editing = ref(null); const busy = ref(false); const deleting = ref(false)
+const batchPurgeOpen = ref(false)
 const notePreviews = ref({}); const previewLoading = ref(new Set()); const previewErrors = ref(new Set())
 const activeFilter = ref("")
 let loadVersion = 0
@@ -26,12 +28,18 @@ const kindOptions = [{ value:"all", label:"全部类型" }, { value:"folder", la
 const tagOptions = computed(() => [{ value:"", label:"全部标签" }, ...tags.value.map((value) => ({ value, label:`# ${value}` }))])
 const kindLabel = computed(() => kindOptions.find((option) => option.value === kind.value)?.label || "全部类型")
 const tagLabel = computed(() => tagOptions.value.find((option) => option.value === tag.value)?.label || "全部标签")
+const batchPurgeMessage = computed(() => `将永久删除已选择的 ${selected.value.size} 项；其中的文件夹会连同全部内容一起删除。此操作无法撤销。`)
 
+// itemIcon 协调当前组件的状态和交互。
 function itemIcon(item) { return item.kind === "folder" ? Folder : item.kind === "note" ? FileText : File }
+// formatSize 协调当前组件的状态和交互。
 function formatSize(size) { if (!size) return "—"; if (size < 1024) return `${size} B`; if (size < 1048576) return `${(size/1024).toFixed(1)} KB`; return `${(size/1048576).toFixed(1)} MB` }
+// formatDate 协调当前组件的状态和交互。
 function formatDate(value) { return value ? new Date(value).toLocaleString("zh-CN", { month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }) : "—" }
+// creationDate 优先展示项目创建时间，兼容旧数据时回退到最后更新时间。
 function creationDate(item) { return formatDate(item.created_at || item.updated_at) }
 
+// loadNotePreview 协调当前组件的状态和交互。
 async function loadNotePreview(item) {
   if (item.kind !== "note" || view.value !== "grid" || Object.hasOwn(notePreviews.value, item.id) || previewLoading.value.has(item.id)) return
   const loadingSet = new Set(previewLoading.value); loadingSet.add(item.id); previewLoading.value = loadingSet
@@ -45,6 +53,7 @@ async function loadNotePreview(item) {
   }
 }
 
+// load 协调当前组件的状态和交互。
 async function load() {
   const requestVersion = ++loadVersion
   loading.value = true
@@ -65,6 +74,8 @@ async function load() {
     const result = await api.getLibraryItems({ parentId: folderId.value, kind: kind.value, query: query.value, tag: tag.value, trashed: props.trash })
     if (requestVersion !== loadVersion) return
     items.value = result.items || []
+    const visibleIds = new Set(items.value.map((item) => item.id))
+    selected.value = new Set([...selected.value].filter((id) => visibleIds.has(id)))
     currentFolder.value = folder
     await loadBreadcrumbs()
     try {
@@ -80,6 +91,7 @@ async function load() {
   }
 }
 
+// loadBreadcrumbs 协调当前组件的状态和交互。
 async function loadBreadcrumbs() {
   const trail = []; let cursor = currentFolder.value; let guard = 0
   while (cursor && guard++ < 30) {
@@ -90,15 +102,19 @@ async function loadBreadcrumbs() {
   breadcrumbs.value = trail
 }
 
+// openItem 协调当前组件的状态和交互。
 function openItem(item) {
   menuId.value = null
   if (item.kind === "folder") return router.push({ name: props.trash ? "trash" : "library", params:{ folderId:item.id } })
   return router.push({ name:"library-item", params:{ itemId:item.id } })
 }
 
+// openCreate 协调当前组件的状态和交互。
 function openCreate(type) { dialog.value = type; formName.value = type === "folder" ? "新建文件夹" : "未命名笔记"; formTags.value = ""; formReview.value = false; editing.value = null }
+// openRename 协调当前组件的状态和交互。
 function openRename(item) { dialog.value = "rename"; formName.value = item.name; formTags.value = (item.tags || []).join(", "); formReview.value = Boolean(item.review_enabled); editing.value = item; menuId.value = null }
 
+// submitDialog 协调当前组件的状态和交互。
 async function submitDialog() {
   if (!formName.value.trim()) return
   busy.value = true
@@ -111,13 +127,20 @@ async function submitDialog() {
   finally { busy.value = false }
 }
 
+// trashItem 协调当前组件的状态和交互。
 async function trashItem(item) { menuId.value=null; try { await api.trashLibraryItem(item.id); toast.success(item.kind==='folder' ? "文件夹及其内容已移入回收站" : "已移入回收站"); await load() } catch(e){ toast.error(e.message) } }
+// restoreItem 从回收站恢复单个项目；文件夹恢复会由后端一并恢复子内容。
 async function restoreItem(item) { try { await api.restoreLibraryItem(item.id); toast.success(item.kind==='folder' ? "文件夹及其内容已恢复" : "已恢复"); await load() } catch(e){ toast.error(e.message) } }
+// purgeItem 在用户确认后永久删除项目；文件夹操作会同时处理其子树。
 async function purgeItem(item) { const label=item.kind==='folder' ? `永久删除“${item.name}”及其全部内容？` : `永久删除“${item.name}”？`; if (deleting.value || !confirm(`${label}此操作无法撤销。`)) return; deleting.value=true; try { await api.purgeLibraryItem(item.id); toast.success(item.kind==='folder' ? "文件夹及其内容已永久删除" : "已永久删除"); await load() } catch(e){ toast.error(e.message) } finally { deleting.value=false } }
+// duplicate 在当前目录创建项目副本，并刷新列表以获取后端分配的新 ID。
 async function duplicate(item) { menuId.value=null; try { await api.duplicateLibraryItem(item.id, folderId.value); toast.success("已创建副本"); await load() } catch(e){ toast.error(e.message) } }
+// togglePin 协调当前组件的状态和交互。
 async function togglePin(item) { menuId.value=null; await api.updateLibraryItem(item.id,{ pinned:!item.pinned }); await load() }
+// toggleReview 协调当前组件的状态和交互。
 async function toggleReview(item) { menuId.value=null; try { await api.updateLibraryItem(item.id,{ review_enabled:!item.review_enabled }); toast.success(item.review_enabled ? "已移出复习计划" : "已加入复习计划"); await load() } catch(e){ toast.error(e.message || "更新复习计划失败") } }
 
+// upload 协调当前组件的状态和交互。
 async function upload(event) {
   const files = [...(event.target.files || [])]; if (!files.length) return
   busy.value = true
@@ -125,21 +148,33 @@ async function upload(event) {
   event.target.value=""; busy.value=false; await load()
 }
 
+// dropOnFolder 协调当前组件的状态和交互。
 async function dropOnFolder(event, target) {
   const id = Number(event.dataTransfer.getData("text/library-item")); if (!id || target.kind !== "folder") return
   try { await api.updateLibraryItem(id,{ parent_id:target.id, conflict:"keep_both" }); toast.success(`已移动到 ${target.name}`); await load() } catch(e){ toast.error(e.message) }
 }
+// toggleSelected 协调当前组件的状态和交互。
 function toggleSelected(id) { const next=new Set(selected.value); next.has(id)?next.delete(id):next.add(id); selected.value=next }
+// openOrSelect 协调当前组件的状态和交互。
 function openOrSelect(item) { if (selected.value.size) return toggleSelected(item.id); openItem(item) }
+// toggleSelectAll 协调当前组件的状态和交互。
 function toggleSelectAll() { selected.value = selected.value.size === items.value.length ? new Set() : new Set(items.value.map((item) => item.id)) }
+// batch 协调当前组件的状态和交互。
 async function batch(action) { const ids=[...selected.value]; if(!ids.length||deleting.value)return; const isPermanentDelete=props.trash&&action==='purge'; if(isPermanentDelete)deleting.value=true; try{await api.batchLibraryItems(action,ids);selected.value=new Set();toast.success(`已处理 ${ids.length} 项`);await load()}catch(e){toast.error(e.message)}finally{if(isPermanentDelete)deleting.value=false} }
+// requestBatch 对不可撤销的批量操作先展示明确确认，不让隐藏选择直接生效。
+function requestBatch(action) { if (props.trash && action === "purge") { batchPurgeOpen.value = true; return } void batch(action) }
+async function confirmBatchPurge() { await batch("purge"); if (!deleting.value && selected.value.size === 0) batchPurgeOpen.value = false }
+// setView 协调当前组件的状态和交互。
 function setView(next) { view.value=next; localStorage.setItem("libraryView",next) }
+// toggleFilter 协调当前组件的状态和交互。
 function toggleFilter(name) { activeFilter.value = activeFilter.value === name ? "" : name }
+// selectFilter 协调当前组件的状态和交互。
 function selectFilter(name, value) { if (name === "kind") kind.value = value; else tag.value = value; activeFilter.value = "" }
+// closeFilter 协调当前组件的状态和交互。
 function closeFilter(event) { if (!event.target.closest(".library-filter")) activeFilter.value = "" }
 let searchTimer
 watch(()=>route.query.tag,(value)=>{tag.value=String(value||"")})
-watch([query,kind,tag,folderId,()=>props.trash],()=>{clearTimeout(searchTimer);searchTimer=setTimeout(load,250)})
+watch([query,kind,tag,folderId,()=>props.trash],()=>{selected.value=new Set();batchPurgeOpen.value=false;clearTimeout(searchTimer);searchTimer=setTimeout(load,250)})
 watch([folderId,()=>props.trash],([nextFolderId,isTrash])=>{if(!isTrash)rememberLibraryPath(nextFolderId)},{immediate:true})
 onMounted(() => { load(); document.addEventListener("pointerdown", closeFilter) })
 onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
@@ -164,10 +199,10 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
       <div class="library-view-toggle"><button :class="{active:view==='grid'}" aria-label="网格视图" @click="setView('grid')"><Grid2X2 :size="17"/></button><button :class="{active:view==='list'}" aria-label="列表视图" @click="setView('list')"><List :size="18"/></button></div>
     </section>
 
-    <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="batch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="batch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>
+    <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="requestBatch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>
     <div v-if="loading" class="library-loading" role="status" aria-live="polite">加载中</div>
     <section v-else-if="items.length" class="library-items" :class="`library-items--${view}`" aria-label="资料列表">
-      <article v-for="(item, index) in items" :key="item.id" class="library-card" :class="{selected:selected.has(item.id),'is-previewable':item.kind==='note','has-menu':menuId===item.id}" :style="{'--library-card-enter-delay': `${Math.min(index, 10) * 42}ms`}" draggable="true" tabindex="0" @contextmenu.prevent="menuId=item.id" @mouseenter="loadNotePreview(item)"
+      <article v-for="(item, index) in items" :key="item.id" class="library-card" :class="{selected:selected.has(item.id),'is-previewable':item.kind==='note','has-menu':menuId===item.id}" :style="{'--library-card-enter-delay': `${Math.min(index, 5) * 20}ms`}" draggable="true" tabindex="0" @contextmenu.prevent="menuId=item.id" @mouseenter="loadNotePreview(item)"
         @click="openOrSelect(item)" @dragstart="$event.dataTransfer.setData('text/library-item',String(item.id))" @dragover.prevent @drop="dropOnFolder($event,item)" @keydown.enter="openOrSelect(item)">
         <div class="library-card__utility"><input type="checkbox" :checked="selected.has(item.id)" :aria-label="`选择 ${item.name}`" @click.stop="toggleSelected(item.id)"/>
           <button class="library-more" :aria-label="`${item.name} 操作`" @click.stop="menuId=menuId===item.id?null:item.id"><MoreVertical :size="18"/></button></div>
@@ -203,5 +238,15 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
       </div>
       <template #footer><button class="lib-btn" @click="dialog=''">取消</button><button class="lib-btn lib-btn--primary" :disabled="busy" @click="submitDialog">{{ busy?'保存中…':'保存' }}</button></template>
     </BaseDialog>
+    <ConfirmDialog
+      :open="batchPurgeOpen"
+      title="永久删除所选资料？"
+      :message="batchPurgeMessage"
+      confirm-text="永久删除"
+      danger
+      :busy="deleting"
+      @close="!deleting && (batchPurgeOpen=false)"
+      @confirm="confirmBatchPurge"
+    />
   </div>
 </template>

@@ -11,6 +11,7 @@ export class ApiError extends Error {
   }
 }
 
+// responseError 将非成功 HTTP 响应规范化为前端可展示的 ApiError。
 async function responseError(res, fallback = '请求失败') {
   const payload = await res.json().catch(() => ({ detail: res.statusText }))
   const message = res.status === 503
@@ -19,6 +20,7 @@ async function responseError(res, fallback = '请求失败') {
   return new ApiError(message, res.status, payload)
 }
 
+// request 是 JSON API 的统一入口，负责 Cookie、一次刷新令牌重试和响应解码。
 async function request(method, path, body, retry = true) {
   const opts = { method, headers: {}, credentials: 'include' }
   if (body) {
@@ -40,11 +42,12 @@ async function request(method, path, body, retry = true) {
   return res.json()
 }
 
-async function requestBackupExport() {
+// requestBackupExport 单独处理二进制 ZIP 下载，避免走 JSON 解码分支。
+async function requestBackupExport(retry = true) {
   const res = await fetch(BASE + '/backup/export', { credentials: 'include' })
-  if (res.status === 401) {
+  if (res.status === 401 && retry) {
     const ok = await refreshAuth()
-    if (ok) return requestBackupExport()
+    if (ok) return requestBackupExport(false)
   }
   if (!res.ok) {
     throw await responseError(res, '备份失败')
@@ -52,11 +55,12 @@ async function requestBackupExport() {
   return res.blob()
 }
 
-async function requestBackupImport(file) {
+// requestBackupImport 以原始文件体上传 ZIP 备份，并沿用登录过期重试策略。
+async function requestBackupImport(file, retry = true) {
   const res = await fetch(BASE + '/backup/import', { method: 'POST', body: file, credentials: 'include' })
-  if (res.status === 401) {
+  if (res.status === 401 && retry) {
     const ok = await refreshAuth()
-    if (ok) return requestBackupImport(file)
+    if (ok) return requestBackupImport(file, false)
   }
   if (!res.ok) {
     throw await responseError(res, '导入失败')
@@ -64,6 +68,7 @@ async function requestBackupImport(file) {
   return res.json()
 }
 
+// requestLibraryContent 读取笔记或文件原文，并从 ETag 提取乐观并发版本号。
 async function requestLibraryContent(id, retry = true) {
   const res = await fetch(`${BASE}/library/items/${id}/content`, { credentials: 'include' })
   if (res.status === 401 && retry) {
@@ -74,6 +79,7 @@ async function requestLibraryContent(id, retry = true) {
   return { content: await res.text(), version: Number((res.headers.get('etag') || '').replace(/\D/g, '') || 0), type: res.headers.get('content-type') || '' }
 }
 
+// uploadLibraryFile 用 FormData 上传资料库文件，不手动设置 multipart Content-Type。
 async function uploadLibraryFile(file, parentId, retry = true) {
   const form = new FormData()
   form.append('file', file)
@@ -87,6 +93,7 @@ async function uploadLibraryFile(file, parentId, retry = true) {
   return res.json()
 }
 
+// refreshAuth 合并并发刷新请求，避免多个接口同时触发重复的 refresh token 调用。
 async function refreshAuth() {
   if (!refreshing) {
     refreshing = fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
@@ -97,6 +104,21 @@ async function refreshAuth() {
   return refreshing
 }
 
+// ocrImage 上传原始文件，并且只允许在凭据过期后刷新重试一次。
+async function ocrImage(file, retry = true) {
+  const blob = file instanceof Blob ? file : new Blob([file])
+  const headers = {}
+  if (file?.name) headers['X-OCR-Filename'] = encodeURIComponent(file.name)
+  const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob, headers, credentials: 'include' })
+  if (resp.status === 401 && retry) {
+    const ok = await refreshAuth()
+    if (ok) return ocrImage(file, false)
+  }
+  if (!resp.ok) throw await responseError(resp, 'OCR failed')
+  return resp.json()
+}
+
+// api 集中声明页面可调用的后端接口；简单的一行包装函数直接映射到 request。
 export const api = {
 	getLibraryItems: ({ parentId = null, kind = '', query = '', tag = '', review = false, due = false, trashed = false } = {}) => {
 		const p = new URLSearchParams()
@@ -136,18 +158,7 @@ export const api = {
   logout: () => request('POST', '/auth/logout', null, false),
   addSubject: (name) => request('POST', '/subjects', { name }),
   deleteSubject: (name) => request('DELETE', '/subjects/' + encodeURIComponent(name)),
-  ocrImage: async (file) => {
-    const blob = file instanceof Blob ? file : new Blob([file])
-    const headers = {}
-    if (file?.name) headers['X-OCR-Filename'] = encodeURIComponent(file.name)
-    const resp = await fetch(BASE + '/ocr', { method: 'POST', body: blob, headers, credentials: 'include' })
-    if (resp.status === 401) {
-      const ok = await refreshAuth()
-      if (ok) return api.ocrImage(file)
-    }
-    if (!resp.ok) throw await responseError(resp, 'OCR failed')
-    return resp.json()
-  },
+  ocrImage,
   saveToken: (token) => request('PUT', '/settings/token', { token }),
   clearToken: () => request('DELETE', '/settings/token'),
   getToken: () => request('GET', '/settings/token'),
@@ -165,8 +176,11 @@ export const api = {
     if (reason_tag) p.set('reason_tag', reason_tag)
     return request('GET', '/errors?' + p.toString())
   },
+  // getTags 发起并处理后端 API 请求。
   getTags: () => request('GET', '/tags'),
+  // addError 发起并处理后端 API 请求。
   addError: (data) => request('POST', '/errors', data),
+  // reviewError 发起并处理后端 API 请求。
   reviewError: (id) => request('PUT', `/errors/${id}/review`),
   deleteError: (id) => request('DELETE', `/errors/${id}`),
   updateError: (id, data) => request('PUT', `/errors/${id}`, data),

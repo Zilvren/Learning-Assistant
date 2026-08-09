@@ -8,6 +8,7 @@ import (
 	"study-tracker-go/internal/service"
 )
 
+// GetSubjects 在HTTP 处理层中读取并整理所需数据。
 func GetSubjects(c *gin.Context) {
 	subjects, err := service.GetAllSubjects(c.Request.Context())
 
@@ -18,12 +19,13 @@ func GetSubjects(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"subjects": subjects})
 }
 
+// Addsubject 在HTTP 处理层中创建或更新相应状态。
 func Addsubject(c *gin.Context) {
 	var body struct {
 		Name string `json:"name"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 

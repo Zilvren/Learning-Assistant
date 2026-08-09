@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// waitForPID 在命令行工具中完成本文件定义的局部处理。
 func waitForPID(pid int, timeout time.Duration) {
 	if pid <= 0 {
 		return

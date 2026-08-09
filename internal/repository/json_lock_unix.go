@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// tryFileLock 在存储层中完成本文件定义的局部处理。
 func tryFileLock(path string, exclusive bool) (func(), error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {

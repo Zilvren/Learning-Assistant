@@ -40,12 +40,14 @@ type JSONTx struct {
 	writable bool
 }
 
+// SetDataDir 在存储层中完成本文件定义的局部处理。
 func SetDataDir(dir string) {
 	dataDirMu.Lock()
 	dataDir = normalizeDataDir(dir)
 	dataDirMu.Unlock()
 }
 
+// DataDir 在存储层中完成本文件定义的局部处理。
 func DataDir() string {
 	dataDirMu.RLock()
 	dir := normalizeDataDir(dataDir)
@@ -54,10 +56,12 @@ func DataDir() string {
 	return dir
 }
 
+// Path 在存储层中完成本文件定义的局部处理。
 func Path(filename string) string {
 	return filepath.Join(DataDir(), filepath.Base(filename))
 }
 
+// StoreBlob 在存储层中完成本文件定义的局部处理。
 func StoreBlob(r io.Reader) (string, int64, error) {
 	tmpDir := filepath.Join(DataDir(), "blobs", ".tmp")
 	if err := os.MkdirAll(tmpDir, 0700); err != nil {
@@ -99,6 +103,7 @@ func StoreBlob(r io.Reader) (string, int64, error) {
 	return hash, size, nil
 }
 
+// BlobPath 在存储层中完成本文件定义的局部处理。
 func BlobPath(hash string) string {
 	if len(hash) < 2 {
 		return filepath.Join(DataDir(), "blobs", "invalid")
@@ -106,8 +111,10 @@ func BlobPath(hash string) string {
 	return filepath.Join(DataDir(), "blobs", hash[:2], hash)
 }
 
+// ReadBlob 在存储层中读取并整理所需数据。
 func ReadBlob(hash string) ([]byte, error) { return os.ReadFile(BlobPath(hash)) }
 
+// NewJSONStore 在存储层中创建所需对象并完成初始化。
 func NewJSONStore(dir string) *JSONStore {
 	dir = normalizeDataDir(dir)
 	storeRegistryMu.Lock()
@@ -124,18 +131,22 @@ func NewJSONStore(dir string) *JSONStore {
 	}
 }
 
+// DefaultJSONStore 在存储层中完成本文件定义的局部处理。
 func DefaultJSONStore() *JSONStore {
 	return NewJSONStore(DataDir())
 }
 
+// Read 在存储层中读取并整理所需数据。
 func (s *JSONStore) Read(ctx context.Context, fn func(*JSONTx) error) error {
 	return s.withLock(ctx, false, fn)
 }
 
+// Write 在存储层中创建或更新相应状态。
 func (s *JSONStore) Write(ctx context.Context, fn func(*JSONTx) error) error {
 	return s.withLock(ctx, true, fn)
 }
 
+// withLock 在存储层中完成本文件定义的局部处理。
 func (s *JSONStore) withLock(ctx context.Context, write bool, fn func(*JSONTx) error) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -168,6 +179,7 @@ func (s *JSONStore) withLock(ctx context.Context, write bool, fn func(*JSONTx) e
 	return fn(&JSONTx{dir: s.dir, writable: write})
 }
 
+// acquireLocal 在存储层中完成本文件定义的局部处理。
 func (s *JSONStore) acquireLocal(ctx context.Context, write bool) error {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -189,6 +201,7 @@ func (s *JSONStore) acquireLocal(ctx context.Context, write bool) error {
 	}
 }
 
+// acquireFileLock 在存储层中完成本文件定义的局部处理。
 func acquireFileLock(ctx context.Context, path string, exclusive bool) (func(), error) {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -208,10 +221,12 @@ func acquireFileLock(ctx context.Context, path string, exclusive bool) (func(), 
 	}
 }
 
+// dataLockError 在存储层中完成本文件定义的局部处理。
 func dataLockError(cause error) error {
 	return fmt.Errorf("%w: %v", ErrDataBusy, cause)
 }
 
+// Load 在存储层中读取并整理所需数据。
 func (tx *JSONTx) Load(filename string, target interface{}) error {
 	path, err := tx.path(filename)
 	if err != nil {
@@ -227,6 +242,7 @@ func (tx *JSONTx) Load(filename string, target interface{}) error {
 	return json.Unmarshal(data, target)
 }
 
+// Save 在存储层中创建或更新相应状态。
 func (tx *JSONTx) Save(filename string, value interface{}) error {
 	if !tx.writable {
 		return errors.New("JSON read transaction cannot write")
@@ -242,6 +258,7 @@ func (tx *JSONTx) Save(filename string, value interface{}) error {
 	return writeFileAtomic(path, data, 0600)
 }
 
+// path 在存储层中完成本文件定义的局部处理。
 func (tx *JSONTx) path(filename string) (string, error) {
 	if filename == "" || filepath.Base(filename) != filename {
 		return "", fmt.Errorf("无效 JSON 文件名：%s", filename)
@@ -249,6 +266,7 @@ func (tx *JSONTx) path(filename string) (string, error) {
 	return filepath.Join(tx.dir, filename), nil
 }
 
+// writeFileAtomic 在存储层中创建或更新相应状态。
 func writeFileAtomic(target string, data []byte, mode os.FileMode) (err error) {
 	dir := filepath.Dir(target)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -278,6 +296,7 @@ func writeFileAtomic(target string, data []byte, mode os.FileMode) (err error) {
 	return replaceFileAtomic(tmpPath, target)
 }
 
+// normalizeDataDir 在存储层中构造、编码或标准化数据。
 func normalizeDataDir(dir string) string {
 	if dir == "" {
 		dir = "data"
@@ -291,12 +310,14 @@ func normalizeDataDir(dir string) string {
 
 // LoadJSON and SaveJSON remain for compatibility. Read-modify-write callers
 // should use one JSONStore transaction instead of calling these separately.
+// LoadJSON 以兼容方式读取一个 JSON 数据文件到目标对象。
 func LoadJSON(filename string, target interface{}) error {
 	return DefaultJSONStore().Read(context.Background(), func(tx *JSONTx) error {
 		return tx.Load(filename, target)
 	})
 }
 
+// SaveJSON 在存储层中创建或更新相应状态。
 func SaveJSON(filename string, value interface{}) error {
 	return DefaultJSONStore().Write(context.Background(), func(tx *JSONTx) error {
 		return tx.Save(filename, value)

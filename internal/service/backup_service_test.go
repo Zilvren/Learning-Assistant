@@ -12,6 +12,7 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
+// TestBackupZipRoundTripPreservesLibraryData 在业务层中验证对应场景的行为与边界条件。
 func TestBackupZipRoundTripPreservesLibraryData(t *testing.T) {
 	folderID, noteID := int64(5), int64(6)
 	hash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -52,16 +53,13 @@ func TestBackupZipRoundTripPreservesLibraryData(t *testing.T) {
 	}
 }
 
+// TestImportBackupZipRestoresVisibleLibraryItemsInJSONMode 在业务层中验证对应场景的行为与边界条件。
 func TestImportBackupZipRestoresVisibleLibraryItemsInJSONMode(t *testing.T) {
 	previousDir := store.DataDir()
-	defaultMu.RLock()
-	previousRepos, previousConfig, previousPool := defaultRepos, appConfig, pgPool
-	defaultMu.RUnlock()
+	previousApp := DefaultApp()
 	t.Cleanup(func() {
 		store.SetDataDir(previousDir)
-		defaultMu.Lock()
-		defaultRepos, appConfig, pgPool = previousRepos, previousConfig, previousPool
-		defaultMu.Unlock()
+		legacyApp.Store(previousApp)
 	})
 
 	store.SetDataDir(t.TempDir())

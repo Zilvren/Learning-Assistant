@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// TestJSONStoreAtomicWritePreservesOriginalOnMarshalFailure 在存储层中验证对应场景的行为与边界条件。
 func TestJSONStoreAtomicWritePreservesOriginalOnMarshalFailure(t *testing.T) {
 	store := NewJSONStore(t.TempDir())
 	if err := store.Write(context.Background(), func(tx *JSONTx) error {
@@ -42,6 +43,7 @@ func TestJSONStoreAtomicWritePreservesOriginalOnMarshalFailure(t *testing.T) {
 	}
 }
 
+// TestJSONStoreLockTimeout 在存储层中验证对应场景的行为与边界条件。
 func TestJSONStoreLockTimeout(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, ".tracker-data.lock")
@@ -63,6 +65,7 @@ func TestJSONStoreLockTimeout(t *testing.T) {
 	}
 }
 
+// TestJSONStoreLockWaitHonorsCancellation 在存储层中验证对应场景的行为与边界条件。
 func TestJSONStoreLockWaitHonorsCancellation(t *testing.T) {
 	dir := t.TempDir()
 	release, err := tryFileLock(filepath.Join(dir, ".tracker-data.lock"), true)
@@ -84,6 +87,7 @@ func TestJSONStoreLockWaitHonorsCancellation(t *testing.T) {
 	}
 }
 
+// TestAtomicWritesAreAlwaysReadable 在存储层中验证对应场景的行为与边界条件。
 func TestAtomicWritesAreAlwaysReadable(t *testing.T) {
 	store := NewJSONStore(t.TempDir())
 	type payload struct {

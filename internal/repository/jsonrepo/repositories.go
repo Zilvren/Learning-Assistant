@@ -14,6 +14,7 @@ type Repositories struct {
 	library   *LibraryRepository
 }
 
+// NewRepositories 在存储层中创建所需对象并完成初始化。
 func NewRepositories() base.Repositories {
 	store := base.DefaultJSONStore()
 	repos := &Repositories{store: store}

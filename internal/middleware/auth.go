@@ -7,24 +7,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"study-tracker-go/internal/apierror"
 	"study-tracker-go/internal/service"
 )
 
-func AuthRequired() gin.HandlerFunc {
+// AuthRequired 在请求中间件中完成本文件定义的局部处理。
+func AuthRequired(app *service.App) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !service.AuthEnabled() {
+		if app == nil || !app.AuthEnabled() {
 			c.Next()
 			return
 		}
 		token, err := c.Cookie(service.AccessCookieName)
 		if err != nil || strings.TrimSpace(token) == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
+			apierror.Write(c, http.StatusUnauthorized, "unauthorized", "未登录")
 			c.Abort()
 			return
 		}
-		user, err := service.ValidateAccessToken(token)
+		user, err := service.ValidateAccessToken(c.Request.Context(), token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
+			apierror.Write(c, http.StatusUnauthorized, "unauthorized", "未登录")
 			c.Abort()
 			return
 		}
@@ -35,9 +37,10 @@ func AuthRequired() gin.HandlerFunc {
 	}
 }
 
-func CookieOriginGuard() gin.HandlerFunc {
+// CookieOriginGuard 在请求中间件中完成本文件定义的局部处理。
+func CookieOriginGuard(app *service.App) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !service.AuthEnabled() || !isUnsafeMethod(c.Request.Method) {
+		if app == nil || !app.AuthEnabled() || !isUnsafeMethod(c.Request.Method) {
 			c.Next()
 			return
 		}
@@ -49,15 +52,17 @@ func CookieOriginGuard() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		c.JSON(http.StatusForbidden, gin.H{"detail": "请求来源不受信任"})
+		apierror.Write(c, http.StatusForbidden, "origin_not_allowed", "请求来源不受信任")
 		c.Abort()
 	}
 }
 
+// isUnsafeMethod 在请求中间件中校验输入或判断当前条件。
 func isUnsafeMethod(method string) bool {
 	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
 }
 
+// sameHost 在请求中间件中完成本文件定义的局部处理。
 func sameHost(rawURL string, host string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -66,6 +71,7 @@ func sameHost(rawURL string, host string) bool {
 	return strings.EqualFold(parsed.Host, host)
 }
 
+// allowedDevOrigin 在请求中间件中校验输入或判断当前条件。
 func allowedDevOrigin(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {

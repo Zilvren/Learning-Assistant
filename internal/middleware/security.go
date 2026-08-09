@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SecurityHeaders 在请求中间件中完成本文件定义的局部处理。
 func SecurityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -15,6 +16,7 @@ func SecurityHeaders() gin.HandlerFunc {
 	}
 }
 
+// LocalCORS 在请求中间件中完成本文件定义的局部处理。
 func LocalCORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")

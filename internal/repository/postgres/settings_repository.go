@@ -13,6 +13,7 @@ type SettingsRepository struct {
 	store *Store
 }
 
+// Load 在存储层中读取并整理所需数据。
 func (r *SettingsRepository) Load(ctx context.Context) (models.Config, error) {
 	var config models.Config
 	var storedToken string
@@ -31,6 +32,7 @@ func (r *SettingsRepository) Load(ctx context.Context) (models.Config, error) {
 	return config, err
 }
 
+// Save 在存储层中创建或更新相应状态。
 func (r *SettingsRepository) Save(ctx context.Context, config models.Config) error {
 	sealedToken, err := base.SealSecret(config.MineruToken)
 	if err != nil {

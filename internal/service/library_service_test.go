@@ -10,16 +10,13 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
+// TestPurgeLegacyReviewDoesNotReappear 在业务层中验证对应场景的行为与边界条件。
 func TestPurgeLegacyReviewDoesNotReappear(t *testing.T) {
 	previousDir := base.DataDir()
-	defaultMu.RLock()
-	previousRepos, previousConfig, previousPool := defaultRepos, appConfig, pgPool
-	defaultMu.RUnlock()
+	previousApp := DefaultApp()
 	t.Cleanup(func() {
 		base.SetDataDir(previousDir)
-		defaultMu.Lock()
-		defaultRepos, appConfig, pgPool = previousRepos, previousConfig, previousPool
-		defaultMu.Unlock()
+		legacyApp.Store(previousApp)
 	})
 
 	base.SetDataDir(t.TempDir())
@@ -62,16 +59,13 @@ func TestPurgeLegacyReviewDoesNotReappear(t *testing.T) {
 	}
 }
 
+// TestPostgresLibraryBrowsingDoesNotMigrateLegacyErrors 在业务层中验证对应场景的行为与边界条件。
 func TestPostgresLibraryBrowsingDoesNotMigrateLegacyErrors(t *testing.T) {
 	previousDir := base.DataDir()
-	defaultMu.RLock()
-	previousRepos, previousConfig, previousPool := defaultRepos, appConfig, pgPool
-	defaultMu.RUnlock()
+	previousApp := DefaultApp()
 	t.Cleanup(func() {
 		base.SetDataDir(previousDir)
-		defaultMu.Lock()
-		defaultRepos, appConfig, pgPool = previousRepos, previousConfig, previousPool
-		defaultMu.Unlock()
+		legacyApp.Store(previousApp)
 	})
 
 	base.SetDataDir(t.TempDir())

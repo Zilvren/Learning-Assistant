@@ -13,6 +13,7 @@ type TokenInfo struct {
 	Username   string `json:"username"`
 }
 
+// GetTokenInfo 在业务层中读取并整理所需数据。
 func GetTokenInfo(ctx context.Context) (*TokenInfo, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -34,6 +35,7 @@ func GetTokenInfo(ctx context.Context) (*TokenInfo, error) {
 	return info, nil
 }
 
+// SetToken 在业务层中完成本文件定义的局部处理。
 func SetToken(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -47,6 +49,7 @@ func SetToken(ctx context.Context, token string) error {
 	return saveConfig(ctx, config)
 }
 
+// ClearToken 在业务层中删除、清理或撤销相应状态。
 func ClearToken(ctx context.Context) error {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -56,6 +59,7 @@ func ClearToken(ctx context.Context) error {
 	return saveConfig(ctx, config)
 }
 
+// SetUsername 在业务层中完成本文件定义的局部处理。
 func SetUsername(ctx context.Context, name string) error {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -65,6 +69,7 @@ func SetUsername(ctx context.Context, name string) error {
 	return saveConfig(ctx, config)
 }
 
+// loadConfig 在业务层中读取并整理所需数据。
 func loadConfig(ctx context.Context) (models.Config, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -73,6 +78,7 @@ func loadConfig(ctx context.Context) (models.Config, error) {
 	return repos.Settings.Load(ctx)
 }
 
+// saveConfig 在业务层中创建或更新相应状态。
 func saveConfig(ctx context.Context, config models.Config) error {
 	repos, err := repositories(ctx)
 	if err != nil {

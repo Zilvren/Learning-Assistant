@@ -14,6 +14,7 @@ var defaultKnowledge = map[string][]string{
 	"数学": {"未整理"},
 }
 
+// init 在业务层中在包加载时完成必要的初始化。
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
@@ -89,6 +90,7 @@ func GetDailyPush(ctx context.Context) (models.DailyPushResult, error) {
 	}, nil
 }
 
+// getKnowledgeBase 在业务层中读取并整理所需数据。
 func getKnowledgeBase(ctx context.Context) map[string][]string {
 	repos, err := repositories(ctx)
 	if err != nil {

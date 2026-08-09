@@ -24,6 +24,7 @@ const isRegister = computed(() => mode.value === "register")
 const registrationEnabled = computed(() => auth.registrationEnabled.value)
 const emailVerificationEnabled = computed(() => auth.emailVerificationEnabled.value)
 
+// switchMode 协调当前组件的状态和交互。
 function switchMode(next) {
   mode.value = next
   error.value = ""
@@ -32,6 +33,7 @@ function switchMode(next) {
   confirmPassword.value = ""
 }
 
+// submit 协调当前组件的状态和交互。
 async function submit() {
   if (busy.value) return
   error.value = ""
@@ -59,6 +61,7 @@ async function submit() {
   }
 }
 
+// resendVerification 控制登录页的重新发送按钮状态，并把失败信息显示在表单中。
 async function resendVerification() {
   if (!pendingEmail.value || resendBusy.value) return
   resendBusy.value = true

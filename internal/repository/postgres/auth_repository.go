@@ -16,10 +16,12 @@ type AuthRepository struct {
 	pool *pgxpool.Pool
 }
 
+// NewAuthRepository 在存储层中创建所需对象并完成初始化。
 func NewAuthRepository(pool *pgxpool.Pool) *AuthRepository {
 	return &AuthRepository{pool: pool}
 }
 
+// CreateUser 在存储层中创建或更新相应状态。
 func (r *AuthRepository) CreateUser(ctx context.Context, username string, email string, passwordHash string, emailVerified bool) (models.User, error) {
 	username = strings.TrimSpace(username)
 	email = normalizeEmail(email)
@@ -46,11 +48,13 @@ func (r *AuthRepository) CreateUser(ctx context.Context, username string, email 
 	return user, nil
 }
 
+// DeleteUnverifiedUser 在存储层中删除、清理或撤销相应状态。
 func (r *AuthRepository) DeleteUnverifiedUser(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM users WHERE id = $1 AND email_verified_at IS NULL`, id)
 	return err
 }
 
+// FindUserByAccount 在存储层中读取并整理所需数据。
 func (r *AuthRepository) FindUserByAccount(ctx context.Context, account string) (models.AuthUser, error) {
 	account = strings.TrimSpace(account)
 	var user models.AuthUser
@@ -71,6 +75,7 @@ func (r *AuthRepository) FindUserByAccount(ctx context.Context, account string) 
 	return user, nil
 }
 
+// FindUserByID 在存储层中读取并整理所需数据。
 func (r *AuthRepository) FindUserByID(ctx context.Context, id int64) (models.AuthUser, error) {
 	var user models.AuthUser
 	var email pgtype.Text
@@ -90,6 +95,7 @@ func (r *AuthRepository) FindUserByID(ctx context.Context, id int64) (models.Aut
 	return user, nil
 }
 
+// CreateEmailVerificationToken 在存储层中创建或更新相应状态。
 func (r *AuthRepository) CreateEmailVerificationToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
 	if _, err := r.pool.Exec(ctx, `
 		DELETE FROM email_verification_tokens
@@ -104,6 +110,7 @@ func (r *AuthRepository) CreateEmailVerificationToken(ctx context.Context, userI
 	return err
 }
 
+// ConsumeEmailVerificationToken 在存储层中完成本文件定义的局部处理。
 func (r *AuthRepository) ConsumeEmailVerificationToken(ctx context.Context, tokenHash string) (models.AuthUser, error) {
 	var user models.AuthUser
 	var email pgtype.Text
@@ -132,11 +139,13 @@ func (r *AuthRepository) ConsumeEmailVerificationToken(ctx context.Context, toke
 	return user, nil
 }
 
+// TouchLastLogin 在存储层中完成本文件定义的局部处理。
 func (r *AuthRepository) TouchLastLogin(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx, `UPDATE users SET last_login_at = now() WHERE id = $1`, id)
 	return err
 }
 
+// CreateRefreshToken 在存储层中创建或更新相应状态。
 func (r *AuthRepository) CreateRefreshToken(ctx context.Context, userID int64, tokenHash string, userAgent string, ipAddress string, expiresAt time.Time) error {
 	var ip interface{}
 	if parsed := net.ParseIP(strings.TrimSpace(ipAddress)); parsed != nil {
@@ -149,6 +158,7 @@ func (r *AuthRepository) CreateRefreshToken(ctx context.Context, userID int64, t
 	return err
 }
 
+// FindRefreshToken 在存储层中读取并整理所需数据。
 func (r *AuthRepository) FindRefreshToken(ctx context.Context, tokenHash string) (int64, time.Time, bool, error) {
 	var userID int64
 	var expiresAt time.Time
@@ -165,6 +175,7 @@ func (r *AuthRepository) FindRefreshToken(ctx context.Context, tokenHash string)
 	return userID, expiresAt, revokedAt.Valid, nil
 }
 
+// RevokeRefreshToken 在存储层中删除、清理或撤销相应状态。
 func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE refresh_tokens
@@ -175,6 +186,7 @@ func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenHash strin
 	return err
 }
 
+// normalizeEmail 在存储层中构造、编码或标准化数据。
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }

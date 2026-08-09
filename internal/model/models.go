@@ -61,6 +61,7 @@ type UpdateLibraryItemRequest struct {
 	ReviewEnabled *bool  `json:"review_enabled"`
 }
 
+// UnmarshalJSON 在当前模块中完成本文件定义的局部处理。
 func (r *UpdateLibraryItemRequest) UnmarshalJSON(data []byte) error {
 	type request struct {
 		Name          *string         `json:"name"`

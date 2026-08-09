@@ -1,9 +1,11 @@
 const STORAGE_KEY = "library:last-path"
 
+// libraryPath 完成纯前端数据处理。
 export function libraryPath(folderId) {
   return folderId ? `/library/${encodeURIComponent(String(folderId))}` : "/library"
 }
 
+// rememberLibraryPath 完成纯前端数据处理。
 export function rememberLibraryPath(folderId) {
   try {
     localStorage.setItem(STORAGE_KEY, libraryPath(folderId))
@@ -12,6 +14,7 @@ export function rememberLibraryPath(folderId) {
   }
 }
 
+// rememberedLibraryPath 完成纯前端数据处理。
 export function rememberedLibraryPath() {
   try {
     const path = localStorage.getItem(STORAGE_KEY)

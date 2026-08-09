@@ -1,19 +1,17 @@
 package handlers
 
 import (
-	"errors"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
-	"study-tracker-go/internal/repository"
+	"study-tracker-go/internal/apierror"
 )
 
+// respondError 在HTTP 处理层中完成本文件定义的局部处理。
 func respondError(c *gin.Context, status int, err error) {
-	if errors.Is(err, repository.ErrDataBusy) {
-		c.Header("Retry-After", "1")
-		c.JSON(http.StatusServiceUnavailable, gin.H{"detail": repository.ErrDataBusy.Error()})
-		return
-	}
-	c.JSON(status, gin.H{"detail": err.Error()})
+	apierror.FromError(c, status, err)
+}
+
+// respondProblem 在HTTP 处理层中完成本文件定义的局部处理。
+func respondProblem(c *gin.Context, status int, code string, message string) {
+	apierror.Write(c, status, code, message)
 }

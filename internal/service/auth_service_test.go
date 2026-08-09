@@ -9,6 +9,7 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
+// TestAccessTokenRoundTrip 在业务层中验证对应场景的行为与边界条件。
 func TestAccessTokenRoundTrip(t *testing.T) {
 	claims := jwtClaims{
 		Sub:      42,
@@ -32,6 +33,7 @@ func TestAccessTokenRoundTrip(t *testing.T) {
 	}
 }
 
+// TestValidateRegister 在业务层中验证对应场景的行为与边界条件。
 func TestValidateRegister(t *testing.T) {
 	username, email, password, err := validateRegister(models.RegisterRequest{
 		Username: "test_user",
@@ -55,11 +57,12 @@ func TestValidateRegister(t *testing.T) {
 	}
 }
 
+// TestJSONModeAuthDisabled 在业务层中验证对应场景的行为与边界条件。
 func TestJSONModeAuthDisabled(t *testing.T) {
 	if err := InitApp(config.Config{StorageDriver: "json", AuthEnabled: false}, jsonrepo.NewRepositories(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if AuthEnabled() {
+	if app := DefaultApp(); app == nil || app.AuthEnabled() {
 		t.Fatal("expected json auth disabled")
 	}
 	repos, err := repositories(background())
@@ -71,6 +74,7 @@ func TestJSONModeAuthDisabled(t *testing.T) {
 	}
 }
 
+// TestRegisterRejectsWhenRegistrationIsDisabled 在业务层中验证对应场景的行为与边界条件。
 func TestRegisterRejectsWhenRegistrationIsDisabled(t *testing.T) {
 	if err := InitApp(config.Config{
 		StorageDriver:       "postgres",

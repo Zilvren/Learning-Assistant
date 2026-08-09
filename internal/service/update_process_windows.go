@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// startUpdaterProcess 在业务层中执行流程或启动外部操作。
 func startUpdaterProcess(updaterPath, packagePath, appDir, appExe string, pid int) error {
 	args := updateProcessArgs(packagePath, appDir, appExe, pid)
 	cmd := exec.Command(updaterPath, args...)
@@ -25,6 +26,7 @@ func startUpdaterProcess(updaterPath, packagePath, appDir, appExe string, pid in
 	return cmd.Process.Release()
 }
 
+// updateProcessArgs 在业务层中创建或更新相应状态。
 func updateProcessArgs(packagePath, appDir, appExe string, pid int) []string {
 	return []string{
 		"--package", packagePath,
@@ -34,6 +36,7 @@ func updateProcessArgs(packagePath, appDir, appExe string, pid int) []string {
 	}
 }
 
+// isElevationRequired 在业务层中校验输入或判断当前条件。
 func isElevationRequired(err error) bool {
 	var exitErr *exec.Error
 	if errors.As(err, &exitErr) {
@@ -42,6 +45,7 @@ func isElevationRequired(err error) bool {
 	return errors.Is(err, windows.ERROR_ELEVATION_REQUIRED)
 }
 
+// shellExecuteRunas 在业务层中完成本文件定义的局部处理。
 func shellExecuteRunas(file, args, cwd string) error {
 	verbPtr, err := windows.UTF16PtrFromString("runas")
 	if err != nil {
@@ -65,6 +69,7 @@ func shellExecuteRunas(file, args, cwd string) error {
 	return nil
 }
 
+// quoteWindowsArgs 在业务层中完成本文件定义的局部处理。
 func quoteWindowsArgs(args []string) []string {
 	quoted := make([]string, 0, len(args))
 	for _, arg := range args {
@@ -73,6 +78,7 @@ func quoteWindowsArgs(args []string) []string {
 	return quoted
 }
 
+// quoteWindowsArg 在业务层中完成本文件定义的局部处理。
 func quoteWindowsArg(arg string) string {
 	if arg == "" {
 		return `""`

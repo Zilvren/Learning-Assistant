@@ -5,6 +5,7 @@ import { CalendarDays, Flame, Sparkles } from "lucide-vue-next"
 const props = defineProps({
   activity: { type: Object, default: () => ({ days: [], available_years: [] }) },
   selectedYear: { type: Number, default: () => new Date().getFullYear() },
+  compact: { type: Boolean, default: false },
 })
 const emit = defineEmits(["select-year"])
 
@@ -12,12 +13,14 @@ const dayMs = 24 * 60 * 60 * 1000
 const frame = ref(null)
 const selectedCell = ref(null)
 
+// parseDate 协调当前组件的状态和交互。
 function parseDate(value) {
   if (!value) return null
   const [year, month, day] = value.split("-").map(Number)
   return Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day) ? new Date(year, month - 1, day) : null
 }
 
+// isoDate 协调当前组件的状态和交互。
 function isoDate(date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
@@ -25,13 +28,16 @@ function isoDate(date) {
   return `${year}-${month}-${day}`
 }
 
+// addDays 协调当前组件的状态和交互。
 function addDays(date, days) {
   const next = new Date(date)
   next.setDate(next.getDate() + days)
   return next
 }
 
+// startOfYear 协调当前组件的状态和交互。
 function startOfYear(year) { return new Date(year, 0, 1) }
+// endOfYear 协调当前组件的状态和交互。
 function endOfYear(year) { return new Date(year, 11, 31) }
 
 const year = computed(() => Number(props.selectedYear) || new Date().getFullYear())
@@ -91,6 +97,7 @@ const monthLabels = computed(() => {
   return labels
 })
 
+// level 协调当前组件的状态和交互。
 function level(count) {
   if (count <= 0) return 0
   if (count === 1) return 1
@@ -99,6 +106,7 @@ function level(count) {
   return 4
 }
 
+// cellLabel 协调当前组件的状态和交互。
 function cellLabel(cell) {
   const formatted = cell.date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" })
   if (cell.future) return `${formatted}：尚未到达`
@@ -107,14 +115,17 @@ function cellLabel(cell) {
 
 const selectedDescription = computed(() => selectedCell.value ? cellLabel(selectedCell.value) : "点击任意日期，查看当天的学习记录。")
 
+// selectDay 协调当前组件的状态和交互。
 function selectDay(cell) {
   if (cell.inRange && !cell.future) selectedCell.value = cell
 }
 
+// selectYear 协调当前组件的状态和交互。
 function selectYear(nextYear) {
   if (nextYear !== year.value) emit("select-year", nextYear)
 }
 
+// positionTimeline 协调当前组件的状态和交互。
 function positionTimeline() {
   const container = frame.value
   if (!container) return
@@ -129,6 +140,7 @@ function positionTimeline() {
   container.scrollLeft = Math.max(0, Math.round(container.scrollLeft + offset))
 }
 
+// queueTimelinePosition 协调当前组件的状态和交互。
 async function queueTimelinePosition() {
   await nextTick()
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(positionTimeline)
@@ -144,13 +156,16 @@ watch(() => props.selectedYear, async () => {
 </script>
 
 <template>
-  <section class="learning-heatmap paper-panel" aria-labelledby="learning-heatmap-title">
+  <section class="learning-heatmap paper-panel" :class="{ 'learning-heatmap--compact': compact }" aria-labelledby="learning-heatmap-title">
     <header class="learning-heatmap__header">
       <div class="learning-heatmap__overview">
         <div>
-          <span class="page-eyebrow"><Sparkles :size="13" /> 学习足迹</span>
-          <h2 id="learning-heatmap-title">学习记录</h2>
-          <p>{{ activeDays ? `你已在 ${activeDays} 天里留下学习痕迹。` : "从今天的第一条笔记或复习开始，点亮你的学习足迹。" }}</p>
+          <span v-if="!compact" class="page-eyebrow"><Sparkles :size="13" /> 学习足迹</span>
+          <div v-else class="learning-heatmap__compact-title"><Sparkles :size="18" /><div><h2 id="learning-heatmap-title">学习足迹</h2><p>整理、修改与复习都会留下记录</p></div></div>
+          <template v-if="!compact">
+            <h2 id="learning-heatmap-title">学习记录</h2>
+            <p>{{ activeDays ? `你已在 ${activeDays} 天里留下学习痕迹。` : "从今天的第一条笔记或复习开始，点亮你的学习足迹。" }}</p>
+          </template>
           <div class="learning-heatmap__year-picker" role="group" aria-label="切换学习记录年份">
             <span>年份</span>
             <button v-for="option in yearOptions" :key="option" type="button" :class="{ 'is-active': option === year }" :aria-pressed="option === year" @click="selectYear(option)">{{ option }}</button>
@@ -170,7 +185,7 @@ watch(() => props.selectedYear, async () => {
       </div>
     </header>
 
-    <div ref="frame" class="learning-heatmap__frame" :style="{ '--heatmap-weeks': weeks.length, '--heatmap-width': `${weeks.length * 21 + 26}px` }">
+    <div ref="frame" class="learning-heatmap__frame" :style="{ '--heatmap-weeks': weeks.length, '--heatmap-width': `${weeks.length * (compact ? 15 : 21) + 26}px` }">
       <div class="learning-heatmap__frame-head">
         <span><i></i>{{ rangeLabel }}</span>
         <div class="learning-heatmap__legend" aria-label="活动量图例"><span>少</span><i v-for="item in 5" :key="item" :class="`level-${item - 1}`"></i><span>多</span></div>

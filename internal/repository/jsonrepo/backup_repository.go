@@ -11,6 +11,7 @@ type BackupRepository struct {
 	store *base.JSONStore
 }
 
+// Export 在存储层中完成本文件定义的局部处理。
 func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) {
 	var result base.BackupData
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -52,6 +53,7 @@ func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) 
 	return result, err
 }
 
+// Import 在存储层中完成本文件定义的局部处理。
 func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) error {
 	return r.store.Write(ctx, func(tx *base.JSONTx) error {
 		if data.Subjects != nil {
@@ -103,6 +105,7 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 	})
 }
 
+// HasData 在存储层中校验输入或判断当前条件。
 func (r *BackupRepository) HasData(ctx context.Context) (bool, error) {
 	hasData := false
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {

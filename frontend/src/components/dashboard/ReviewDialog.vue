@@ -7,12 +7,15 @@ import BaseDialog from "../ui/BaseDialog.vue"
 const props = defineProps({ open: Boolean, item: Object, today: String, busy: Boolean })
 defineEmits(["close", "review"])
 
+// showText 协调当前组件的状态和交互。
 function showText(value) {
   const text = (value || "").trim()
   return text && text !== "未记录"
 }
 
+// title 协调当前组件的状态和交互。
 function title() { return props.item?.title || `未命名错题 #${props.item?.id}` }
+// plan 协调当前组件的状态和交互。
 function plan() {
   const item = props.item || {}
   const count = (item.review_count || 0) + 1

@@ -5,6 +5,7 @@ const usernameRef = ref("")
 const THEME_KEY = "studyTrackerThemeV2"
 const THEME_TRANSITION_MS = 220
 
+// initialDarkMode 维护该模块的响应式前端状态。
 function initialDarkMode() {
   try {
     const theme = localStorage.getItem(THEME_KEY)
@@ -18,6 +19,7 @@ const darkModeRef = ref(initialDarkMode())
 let loaded = false
 let themeTransitionTimer = 0
 
+// applyTheme 维护该模块的响应式前端状态。
 function applyTheme(dark) {
   document.documentElement.dataset.theme = dark ? "dark" : "light"
   document.documentElement.style.colorScheme = dark ? "dark" : "light"
@@ -25,7 +27,9 @@ function applyTheme(dark) {
 
 applyTheme(darkModeRef.value)
 
+// useSettings 维护该模块的响应式前端状态。
 export function useSettings() {
+  // load 维护该模块的响应式前端状态。
   async function load() {
     try {
       const t = await api.getToken()
@@ -34,7 +38,9 @@ export function useSettings() {
     } catch(e) { /* ignore */ }
   }
 
+  // setUsername 维护该模块的响应式前端状态。
   function setUsername(name) { usernameRef.value = name }
+  // setDarkMode 维护该模块的响应式前端状态。
   function setDarkMode(value) {
     darkModeRef.value = !!value
     try {

@@ -11,6 +11,7 @@ type OCRTaskRepository struct {
 	store *Store
 }
 
+// Create 在存储层中创建或更新相应状态。
 func (r *OCRTaskRepository) Create(ctx context.Context, task base.OCRTask) (int64, error) {
 	provider := task.Provider
 	if provider == "" {
@@ -32,6 +33,7 @@ func (r *OCRTaskRepository) Create(ctx context.Context, task base.OCRTask) (int6
 	return id, err
 }
 
+// Update 在存储层中创建或更新相应状态。
 func (r *OCRTaskRepository) Update(ctx context.Context, id int64, task base.OCRTask) error {
 	if id == 0 {
 		return nil
@@ -51,6 +53,7 @@ func (r *OCRTaskRepository) Update(ctx context.Context, id int64, task base.OCRT
 	return err
 }
 
+// nullString 在存储层中完成本文件定义的局部处理。
 func nullString(value string) *string {
 	if value == "" {
 		return nil
@@ -58,6 +61,7 @@ func nullString(value string) *string {
 	return &value
 }
 
+// metadataJSON 在存储层中完成本文件定义的局部处理。
 func metadataJSON(value map[string]interface{}) []byte {
 	if value == nil {
 		return nil

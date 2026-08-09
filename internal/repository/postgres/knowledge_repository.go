@@ -10,6 +10,7 @@ type KnowledgeRepository struct {
 	store *Store
 }
 
+// Load 在存储层中读取并整理所需数据。
 func (r *KnowledgeRepository) Load(ctx context.Context) (map[string][]string, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT coalesce(s.name, '未分类'), k.content
@@ -36,6 +37,7 @@ func (r *KnowledgeRepository) Load(ctx context.Context) (map[string][]string, er
 	return knowledge, rows.Err()
 }
 
+// Replace 在存储层中创建或更新相应状态。
 func (r *KnowledgeRepository) Replace(ctx context.Context, knowledge map[string][]string) error {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
@@ -70,6 +72,7 @@ func (r *KnowledgeRepository) Replace(ctx context.Context, knowledge map[string]
 	return tx.Commit(ctx)
 }
 
+// ensureSubjectID 在存储层中完成本文件定义的局部处理。
 func (r *KnowledgeRepository) ensureSubjectID(ctx context.Context, tx pgx.Tx, subject string) (int64, error) {
 	var id int64
 	err := tx.QueryRow(ctx, `

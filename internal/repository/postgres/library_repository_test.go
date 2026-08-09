@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestNormalizeLibraryTagsAlwaysReturnsNonNilSlice 在存储层中验证对应场景的行为与边界条件。
 func TestNormalizeLibraryTagsAlwaysReturnsNonNilSlice(t *testing.T) {
 	tags := normalizeLibraryTags(nil)
 	if tags == nil {
@@ -15,6 +16,7 @@ func TestNormalizeLibraryTagsAlwaysReturnsNonNilSlice(t *testing.T) {
 	}
 }
 
+// TestNormalizeLibraryTagsTrimsAndDeduplicates 在存储层中验证对应场景的行为与边界条件。
 func TestNormalizeLibraryTagsTrimsAndDeduplicates(t *testing.T) {
 	tags := normalizeLibraryTags([]string{" 数学 ", "", "数学", "英语", "英语 "})
 	want := []string{"数学", "英语"}

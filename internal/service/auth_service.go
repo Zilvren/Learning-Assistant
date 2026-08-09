@@ -61,24 +61,34 @@ type jwtClaims struct {
 	Iat      int64  `json:"iat"`
 }
 
-func AuthStatusResponse() AuthStatus {
-	cfg := currentAuthConfig()
+// AuthStatusResponse 在业务层中完成本文件定义的局部处理。
+func AuthStatusResponse(ctx context.Context) (AuthStatus, error) {
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return AuthStatus{}, err
+	}
 	return AuthStatus{
 		Enabled:                  cfg.Enabled,
 		RegistrationEnabled:      cfg.Enabled && cfg.RegistrationEnabled,
 		EmailVerificationEnabled: cfg.Enabled && cfg.RegistrationEnabled && cfg.EmailVerificationEnabled,
 		UpdateEnabled:            !cfg.Enabled,
-	}
+	}, nil
 }
 
 // UpdateEnabled is limited to the desktop JSON mode. Production releases are
 // deployed by the server pipeline instead of downloading a client updater.
-func UpdateEnabled() bool {
-	return !AuthEnabled()
+// UpdateEnabled 返回当前认证开关是否已启用。
+func UpdateEnabled(ctx context.Context) bool {
+	app, err := appFor(ctx)
+	return err == nil && !app.AuthEnabled()
 }
 
+// Register 在业务层中完成本文件定义的局部处理。
 func Register(ctx context.Context, req models.RegisterRequest, userAgent string, ipAddress string) (RegistrationResult, error) {
-	cfg := currentAuthConfig()
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return RegistrationResult{}, err
+	}
 	if !cfg.Enabled {
 		return RegistrationResult{}, fmt.Errorf("当前运行模式未启用登录注册")
 	}
@@ -93,7 +103,7 @@ func Register(ctx context.Context, req models.RegisterRequest, userAgent string,
 	if err != nil {
 		return RegistrationResult{}, err
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return RegistrationResult{}, err
 	}
@@ -102,7 +112,11 @@ func Register(ctx context.Context, req models.RegisterRequest, userAgent string,
 		return RegistrationResult{}, friendlyAuthError(err)
 	}
 	if cfg.EmailVerificationEnabled {
-		if err := createEmailVerification(ctx, repo, currentConfig(), user); err != nil {
+		appConfig, configErr := currentConfig(ctx)
+		if configErr != nil {
+			return RegistrationResult{}, configErr
+		}
+		if err := createEmailVerification(ctx, repo, appConfig, user); err != nil {
 			_ = repo.DeleteUnverifiedUser(ctx, user.ID)
 			return RegistrationResult{}, err
 		}
@@ -121,8 +135,12 @@ func Register(ctx context.Context, req models.RegisterRequest, userAgent string,
 	return RegistrationResult{TokenPair: pair}, nil
 }
 
+// VerifyEmail 在业务层中完成本文件定义的局部处理。
 func VerifyEmail(ctx context.Context, token string, userAgent string, ipAddress string) (TokenPair, error) {
-	cfg := currentAuthConfig()
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return TokenPair{}, err
+	}
 	if !cfg.Enabled || !cfg.EmailVerificationEnabled {
 		return TokenPair{}, fmt.Errorf("邮箱验证尚未启用")
 	}
@@ -130,7 +148,7 @@ func VerifyEmail(ctx context.Context, token string, userAgent string, ipAddress 
 	if token == "" {
 		return TokenPair{}, fmt.Errorf("验证链接无效")
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return TokenPair{}, err
 	}
@@ -141,8 +159,12 @@ func VerifyEmail(ctx context.Context, token string, userAgent string, ipAddress 
 	return issueTokens(ctx, repo, cfg, user, userAgent, ipAddress)
 }
 
+// ResendEmailVerification 在业务层中完成本文件定义的局部处理。
 func ResendEmailVerification(ctx context.Context, rawEmail string) error {
-	cfg := currentAuthConfig()
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return err
+	}
 	if !cfg.Enabled || !cfg.EmailVerificationEnabled {
 		return fmt.Errorf("邮箱验证尚未启用")
 	}
@@ -150,7 +172,7 @@ func ResendEmailVerification(ctx context.Context, rawEmail string) error {
 	if err != nil {
 		return err
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return err
 	}
@@ -158,7 +180,11 @@ func ResendEmailVerification(ctx context.Context, rawEmail string) error {
 	if err != nil || user.Status != "active" || user.Email != email || user.EmailVerified {
 		return nil
 	}
-	return createEmailVerification(ctx, repo, currentConfig(), models.User{
+	appConfig, err := currentConfig(ctx)
+	if err != nil {
+		return err
+	}
+	return createEmailVerification(ctx, repo, appConfig, models.User{
 		ID:       user.ID,
 		Username: user.Username,
 		Email:    user.Email,
@@ -166,8 +192,12 @@ func ResendEmailVerification(ctx context.Context, rawEmail string) error {
 	})
 }
 
+// Login 在业务层中完成本文件定义的局部处理。
 func Login(ctx context.Context, req models.LoginRequest, userAgent string, ipAddress string) (TokenPair, error) {
-	cfg := currentAuthConfig()
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return TokenPair{}, err
+	}
 	if !cfg.Enabled {
 		return TokenPair{}, fmt.Errorf("当前运行模式未启用登录注册")
 	}
@@ -178,7 +208,7 @@ func Login(ctx context.Context, req models.LoginRequest, userAgent string, ipAdd
 	if strings.TrimSpace(req.Password) == "" {
 		return TokenPair{}, fmt.Errorf("请输入密码")
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return TokenPair{}, err
 	}
@@ -195,8 +225,12 @@ func Login(ctx context.Context, req models.LoginRequest, userAgent string, ipAdd
 	return issueTokens(ctx, repo, cfg, user, userAgent, ipAddress)
 }
 
+// RefreshLogin 在业务层中完成本文件定义的局部处理。
 func RefreshLogin(ctx context.Context, refreshToken string, userAgent string, ipAddress string) (TokenPair, error) {
-	cfg := currentAuthConfig()
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return TokenPair{}, err
+	}
 	if !cfg.Enabled {
 		return TokenPair{}, fmt.Errorf("当前运行模式未启用登录注册")
 	}
@@ -204,7 +238,7 @@ func RefreshLogin(ctx context.Context, refreshToken string, userAgent string, ip
 	if refreshToken == "" {
 		return TokenPair{}, fmt.Errorf("未登录")
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return TokenPair{}, err
 	}
@@ -223,19 +257,25 @@ func RefreshLogin(ctx context.Context, refreshToken string, userAgent string, ip
 	return issueTokens(ctx, repo, cfg, user, userAgent, ipAddress)
 }
 
+// Logout 在业务层中完成本文件定义的局部处理。
 func Logout(ctx context.Context, refreshToken string) error {
-	if !AuthEnabled() || strings.TrimSpace(refreshToken) == "" {
+	app, err := appFor(ctx)
+	if err != nil || !app.AuthEnabled() || strings.TrimSpace(refreshToken) == "" {
 		return nil
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return err
 	}
 	return repo.RevokeRefreshToken(ctx, hashRefreshToken(refreshToken))
 }
 
+// CurrentUser 在业务层中完成本文件定义的局部处理。
 func CurrentUser(ctx context.Context) (models.User, error) {
-	cfg := currentAuthConfig()
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return models.User{}, err
+	}
 	if !cfg.Enabled {
 		return models.User{}, fmt.Errorf("当前运行模式未启用登录注册")
 	}
@@ -243,7 +283,7 @@ func CurrentUser(ctx context.Context) (models.User, error) {
 	if !ok || userID <= 0 {
 		return models.User{}, fmt.Errorf("未登录")
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return models.User{}, err
 	}
@@ -254,8 +294,12 @@ func CurrentUser(ctx context.Context) (models.User, error) {
 	return publicUser(user), nil
 }
 
-func ValidateAccessToken(token string) (models.AuthUser, error) {
-	cfg := currentAuthConfig()
+// ValidateAccessToken 在业务层中校验输入或判断当前条件。
+func ValidateAccessToken(ctx context.Context, token string) (models.AuthUser, error) {
+	cfg, err := currentAuthConfig(ctx)
+	if err != nil {
+		return models.AuthUser{}, err
+	}
 	if !cfg.Enabled {
 		return models.AuthUser{}, fmt.Errorf("当前运行模式未启用登录注册")
 	}
@@ -263,32 +307,41 @@ func ValidateAccessToken(token string) (models.AuthUser, error) {
 	if err != nil {
 		return models.AuthUser{}, err
 	}
-	repo, err := authRepository()
+	repo, err := authRepository(ctx)
 	if err != nil {
 		return models.AuthUser{}, err
 	}
-	user, err := repo.FindUserByID(context.Background(), claims.Sub)
+	user, err := repo.FindUserByID(ctx, claims.Sub)
 	if err != nil || user.Status != "active" || (cfg.EmailVerificationEnabled && user.Email != "" && !user.EmailVerified) {
 		return models.AuthUser{}, fmt.Errorf("未登录")
 	}
 	return user, nil
 }
 
-func AccessTokenTTL() time.Duration {
-	return currentAuthConfig().AccessTokenTTL
+// AccessTokenTTL 在业务层中完成本文件定义的局部处理。
+func AccessTokenTTL(ctx context.Context) time.Duration {
+	cfg, _ := currentAuthConfig(ctx)
+	return cfg.AccessTokenTTL
 }
 
-func RefreshTokenTTL() time.Duration {
-	return currentAuthConfig().RefreshTokenTTL
+// RefreshTokenTTL 在业务层中完成本文件定义的局部处理。
+func RefreshTokenTTL(ctx context.Context) time.Duration {
+	cfg, _ := currentAuthConfig(ctx)
+	return cfg.RefreshTokenTTL
 }
 
-func CookieSecure() bool {
-	return currentAuthConfig().CookieSecure
+// CookieSecure 在业务层中完成本文件定义的局部处理。
+func CookieSecure(ctx context.Context) bool {
+	cfg, _ := currentAuthConfig(ctx)
+	return cfg.CookieSecure
 }
 
-func currentAuthConfig() AuthConfig {
-	defaultMu.RLock()
-	defer defaultMu.RUnlock()
+// currentAuthConfig 在业务层中完成本文件定义的局部处理。
+func currentAuthConfig(ctx context.Context) (AuthConfig, error) {
+	appConfig, err := currentConfig(ctx)
+	if err != nil {
+		return AuthConfig{}, err
+	}
 	return AuthConfig{
 		Enabled:                  appConfig.AuthEnabled,
 		RegistrationEnabled:      appConfig.RegistrationEnabled,
@@ -298,9 +351,10 @@ func currentAuthConfig() AuthConfig {
 		RefreshTokenTTL:          appConfig.RefreshTokenTTL,
 		CookieSecure:             appConfig.CookieSecure,
 		EmailVerificationTTL:     appConfig.EmailVerificationTTL,
-	}
+	}, nil
 }
 
+// validateRegister 在业务层中校验输入或判断当前条件。
 func validateRegister(req models.RegisterRequest, requireEmail bool) (string, string, string, error) {
 	username := strings.TrimSpace(req.Username)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
@@ -329,6 +383,7 @@ func validateRegister(req models.RegisterRequest, requireEmail bool) (string, st
 	return username, email, password, nil
 }
 
+// issueTokens 在业务层中校验输入或判断当前条件。
 func issueTokens(ctx context.Context, repo interface {
 	CreateRefreshToken(context.Context, int64, string, string, string, time.Time) error
 	TouchLastLogin(context.Context, int64) error
@@ -365,6 +420,7 @@ func issueTokens(ctx context.Context, repo interface {
 	}, nil
 }
 
+// publicUser 在业务层中完成本文件定义的局部处理。
 func publicUser(user models.AuthUser) models.User {
 	return models.User{
 		ID:            user.ID,
@@ -375,6 +431,7 @@ func publicUser(user models.AuthUser) models.User {
 	}
 }
 
+// buildAccessToken 在业务层中构造、编码或标准化数据。
 func buildAccessToken(claims jwtClaims, secret string) (string, error) {
 	header, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
 	if err != nil {
@@ -389,6 +446,7 @@ func buildAccessToken(claims jwtClaims, secret string) (string, error) {
 	return unsigned + "." + signature, nil
 }
 
+// parseAccessToken 在业务层中解析外部输入为内部数据。
 func parseAccessToken(token string, secret string) (jwtClaims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -413,12 +471,14 @@ func parseAccessToken(token string, secret string) (jwtClaims, error) {
 	return claims, nil
 }
 
+// signJWT 在业务层中构造、编码或标准化数据。
 func signJWT(unsigned string, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(unsigned))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+// randomToken 在业务层中完成本文件定义的局部处理。
 func randomToken(size int) (string, error) {
 	buffer := make([]byte, size)
 	if _, err := rand.Read(buffer); err != nil {
@@ -427,11 +487,13 @@ func randomToken(size int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buffer), nil
 }
 
+// hashRefreshToken 在业务层中校验输入或判断当前条件。
 func hashRefreshToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
 
+// friendlyAuthError 在业务层中完成本文件定义的局部处理。
 func friendlyAuthError(err error) error {
 	message := strings.ToLower(err.Error())
 	if strings.Contains(message, "uq_users_username_active") {

@@ -25,6 +25,7 @@ type libraryState struct {
 
 type LibraryRepository struct{ store *base.JSONStore }
 
+// loadLibrary 在存储层中读取并整理所需数据。
 func loadLibrary(tx *base.JSONTx) (libraryState, error) {
 	state := libraryState{NextID: 1, NextVersionID: 1, Items: []models.LibraryItem{}, Versions: []models.LibraryVersion{}}
 	if err := tx.Load("library.json", &state); err != nil {
@@ -39,8 +40,10 @@ func loadLibrary(tx *base.JSONTx) (libraryState, error) {
 	return state, nil
 }
 
+// saveLibrary 在存储层中创建或更新相应状态。
 func saveLibrary(tx *base.JSONTx, state libraryState) error { return tx.Save("library.json", state) }
 
+// List 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter) ([]models.LibraryItem, error) {
 	result := []models.LibraryItem{}
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -103,6 +106,7 @@ func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter)
 // hasTrashedLibraryAncestor keeps a trashed folder tree together in the
 // recycle-bin view: only the deleted tree root is listed. An individually
 // deleted note whose parent is still active remains visible and recoverable.
+// hasTrashedLibraryAncestor 判断条目是否位于已删除父目录的子树中。
 func hasTrashedLibraryAncestor(item models.LibraryItem, itemsByID map[int64]models.LibraryItem) bool {
 	parentID := item.ParentID
 	for parentID != nil {
@@ -118,6 +122,7 @@ func hasTrashedLibraryAncestor(item models.LibraryItem, itemsByID map[int64]mode
 	return false
 }
 
+// Get 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) Get(ctx context.Context, id int64) (models.LibraryItem, error) {
 	var result models.LibraryItem
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -135,6 +140,7 @@ func (r *LibraryRepository) Get(ctx context.Context, id int64) (models.LibraryIt
 	return result, err
 }
 
+// Create 在存储层中创建或更新相应状态。
 func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibraryItemRequest, content []byte) (models.LibraryItem, error) {
 	var result models.LibraryItem
 	name := strings.TrimSpace(req.Name)
@@ -179,6 +185,7 @@ func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibrary
 	return result, err
 }
 
+// Update 在存储层中创建或更新相应状态。
 func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.UpdateLibraryItemRequest) (models.LibraryItem, error) {
 	var result models.LibraryItem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
@@ -223,6 +230,7 @@ func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.Upd
 	return result, err
 }
 
+// SaveContent 在存储层中创建或更新相应状态。
 func (r *LibraryRepository) SaveContent(ctx context.Context, id int64, content []byte, baseVersion int, checkpoint, force bool) (models.LibraryItem, error) {
 	var result models.LibraryItem
 	hash, size, err := base.StoreBlob(bytes.NewReader(content))
@@ -271,6 +279,7 @@ func (r *LibraryRepository) SaveContent(ctx context.Context, id int64, content [
 	return result, err
 }
 
+// ReadContent 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) ReadContent(ctx context.Context, id int64) ([]byte, models.LibraryItem, error) {
 	item, err := r.Get(ctx, id)
 	if err != nil {
@@ -282,9 +291,13 @@ func (r *LibraryRepository) ReadContent(ctx context.Context, id int64) ([]byte, 
 	body, err := base.ReadBlob(item.BlobHash)
 	return body, item, err
 }
+
+// Trash 在存储层中删除、清理或撤销相应状态。
 func (r *LibraryRepository) Trash(ctx context.Context, id int64) error {
 	return r.setTrash(ctx, id, true)
 }
+
+// Restore 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Restore(ctx context.Context, id int64) (models.LibraryItem, error) {
 	var out models.LibraryItem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
@@ -313,6 +326,8 @@ func (r *LibraryRepository) Restore(ctx context.Context, id int64) (models.Libra
 	})
 	return out, err
 }
+
+// setTrash 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) setTrash(ctx context.Context, id int64, trash bool) error {
 	return r.store.Write(ctx, func(tx *base.JSONTx) error {
 		s, e := loadLibrary(tx)
@@ -334,6 +349,8 @@ func (r *LibraryRepository) setTrash(ctx context.Context, id int64, trash bool) 
 		return saveLibrary(tx, s)
 	})
 }
+
+// Purge 在存储层中删除、清理或撤销相应状态。
 func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
 	return r.store.Write(ctx, func(tx *base.JSONTx) error {
 		s, e := loadLibrary(tx)
@@ -367,6 +384,7 @@ func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
 // Batch makes the JSON implementation match PostgreSQL semantics: all input
 // is validated before the state is saved, so a failing selection is never
 // partially applied.
+// Batch 原子执行资料库条目的批量移动、恢复或删除操作。
 func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int64, parentID *int64) error {
 	ids = uniqueLibraryIDs(ids)
 	if len(ids) == 0 {
@@ -477,6 +495,7 @@ func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int6
 	})
 }
 
+// uniqueLibraryIDs 在存储层中完成本文件定义的局部处理。
 func uniqueLibraryIDs(ids []int64) []int64 {
 	seen := make(map[int64]bool, len(ids))
 	unique := make([]int64, 0, len(ids))
@@ -490,6 +509,7 @@ func uniqueLibraryIDs(ids []int64) []int64 {
 	return unique
 }
 
+// batchLibraryRoots 在存储层中完成本文件定义的局部处理。
 func batchLibraryRoots(ids []int64, items []models.LibraryItem) []int64 {
 	roots := make([]int64, 0, len(ids))
 	for _, id := range ids {
@@ -506,6 +526,8 @@ func batchLibraryRoots(ids []int64, items []models.LibraryItem) []int64 {
 	}
 	return roots
 }
+
+// Duplicate 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parentID *int64) (models.LibraryItem, error) {
 	body, item, err := r.ReadContent(ctx, id)
 	if err != nil {
@@ -516,6 +538,8 @@ func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parentID *i
 	}
 	return r.Create(ctx, models.CreateLibraryItemRequest{ParentID: parentID, Kind: item.Kind, Name: item.Name, MimeType: item.MimeType, Tags: item.Tags, ReviewEnabled: item.ReviewEnabled}, body)
 }
+
+// Versions 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Versions(ctx context.Context, id int64) ([]models.LibraryVersion, error) {
 	out := []models.LibraryVersion{}
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -533,6 +557,8 @@ func (r *LibraryRepository) Versions(ctx context.Context, id int64) ([]models.Li
 	})
 	return out, err
 }
+
+// RestoreVersion 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, versionID int64) (models.LibraryItem, error) {
 	var content []byte
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -561,6 +587,7 @@ func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, versionID in
 	return r.SaveContent(ctx, id, content, item.CurrentVersion, false, true)
 }
 
+// EnsureLegacy 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) EnsureLegacy(ctx context.Context, errs []models.ErrorProblem, subjects []string) error {
 	legacy := make(map[int]struct {
 		body []byte
@@ -641,6 +668,7 @@ func (r *LibraryRepository) EnsureLegacy(ctx context.Context, errs []models.Erro
 	})
 }
 
+// ListTags 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) ListTags(ctx context.Context) ([]string, error) {
 	set := map[string]string{}
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -669,6 +697,7 @@ func (r *LibraryRepository) ListTags(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+// DueReviews 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) DueReviews(ctx context.Context, day time.Time) ([]models.LibraryItem, error) {
 	items, err := r.List(ctx, base.LibraryFilter{ReviewOnly: true})
 	if err != nil {
@@ -690,6 +719,7 @@ func (r *LibraryRepository) DueReviews(ctx context.Context, day time.Time) ([]mo
 	return out, nil
 }
 
+// Review 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error) {
 	var out models.LibraryItem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
@@ -723,10 +753,12 @@ func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt tim
 	return out, err
 }
 
+// legacyErrorMarkdown 在存储层中完成本文件定义的局部处理。
 func legacyErrorMarkdown(problem models.ErrorProblem) string {
 	return "## 题目\n\n" + strings.TrimSpace(problem.Question) + "\n\n## 错解\n\n" + strings.TrimSpace(problem.Wrong) + "\n\n## 正解\n\n" + strings.TrimSpace(problem.Correct) + "\n\n## 错因\n\n" + strings.TrimSpace(problem.Reason) + "\n"
 }
 
+// parseLegacyReview 在存储层中解析外部输入为内部数据。
 func parseLegacyReview(value *string) *time.Time {
 	if value == nil || strings.TrimSpace(*value) == "" {
 		return nil
@@ -739,6 +771,7 @@ func parseLegacyReview(value *string) *time.Time {
 	return nil
 }
 
+// mergeTags 在存储层中完成本文件定义的局部处理。
 func mergeTags(groups ...[]string) []string {
 	all := []string{}
 	for _, group := range groups {
@@ -747,6 +780,7 @@ func mergeTags(groups ...[]string) []string {
 	return normalizeTags(all)
 }
 
+// containsTag 在存储层中完成本文件定义的局部处理。
 func containsTag(tags []string, want string) bool {
 	for _, tag := range tags {
 		if strings.EqualFold(strings.TrimSpace(tag), strings.TrimSpace(want)) {
@@ -756,6 +790,7 @@ func containsTag(tags []string, want string) bool {
 	return false
 }
 
+// removeEmptySystemFolders 在存储层中删除、清理或撤销相应状态。
 func removeEmptySystemFolders(s *libraryState, subjects []string) {
 	subjectNames := map[string]bool{}
 	for _, subject := range subjects {
@@ -793,6 +828,7 @@ func removeEmptySystemFolders(s *libraryState, subjects []string) {
 	}
 }
 
+// Cleanup 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Cleanup(ctx context.Context, before time.Time) error {
 	return r.store.Write(ctx, func(tx *base.JSONTx) error {
 		s, err := loadLibrary(tx)
@@ -826,6 +862,7 @@ func (r *LibraryRepository) Cleanup(ctx context.Context, before time.Time) error
 	})
 }
 
+// itemIndex 在存储层中完成本文件定义的局部处理。
 func itemIndex(items []models.LibraryItem, id int64) int {
 	for i := range items {
 		if items[i].ID == id {
@@ -834,7 +871,11 @@ func itemIndex(items []models.LibraryItem, id int64) int {
 	}
 	return -1
 }
+
+// validKind 在存储层中完成本文件定义的局部处理。
 func validKind(v string) bool { return v == "folder" || v == "note" || v == "file" }
+
+// normalizeTags 在存储层中构造、编码或标准化数据。
 func normalizeTags(tags []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -847,7 +888,11 @@ func normalizeTags(tags []string) []string {
 	}
 	return out
 }
+
+// sameParent 在存储层中完成本文件定义的局部处理。
 func sameParent(a, b *int64) bool { return a == nil && b == nil || (a != nil && b != nil && *a == *b) }
+
+// uniqueName 在存储层中完成本文件定义的局部处理。
 func uniqueName(items []models.LibraryItem, parent *int64, name string, except int64) string {
 	baseName := name
 	candidate := name
@@ -865,6 +910,8 @@ func uniqueName(items []models.LibraryItem, parent *int64, name string, except i
 		candidate = fmt.Sprintf("%s (%d)", baseName, n)
 	}
 }
+
+// validateParent 在存储层中校验输入或判断当前条件。
 func validateParent(items []models.LibraryItem, parent *int64, self int64) error {
 	if parent == nil {
 		return nil
@@ -878,6 +925,8 @@ func validateParent(items []models.LibraryItem, parent *int64, self int64) error
 	}
 	return nil
 }
+
+// isDescendant 在存储层中校验输入或判断当前条件。
 func isDescendant(items []models.LibraryItem, id, ancestor int64) bool {
 	if ancestor == 0 {
 		return false
@@ -896,6 +945,8 @@ func isDescendant(items []models.LibraryItem, id, ancestor int64) bool {
 	}
 	return false
 }
+
+// trimVersions 在存储层中完成本文件定义的局部处理。
 func trimVersions(s *libraryState, id int64, max int) {
 	indices := []int{}
 	for i, v := range s.Versions {
@@ -922,6 +973,8 @@ func trimVersions(s *libraryState, id int64, max int) {
 	}
 	s.Versions = keep
 }
+
+// hasVersion 在存储层中校验输入或判断当前条件。
 func hasVersion(items []models.LibraryVersion, itemID int64, version int) bool {
 	for _, v := range items {
 		if v.ItemID == itemID && v.Version == version {

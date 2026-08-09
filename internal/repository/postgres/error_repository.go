@@ -18,6 +18,7 @@ type ErrorRepository struct {
 	store *Store
 }
 
+// Create 在存储层中创建或更新相应状态。
 func (r *ErrorRepository) Create(ctx context.Context, item models.ErrorProblem) (models.ErrorProblem, error) {
 	normalizeProblem(&item)
 	subjectID, err := (&SubjectRepository{store: r.store}).findID(ctx, item.Subject)
@@ -48,6 +49,7 @@ func (r *ErrorRepository) Create(ctx context.Context, item models.ErrorProblem) 
 	return item, nil
 }
 
+// List 在存储层中读取并整理所需数据。
 func (r *ErrorRepository) List(ctx context.Context, filter base.ErrorFilter) ([]models.ErrorProblem, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT
@@ -103,6 +105,7 @@ func (r *ErrorRepository) List(ctx context.Context, filter base.ErrorFilter) ([]
 	return result, nil
 }
 
+// Get 在存储层中读取并整理所需数据。
 func (r *ErrorRepository) Get(ctx context.Context, id int) (models.ErrorProblem, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT
@@ -144,6 +147,7 @@ func (r *ErrorRepository) Get(ctx context.Context, id int) (models.ErrorProblem,
 	return item, rows.Err()
 }
 
+// Update 在存储层中创建或更新相应状态。
 func (r *ErrorRepository) Update(ctx context.Context, id int, req models.UpdateErrorRequest) error {
 	item, err := r.Get(ctx, id)
 	if err != nil {
@@ -194,6 +198,7 @@ func (r *ErrorRepository) Update(ctx context.Context, id int, req models.UpdateE
 	return tx.Commit(ctx)
 }
 
+// Delete 在存储层中删除、清理或撤销相应状态。
 func (r *ErrorRepository) Delete(ctx context.Context, id int) error {
 	tag, err := r.store.pool.Exec(ctx, `
 		UPDATE error_problems
@@ -211,6 +216,7 @@ func (r *ErrorRepository) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
+// Review 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Time, intervals []int) (models.ErrorProblem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
@@ -273,6 +279,7 @@ func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Ti
 	return r.Get(ctx, id)
 }
 
+// ListTags 在存储层中读取并整理所需数据。
 func (r *ErrorRepository) ListTags(ctx context.Context) ([]string, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT DISTINCT name
@@ -297,6 +304,7 @@ func (r *ErrorRepository) ListTags(ctx context.Context) ([]string, error) {
 	return tags, rows.Err()
 }
 
+// Replace 在存储层中创建或更新相应状态。
 func (r *ErrorRepository) Replace(ctx context.Context, errors []models.ErrorProblem) error {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
@@ -332,6 +340,7 @@ func (r *ErrorRepository) Replace(ctx context.Context, errors []models.ErrorProb
 	return tx.Commit(ctx)
 }
 
+// HasAny 在存储层中校验输入或判断当前条件。
 func (r *ErrorRepository) HasAny(ctx context.Context) (bool, error) {
 	var exists bool
 	err := r.store.pool.QueryRow(ctx, `
@@ -345,6 +354,7 @@ func (r *ErrorRepository) HasAny(ctx context.Context) (bool, error) {
 	return exists, err
 }
 
+// insertProblem 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) insertProblem(ctx context.Context, tx pgx.Tx, item models.ErrorProblem, subjectID int64, preserveID bool) (int64, error) {
 	created := parseDateTime(item.Created)
 	if created == nil {
@@ -393,6 +403,7 @@ func (r *ErrorRepository) insertProblem(ctx context.Context, tx pgx.Tx, item mod
 	return id, err
 }
 
+// canPreserveProblemID 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) canPreserveProblemID(ctx context.Context, tx pgx.Tx, id int64) (bool, error) {
 	if id <= 0 {
 		return false, nil
@@ -411,6 +422,7 @@ func (r *ErrorRepository) canPreserveProblemID(ctx context.Context, tx pgx.Tx, i
 	return !exists, nil
 }
 
+// clearUserErrors 在存储层中删除、清理或撤销相应状态。
 func (r *ErrorRepository) clearUserErrors(ctx context.Context, tx pgx.Tx) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM review_records WHERE user_id = $1`, r.store.userID); err != nil {
 		return err
@@ -427,6 +439,7 @@ func (r *ErrorRepository) clearUserErrors(ctx context.Context, tx pgx.Tx) error 
 	return nil
 }
 
+// ensureSubjectIDTx 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) ensureSubjectIDTx(ctx context.Context, tx pgx.Tx, subject string) (int64, error) {
 	var id int64
 	err := tx.QueryRow(ctx, `
@@ -451,6 +464,7 @@ func (r *ErrorRepository) ensureSubjectIDTx(ctx context.Context, tx pgx.Tx, subj
 	return id, err
 }
 
+// replaceTags 在存储层中创建或更新相应状态。
 func (r *ErrorRepository) replaceTags(ctx context.Context, tx pgx.Tx, problemID int64, tagType string, tags []string) error {
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM error_problem_tags ept
@@ -485,6 +499,7 @@ func (r *ErrorRepository) replaceTags(ctx context.Context, tx pgx.Tx, problemID 
 	return nil
 }
 
+// ensureTag 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) ensureTag(ctx context.Context, tx pgx.Tx, name string, tagType string) (int64, error) {
 	var id int64
 	err := tx.QueryRow(ctx, `
@@ -506,6 +521,7 @@ func (r *ErrorRepository) ensureTag(ctx context.Context, tx pgx.Tx, name string,
 	return id, err
 }
 
+// attachTags 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) attachTags(ctx context.Context, items []models.ErrorProblem, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -557,6 +573,7 @@ func (r *ErrorRepository) attachTags(ctx context.Context, items []models.ErrorPr
 	return nil
 }
 
+// withTags 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) withTags(ctx context.Context, item models.ErrorProblem) (models.ErrorProblem, error) {
 	items := []models.ErrorProblem{item}
 	if err := r.attachTags(ctx, items, []int64{int64(item.ID)}); err != nil {
@@ -569,6 +586,7 @@ type problemScanner interface {
 	Scan(dest ...interface{}) error
 }
 
+// scanProblem 在存储层中完成本文件定义的局部处理。
 func scanProblem(scanner problemScanner) (models.ErrorProblem, error) {
 	var item models.ErrorProblem
 	var created time.Time
@@ -603,6 +621,7 @@ func scanProblem(scanner problemScanner) (models.ErrorProblem, error) {
 	return item, nil
 }
 
+// sortProblemTags 在存储层中完成本文件定义的局部处理。
 func sortProblemTags(item *models.ErrorProblem) {
 	sort.Strings(item.Tags)
 	sort.Strings(item.ReasonTags)

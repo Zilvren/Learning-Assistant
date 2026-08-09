@@ -6,7 +6,9 @@ import EmptyState from "../ui/EmptyState.vue"
 defineProps({ items: { type: Array, default: () => [] }, today: String, busyId: Number })
 defineEmits(["select", "review"])
 
+// title 协调当前组件的状态和交互。
 function title(item) { return item.title || `未命名错题 #${item.id}` }
+// plan 协调当前组件的状态和交互。
 function plan(item, today) {
   const count = (item.review_count || 0) + 1
   if (!item.next_review) return `第 ${count} 轮复习`

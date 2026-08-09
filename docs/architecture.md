@@ -24,13 +24,35 @@ scripts/               构建和发布脚本
 
 ```text
 main
-  -> api/handlers
-    -> internal/service
-      -> internal/repository
-      -> internal/model
+  -> service.App (immutable dependencies: Config, Repositories, pgx Pool)
+  -> Gin middleware (request ID, App context, auth, audit, recovery)
+    -> api/handlers
+      -> internal/service
+        -> internal/repository
+        -> internal/model
 ```
 
-上层可以依赖下层，下层不反向依赖上层。Service 通过 Repository 接口工作；在 PostgreSQL 模式中，认证中间件把用户 ID 写入请求上下文，Service 为该用户创建隔离的 Repository。
+上层可以依赖下层，下层不反向依赖上层。`main` 在启动时一次性组装 `service.App`，启动失败即退出；HTTP 中间件把该实例放入请求上下文。Service 从上下文取得依赖，而不是读取可变的包级全局变量。为保持桌面辅助和旧单元测试兼容，仍保留一个受限的 legacy fallback；新 HTTP 代码不得依赖它。
+
+Service 通过 Repository 接口工作；在 PostgreSQL 模式中，认证中间件把用户 ID 写入请求上下文，Service 为该用户创建隔离的 Repository。
+
+## Request Observability And Errors
+
+每个请求都会生成并返回 `X-Request-ID`，同时写入响应中的 `request_id`。所有 API 错误使用同一信封，保留 `detail` 以兼容已有前端：
+
+```json
+{
+  "detail": "请求格式错误",
+  "error": { "code": "invalid_request", "message": "请求格式错误" },
+  "request_id": "b6d1..."
+}
+```
+
+状态码为 5xx 时不会把底层错误返回给客户端。中间件会以 JSON 审计日志记录 API 写操作和失败请求，字段包括请求 ID、方法、路径、状态码、耗时、客户端 IP 与已认证用户 ID；不会记录 Cookie、Authorization、查询参数或请求正文。发生 panic 时，恢复中间件记录堆栈并返回同一错误信封。
+
+## Startup Validation
+
+应用在监听端口前校验存储驱动、端口、Gin 模式及 PostgreSQL 连接地址。`postgres` 模式要求有效的 `postgres://` / `postgresql://` 连接串和至少 32 字符的 JWT 密钥；启用邮箱验证时，`service.App` 还会校验公网 URL、SMTP 与 TLS 配置。因此错误配置会明确启动失败，不会在生产环境静默降级。
 
 ## Storage Modes
 

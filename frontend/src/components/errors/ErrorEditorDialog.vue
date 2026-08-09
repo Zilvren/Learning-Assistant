@@ -37,10 +37,12 @@ const dirty = computed(() => props.open && JSON.stringify(form.value) !== initia
 const heading = computed(() => props.mode === "edit" ? `修订错题 #${props.record?.id}` : "录入新错题")
 const subheading = computed(() => props.mode === "edit" ? "修改会保留原有复习进度。" : "用题目、订正与错因组成一则完整的学习批注。")
 
+// emptyForm 协调当前组件的状态和交互。
 function emptyForm() {
   return { subject: "", title: "", question: "", wrong: "", correct: "", reason: "", tags: "", reason_tags: "" }
 }
 
+// resetForm 协调当前组件的状态和交互。
 function resetForm() {
   const item = props.record
   form.value = item ? {
@@ -57,6 +59,7 @@ function resetForm() {
   nextTick(() => { initialState.value = JSON.stringify(form.value) })
 }
 
+// payload 协调当前组件的状态和交互。
 function payload() {
   return {
     subject: form.value.subject,
@@ -70,12 +73,14 @@ function payload() {
   }
 }
 
+// submit 协调当前组件的状态和交互。
 function submit() {
   if (!form.value.subject) return toast.warning("请先选择科目")
   if (!form.value.question.trim()) return toast.warning("题目不能为空")
   emit("save", payload())
 }
 
+// runOcr 协调当前组件的状态和交互。
 async function runOcr(blob) {
   if (!blob || ocrLoading.value) return
   let configured = false
@@ -96,6 +101,7 @@ async function runOcr(blob) {
   }
 }
 
+// onPaste 协调当前组件的状态和交互。
 function onPaste(event) {
   const item = [...(event.clipboardData?.items || [])].find((entry) => entry.type.startsWith("image/"))
   if (!item) return
@@ -103,21 +109,26 @@ function onPaste(event) {
   runOcr(item.getAsFile())
 }
 
+// chooseOcrFile 协调当前组件的状态和交互。
 function chooseOcrFile(event) {
   const file = event.target.files?.[0]
   event.target.value = ""
   if (file) runOcr(file)
 }
 
+// pointerX 协调当前组件的状态和交互。
 function pointerX(event) { return event.clientX ?? event.touches?.[0]?.clientX }
+// startResize 协调当前组件的状态和交互。
 function startResize(event) {
   if (window.innerWidth <= 1100 || !editorLayout.value) return
   event.preventDefault()
   const rect = editorLayout.value.getBoundingClientRect()
+  // onMove 协调当前组件的状态和交互。
   const onMove = (moveEvent) => {
     const percent = ((pointerX(moveEvent) - rect.left) / rect.width) * 100
     editorLeftPane.value = Math.min(72, Math.max(42, percent))
   }
+  // onUp 协调当前组件的状态和交互。
   const onUp = () => {
     localStorage.setItem("editorLeftPane", String(Math.round(editorLeftPane.value * 10) / 10))
     window.removeEventListener("pointermove", onMove)

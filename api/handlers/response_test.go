@@ -11,6 +11,7 @@ import (
 	"study-tracker-go/internal/repository"
 )
 
+// TestRespondErrorMapsDataBusyToServiceUnavailable 在HTTP 处理层中验证对应场景的行为与边界条件。
 func TestRespondErrorMapsDataBusyToServiceUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

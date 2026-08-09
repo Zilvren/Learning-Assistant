@@ -31,6 +31,7 @@ const records = [
   },
 ]
 
+// makeRouter 完成当前模块的局部交互。
 function makeRouter() {
   return createRouter({
     history: createMemoryHistory(),
@@ -41,6 +42,7 @@ function makeRouter() {
   })
 }
 
+// mountPage 完成当前模块的局部交互。
 async function mountPage(path = "/errors") {
   vi.spyOn(api, "getSubjects").mockResolvedValue({ subjects: ["高数", "英语"] })
   vi.spyOn(api, "getErrors").mockResolvedValue({ errors: records })

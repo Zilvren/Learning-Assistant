@@ -10,10 +10,11 @@ import (
 	"study-tracker-go/internal/service"
 )
 
+// CreateError 在HTTP 处理层中创建或更新相应状态。
 func CreateError(c *gin.Context) {
 	var req models.AddErrorRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 
@@ -42,18 +43,19 @@ func GetErrors(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"errors": errors, "total": len(errors)})
 }
 
+// UpdateError 在HTTP 处理层中创建或更新相应状态。
 func UpdateError(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "ID格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_id", "ID格式错误")
 		return
 	}
 
 	var req models.UpdateErrorRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 
@@ -69,7 +71,7 @@ func UpdateError(c *gin.Context) {
 func DeleteError(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "ID格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_id", "ID格式错误")
 		return
 	}
 
@@ -84,7 +86,7 @@ func DeleteError(c *gin.Context) {
 func ReviewError(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "ID格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_id", "ID格式错误")
 		return
 	}
 

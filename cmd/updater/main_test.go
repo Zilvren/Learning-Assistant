@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestPickPayloadRoot 在命令行工具中验证对应场景的行为与边界条件。
 func TestPickPayloadRoot(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "Tracker-2099")
@@ -23,6 +24,7 @@ func TestPickPayloadRoot(t *testing.T) {
 	}
 }
 
+// TestSafeZipTargetRejectsTraversal 在命令行工具中验证对应场景的行为与边界条件。
 func TestSafeZipTargetRejectsTraversal(t *testing.T) {
 	root := t.TempDir()
 	if _, err := safeZipTarget(root, "../escape.txt"); err == nil {
@@ -33,6 +35,7 @@ func TestSafeZipTargetRejectsTraversal(t *testing.T) {
 	}
 }
 
+// TestExtractZipSafeRejectsUnsafeEntry 在命令行工具中验证对应场景的行为与边界条件。
 func TestExtractZipSafeRejectsUnsafeEntry(t *testing.T) {
 	root := t.TempDir()
 	zipPath := filepath.Join(root, "unsafe.zip")
@@ -47,6 +50,7 @@ func TestExtractZipSafeRejectsUnsafeEntry(t *testing.T) {
 	}
 }
 
+// TestExtractZipSafeWritesSafeEntry 在命令行工具中验证对应场景的行为与边界条件。
 func TestExtractZipSafeWritesSafeEntry(t *testing.T) {
 	root := t.TempDir()
 	zipPath := filepath.Join(root, "safe.zip")
@@ -65,6 +69,7 @@ func TestExtractZipSafeWritesSafeEntry(t *testing.T) {
 	}
 }
 
+// writeTestZip 在命令行工具中创建或更新相应状态。
 func writeTestZip(path string, files map[string]string) error {
 	out, err := os.Create(path)
 	if err != nil {

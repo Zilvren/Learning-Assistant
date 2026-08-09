@@ -3,21 +3,25 @@ import { api } from "../api/index.js"
 
 const colors = ["#2f6f73", "#855f3e", "#8a4b46", "#496a8f", "#6f5b8f", "#4f7557", "#a06a32", "#58606d"]
 
+// hash 封装可复用的页面行为。
 function hash(value) {
   let result = 0
   for (let index = 0; index < value.length; index++) result = ((result << 5) - result + value.charCodeAt(index)) | 0
   return result
 }
 
+// subjectColor 封装可复用的页面行为。
 export function subjectColor(name = "") {
   return colors[Math.abs(hash(name)) % colors.length]
 }
 
+// hasContent 封装可复用的页面行为。
 export function hasContent(value) {
   const text = (value || "").trim()
   return !!text && text !== "未记录"
 }
 
+// reviewLabel 封装可复用的页面行为。
 export function reviewLabel(item, today = new Date().toISOString().slice(0, 10)) {
   const next = item.next_review || item.created?.slice(0, 10)
   const round = (item.review_count || 0) + 1
@@ -27,14 +31,17 @@ export function reviewLabel(item, today = new Date().toISOString().slice(0, 10))
   return `下次 ${next} · 第 ${round} 轮`
 }
 
+// isDue 封装可复用的页面行为。
 export function isDue(item, today = new Date().toISOString().slice(0, 10)) {
   return (item.next_review || item.created?.slice(0, 10) || today) <= today
 }
 
+// useErrorLibrary 封装可复用的页面行为。
 export function useErrorLibrary() {
   const errors = ref([])
   const loading = ref(false)
 
+  // refresh 封装可复用的页面行为。
   async function refresh({ subject = "全部", keyword = "", mode = "全部" } = {}) {
     loading.value = true
     try {
@@ -52,9 +59,13 @@ export function useErrorLibrary() {
     }
   }
 
+  // create 封装可复用的页面行为。
   async function create(payload) { return api.addError(payload) }
+  // update 封装可复用的页面行为。
   async function update(id, payload) { return api.updateError(id, payload) }
+  // remove 封装可复用的页面行为。
   async function remove(id) { return api.deleteError(id) }
+  // review 封装可复用的页面行为。
   async function review(id) { return api.reviewError(id) }
 
   return { errors, loading, refresh, create, update, remove, review }

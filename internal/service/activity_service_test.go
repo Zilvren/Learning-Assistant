@@ -7,6 +7,7 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
+// TestGetLearningActivityReturnsEmptyCalendarInJSONMode 在业务层中验证对应场景的行为与边界条件。
 func TestGetLearningActivityReturnsEmptyCalendarInJSONMode(t *testing.T) {
 	if err := InitApp(config.Config{StorageDriver: "json", AuthEnabled: false}, jsonrepo.NewRepositories(), nil); err != nil {
 		t.Fatal(err)

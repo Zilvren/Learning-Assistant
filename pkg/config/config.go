@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -40,6 +41,7 @@ type Config struct {
 	EmailVerificationTTL     time.Duration
 }
 
+// Load 在配置层中读取并整理所需数据。
 func Load(args []string) Config {
 	cfg := Config{
 		Host:        envString("TRACKER_HOST", "127.0.0.1"),
@@ -112,19 +114,68 @@ func Load(args []string) Config {
 	return cfg
 }
 
-// Validate rejects a production configuration that would silently fall back
-// to the local JSON store. Local JSON mode remains an explicit supported mode.
+// Validate fails fast for unsupported or incomplete startup configuration.
+// Local JSON mode remains an explicit supported mode, while PostgreSQL mode
+// must always include a usable database URL.
+// Validate 检查配置是否足以安全启动当前存储模式。
 func (c Config) Validate() error {
+	if strings.TrimSpace(c.Host) == "" {
+		return fmt.Errorf("TRACKER_HOST 不能为空")
+	}
+	if c.Port < 1 || c.Port > 65535 {
+		return fmt.Errorf("TRACKER_PORT 必须在 1 到 65535 之间")
+	}
+	switch c.StorageDriver {
+	case "json", "postgres":
+	default:
+		return fmt.Errorf("TRACKER_STORAGE 仅支持 json 或 postgres")
+	}
+	switch c.GinMode {
+	case "", ginModeDebug, ginModeRelease, ginModeTest:
+	default:
+		return fmt.Errorf("GIN_MODE 仅支持 debug、release 或 test")
+	}
 	if c.RequirePostgres && c.StorageDriver != "postgres" {
 		return fmt.Errorf("TRACKER_REQUIRE_POSTGRES=true 时 TRACKER_STORAGE 必须为 postgres")
+	}
+	if c.StorageDriver == "postgres" {
+		if err := validatePostgresURL(c.DatabaseURL); err != nil {
+			return err
+		}
+		if len(strings.TrimSpace(c.JWTSecret)) < 32 {
+			return fmt.Errorf("PostgreSQL 模式下 TRACKER_JWT_SECRET 至少需要 32 个字符")
+		}
 	}
 	return nil
 }
 
+const (
+	ginModeDebug   = "debug"
+	ginModeRelease = "release"
+	ginModeTest    = "test"
+)
+
+// validatePostgresURL 在配置层中校验输入或判断当前条件。
+func validatePostgresURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil {
+		return fmt.Errorf("TRACKER_DATABASE_URL 不是有效的 PostgreSQL 连接地址")
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return fmt.Errorf("TRACKER_DATABASE_URL 必须使用 postgres:// 或 postgresql://")
+	}
+	if parsed.Host == "" || strings.Trim(parsed.Path, "/") == "" {
+		return fmt.Errorf("TRACKER_DATABASE_URL 必须包含数据库主机和数据库名")
+	}
+	return nil
+}
+
+// Address 在配置层中创建或更新相应状态。
 func (c Config) Address(port int) string {
 	return fmt.Sprintf("%s:%d", c.Host, port)
 }
 
+// envString 在配置层中完成本文件定义的局部处理。
 func envString(key, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -133,6 +184,7 @@ func envString(key, fallback string) string {
 	return value
 }
 
+// envPort 在配置层中完成本文件定义的局部处理。
 func envPort(key string, fallback int) int {
 	if port, ok := parsePort(os.Getenv(key)); ok {
 		return port
@@ -140,6 +192,7 @@ func envPort(key string, fallback int) int {
 	return fallback
 }
 
+// envBool 在配置层中完成本文件定义的局部处理。
 func envBool(key string, fallback bool) bool {
 	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
 	if value == "" {
@@ -148,6 +201,7 @@ func envBool(key string, fallback bool) bool {
 	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
+// envDuration 在配置层中完成本文件定义的局部处理。
 func envDuration(key string, fallback time.Duration) time.Duration {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -160,6 +214,7 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	return duration
 }
 
+// parsePort 在配置层中解析外部输入为内部数据。
 func parsePort(value string) (int, bool) {
 	port, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
@@ -168,6 +223,7 @@ func parsePort(value string) (int, bool) {
 	return port, port > 0 && port <= 65535
 }
 
+// randomSecret 在配置层中完成本文件定义的局部处理。
 func randomSecret() string {
 	var buffer [32]byte
 	if _, err := rand.Read(buffer[:]); err != nil {
@@ -180,6 +236,7 @@ func randomSecret() string {
 // without requiring a development-only environment variable. Production
 // deployments should still set TRACKER_JWT_SECRET explicitly and keep it in a
 // proper secret manager.
+// persistentJWTSecret 读取或生成开发环境可复用的 JWT 密钥。
 func persistentJWTSecret() string {
 	dir := strings.TrimSpace(os.Getenv("TRACKER_DATA_DIR"))
 	if dir == "" {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 )
 
+// startUpdaterProcess 在业务层中执行流程或启动外部操作。
 func startUpdaterProcess(updaterPath, packagePath, appDir, appExe string, pid int) error {
 	cmd := exec.Command(
 		updaterPath,

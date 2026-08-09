@@ -10,7 +10,16 @@ const icons = { success: CheckCircle2, error: AlertCircle, warning: TriangleAler
   <Teleport to="body">
     <div class="toast-region" aria-live="polite" aria-atomic="false">
       <TransitionGroup name="toast-list">
-        <article v-for="item in toast.toasts.value" :key="item.id" class="app-toast" :class="`app-toast--${item.type}`">
+        <article
+          v-for="item in toast.toasts.value"
+          :key="item.id"
+          class="app-toast"
+          :class="`app-toast--${item.type}`"
+          @mouseenter="toast.pause(item.id, 'hover')"
+          @mouseleave="toast.resume(item.id, 'hover')"
+          @focusin="toast.pause(item.id, 'focus')"
+          @focusout="toast.resume(item.id, 'focus')"
+        >
           <component :is="icons[item.type] || Info" :size="19" aria-hidden="true" />
           <p>{{ item.message }}</p>
           <button type="button" aria-label="关闭通知" @click="toast.remove(item.id)"><X :size="16" /></button>

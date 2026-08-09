@@ -2,6 +2,7 @@ import { renderMd } from "./markdown.js"
 
 const colors = {}
 const colorPool = ['#0EA5E9','#8B5CF6','#10B981','#F97316','#EC4899','#F59E0B','#6366F1','#14B8A6','#F43F5E','#EAB308']
+// subjectColor 完成纯前端数据处理。
 function subjectColor(name){if(colors[name])return colors[name];let h=0;for(let i=0;i<name.length;i++)h=((h<<5)-h+name.charCodeAt(i))|0;return colorPool[Math.abs(h)%colorPool.length]}
 
 const exportStyles = {
@@ -10,6 +11,7 @@ const exportStyles = {
   practice: { label: "练习自测", title: "错题自测卷", pageClass: "style-practice" },
 }
 
+// exportPdfReport 完成纯前端数据处理。
 export async function exportPdfReport(errors, options = {}){
   const styleId = typeof options === "string" ? options : options.style || "detailed"
   const style = exportStyles[styleId] || exportStyles.detailed
@@ -35,11 +37,13 @@ export async function exportPdfReport(errors, options = {}){
   }
 }
 
+// tagChips 完成纯前端数据处理。
 function tagChips(tags) {
   if (!tags?.length) return ''
   return `<div class="tags">${tags.map(t=>`<span>${escapeHtml(t)}</span>`).join('')}</div>`
 }
 
+// escapeHtml 完成纯前端数据处理。
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({
     "&": "&amp;",
@@ -50,11 +54,13 @@ function escapeHtml(value = "") {
   }[ch]))
 }
 
+// hasText 完成纯前端数据处理。
 function hasText(value) {
   const text = (value || "").trim()
   return text && text !== "未记录"
 }
 
+// groupedBySubject 完成纯前端数据处理。
 function groupedBySubject(errors) {
   return [...new Set(errors.map(e => e.subject))].map(subject => ({
     subject,
@@ -62,10 +68,12 @@ function groupedBySubject(errors) {
   })).filter(group => group.items.length)
 }
 
+// errorTitle 完成纯前端数据处理。
 function errorTitle(e) {
   return escapeHtml(e.title || `未命名错题 #${e.id}`)
 }
 
+// answerHtml 完成纯前端数据处理。
 function answerHtml(e) {
   const chunks = []
   if (hasText(e.wrong)) chunks.push(`<div class="wrong"><span class="label">错答</span><div class="md">${renderMd(e.wrong)}</div></div>`)
@@ -74,6 +82,7 @@ function answerHtml(e) {
   return chunks.join("")
 }
 
+// renderDetailed 完成纯前端数据处理。
 function renderDetailed(errors) {
   let html = ""
   for (const { subject, items } of groupedBySubject(errors)) {
@@ -101,6 +110,7 @@ function renderDetailed(errors) {
   return html
 }
 
+// renderCompact 完成纯前端数据处理。
 function renderCompact(errors) {
   let html = ""
   for (const { subject, items } of groupedBySubject(errors)) {
@@ -122,6 +132,7 @@ function renderCompact(errors) {
   return html
 }
 
+// renderPractice 完成纯前端数据处理。
 function renderPractice(errors) {
   let questions = ""
   let answers = ""
@@ -144,12 +155,14 @@ function renderPractice(errors) {
   return `${questions}<section class="answer-section"><h1>答案与解析</h1>${answers}</section>`
 }
 
+// buildBody 完成纯前端数据处理。
 function buildBody(errors, styleId) {
   if (styleId === "compact") return renderCompact(errors)
   if (styleId === "practice") return renderPractice(errors)
   return renderDetailed(errors)
 }
 
+// buildHtml 完成纯前端数据处理。
 function buildHtml(errors, styleId = "detailed"){
   const now = new Date()
   const date = now.toISOString().slice(0,10)

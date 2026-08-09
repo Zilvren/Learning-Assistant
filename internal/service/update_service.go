@@ -23,6 +23,7 @@ type UpdateApplyError struct {
 	Message string
 }
 
+// Error 在业务层中完成本文件定义的局部处理。
 func (e UpdateApplyError) Error() string {
 	return e.Message
 }
@@ -66,6 +67,7 @@ type githubReleaseResponse struct {
 	} `json:"assets"`
 }
 
+// GetVersionResponse 在业务层中读取并整理所需数据。
 func GetVersionResponse() map[string]interface{} {
 	info := loadVersionInfo()
 	return map[string]interface{}{
@@ -77,6 +79,7 @@ func GetVersionResponse() map[string]interface{} {
 	}
 }
 
+// CheckUpdate 在业务层中完成本文件定义的局部处理。
 func CheckUpdate(force bool) map[string]interface{} {
 	_ = force
 	checkedAt := time.Now().Format("2006-01-02 15:04:05")
@@ -96,6 +99,7 @@ func CheckUpdate(force bool) map[string]interface{} {
 	return result
 }
 
+// ApplyUpdate 在业务层中执行流程或启动外部操作。
 func ApplyUpdate(ctx context.Context) (map[string]interface{}, error) {
 	info := loadVersionInfo()
 	if !info.CanAutoUpdate {
@@ -146,6 +150,7 @@ func ApplyUpdate(ctx context.Context) (map[string]interface{}, error) {
 	}, nil
 }
 
+// loadVersionInfo 在业务层中读取并整理所需数据。
 func loadVersionInfo() VersionInfo {
 	appDir := appDirectory()
 	info := VersionInfo{
@@ -166,6 +171,7 @@ func loadVersionInfo() VersionInfo {
 	return info
 }
 
+// normalizeVersionInfo 在业务层中构造、编码或标准化数据。
 func normalizeVersionInfo(info *VersionInfo) {
 	if strings.TrimSpace(info.Version) == "" {
 		info.Version = "0.0.0-dev"
@@ -181,6 +187,7 @@ func normalizeVersionInfo(info *VersionInfo) {
 	}
 }
 
+// appDirectory 在业务层中完成本文件定义的局部处理。
 func appDirectory() string {
 	if cwd, err := os.Getwd(); err == nil {
 		return cwd
@@ -188,6 +195,7 @@ func appDirectory() string {
 	return "."
 }
 
+// fetchLatestRelease 在业务层中完成本文件定义的局部处理。
 func fetchLatestRelease() (releaseInfo, error) {
 	info := loadVersionInfo()
 	url := "https://api.github.com/repos/" + info.Repo + "/releases/latest"
@@ -214,6 +222,7 @@ func fetchLatestRelease() (releaseInfo, error) {
 	return parseReleasePayload(info, payload), nil
 }
 
+// parseReleasePayload 在业务层中解析外部输入为内部数据。
 func parseReleasePayload(info VersionInfo, payload githubReleaseResponse) releaseInfo {
 	latest := normalizeVersion(payload.TagName)
 	result := releaseInfo{
@@ -239,6 +248,7 @@ func parseReleasePayload(info VersionInfo, payload githubReleaseResponse) releas
 	return result
 }
 
+// releaseToMap 在业务层中完成本文件定义的局部处理。
 func releaseToMap(release releaseInfo) map[string]interface{} {
 	return map[string]interface{}{
 		"current_version": release.CurrentVersion,
@@ -257,10 +267,12 @@ func releaseToMap(release releaseInfo) map[string]interface{} {
 	}
 }
 
+// savePreUpdateSnapshot 在业务层中创建或更新相应状态。
 func savePreUpdateSnapshot(ctx context.Context) (string, error) {
 	return SaveCurrentBackupSnapshot(ctx, "pre-update")
 }
 
+// downloadUpdatePackage 在业务层中完成本文件定义的局部处理。
 func downloadUpdatePackage(release releaseInfo) (string, error) {
 	updatesDir := filepath.Join(store.DataDir(), "updates")
 	if err := os.MkdirAll(updatesDir, 0755); err != nil {
@@ -311,6 +323,7 @@ func downloadUpdatePackage(release releaseInfo) (string, error) {
 	return target, nil
 }
 
+// copyUpdaterForRun 在业务层中完成本文件定义的局部处理。
 func copyUpdaterForRun(updaterPath string) (string, error) {
 	updatesDir := filepath.Join(store.DataDir(), "updates")
 	if err := os.MkdirAll(updatesDir, 0755); err != nil {
@@ -336,10 +349,12 @@ func copyUpdaterForRun(updaterPath string) (string, error) {
 	return target, nil
 }
 
+// startUpdater 在业务层中执行流程或启动外部操作。
 func startUpdater(updaterPath, packagePath, appDir, appExe string) error {
 	return startUpdaterProcess(updaterPath, packagePath, appDir, appExe, os.Getpid())
 }
 
+// validateZip 在业务层中校验输入或判断当前条件。
 func validateZip(path string) error {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
@@ -348,11 +363,13 @@ func validateZip(path string) error {
 	return reader.Close()
 }
 
+// fileExists 在业务层中完成本文件定义的局部处理。
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
 
+// safeFilenamePart 在业务层中完成本文件定义的局部处理。
 func safeFilenamePart(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -362,10 +379,12 @@ func safeFilenamePart(text string) string {
 	return re.ReplaceAllString(text, "_")
 }
 
+// normalizeVersion 在业务层中构造、编码或标准化数据。
 func normalizeVersion(value string) string {
 	return strings.TrimLeft(strings.TrimSpace(value), "vV")
 }
 
+// compareVersions 在业务层中完成本文件定义的局部处理。
 func compareVersions(left, right string) int {
 	left = normalizeVersion(left)
 	right = normalizeVersion(right)
@@ -385,6 +404,7 @@ func compareVersions(left, right string) int {
 	return compareInt(len(leftInts), len(rightInts))
 }
 
+// versionKey 在业务层中完成本文件定义的局部处理。
 func versionKey(value string) (int, []int, string) {
 	dateRe := regexp.MustCompile(`^\d{4}\.\d{2}\.\d{2}-\d{4}$`)
 	if dateRe.MatchString(value) {
@@ -419,6 +439,7 @@ func versionKey(value string) (int, []int, string) {
 	return 0, nil, value
 }
 
+// compareInt 在业务层中完成本文件定义的局部处理。
 func compareInt(left, right int) int {
 	switch {
 	case left > right:

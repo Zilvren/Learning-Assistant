@@ -7,6 +7,7 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, default: "" },
   description: { type: String, default: "" },
+  ariaLabel: { type: String, default: "对话框" },
   size: { type: String, default: "md" },
   closeOnBackdrop: { type: Boolean, default: true },
   showClose: { type: Boolean, default: true },
@@ -14,13 +15,16 @@ const props = defineProps({
 const emit = defineEmits(["close"])
 const panel = ref(null)
 const titleId = `dialog-title-${useId()}`
+const descriptionId = `dialog-description-${useId()}`
 let lastFocused = null
 
+// focusableElements 协调当前组件的状态和交互。
 function focusableElements() {
   if (!panel.value) return []
   return [...panel.value.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')]
 }
 
+// onKeydown 协调当前组件的状态和交互。
 function onKeydown(event) {
   if (!props.open) return
   if (event.key === "Escape") {
@@ -30,7 +34,11 @@ function onKeydown(event) {
   }
   if (event.key !== "Tab") return
   const items = focusableElements()
-  if (!items.length) return
+  if (!items.length) {
+    event.preventDefault()
+    panel.value?.focus()
+    return
+  }
   const first = items[0]
   const last = items[items.length - 1]
   if (event.shiftKey && document.activeElement === first) {
@@ -74,13 +82,15 @@ onBeforeUnmount(() => {
           role="dialog"
           aria-modal="true"
           :aria-labelledby="title ? titleId : undefined"
+          :aria-label="title ? undefined : ariaLabel"
+          :aria-describedby="description && !$slots.header ? descriptionId : undefined"
           tabindex="-1"
         >
-          <header v-if="title || $slots.header || showClose" class="ui-dialog__header">
+          <header v-if="title || description || $slots.header || showClose" class="ui-dialog__header">
             <slot name="header">
               <div>
                 <h2 v-if="title" :id="titleId">{{ title }}</h2>
-                <p v-if="description">{{ description }}</p>
+                <p v-if="description" :id="descriptionId">{{ description }}</p>
               </div>
             </slot>
             <IconButton v-if="showClose" label="关闭" @click="emit('close')"><X :size="19" /></IconButton>

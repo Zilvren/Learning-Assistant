@@ -16,6 +16,7 @@ const migrationLockID int64 = 741902338
 // ApplyMigrations applies each embedded SQL migration exactly once. Existing
 // Docker-initialized databases predate the migration ledger, so their current
 // schema is detected and recorded before only newer migrations are executed.
+// ApplyMigrations 按迁移账本顺序将 PostgreSQL 架构升级到最新版本。
 func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool, migrationFS fs.FS) error {
 	entries, err := fs.ReadDir(migrationFS, ".")
 	if err != nil {
@@ -49,6 +50,7 @@ func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool, migrationFS fs.FS)
 	return nil
 }
 
+// bootstrapMigrationLedger 在存储层中完成本文件定义的局部处理。
 func bootstrapMigrationLedger(ctx context.Context, pool *pgxpool.Pool) error {
 	var count int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 0 {
@@ -80,6 +82,7 @@ func bootstrapMigrationLedger(ctx context.Context, pool *pgxpool.Pool) error {
 	return tx.Commit(ctx)
 }
 
+// markExistingMigration 在存储层中完成本文件定义的局部处理。
 func markExistingMigration(ctx context.Context, tx pgx.Tx, version, query string) error {
 	var exists bool
 	if err := tx.QueryRow(ctx, query).Scan(&exists); err != nil || !exists {
@@ -89,6 +92,7 @@ func markExistingMigration(ctx context.Context, tx pgx.Tx, version, query string
 	return err
 }
 
+// applyMigration 在存储层中执行流程或启动外部操作。
 func applyMigration(ctx context.Context, pool *pgxpool.Pool, migrationFS fs.FS, version string) error {
 	sql, err := fs.ReadFile(migrationFS, version)
 	if err != nil {
@@ -118,6 +122,7 @@ func applyMigration(ctx context.Context, pool *pgxpool.Pool, migrationFS fs.FS, 
 	return tx.Commit(ctx)
 }
 
+// unwrapMigrationTransaction 在存储层中完成本文件定义的局部处理。
 func unwrapMigrationTransaction(sql string) string {
 	lines := strings.Split(strings.TrimSpace(sql), "\n")
 	first, last := -1, -1

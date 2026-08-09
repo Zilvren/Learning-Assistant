@@ -29,6 +29,7 @@ const toast = useToast()
 const railPinned = ref(false)
 const mobileMenuOpen = ref(false)
 const isMobile = ref(false)
+const topbarCollapsed = ref(false)
 let mobileMediaQuery = null
 
 const navSections = [
@@ -73,6 +74,7 @@ const libraryDestination = computed(() => {
   return rememberedLibraryPath()
 })
 
+// isNavActive 协调当前组件的状态和交互。
 function isNavActive(item) {
   if (item.match === "library") return route.name === "library" || route.name === "library-item"
   if (item.match === "home") return route.name === "home" && route.hash !== "#today-review"
@@ -80,49 +82,64 @@ function isNavActive(item) {
   return route.name === item.match
 }
 
+// closeMobileMenu 协调当前组件的状态和交互。
 function closeMobileMenu() {
   mobileMenuOpen.value = false
 }
 
+// toggleNavigation 协调当前组件的状态和交互。
 function toggleNavigation() {
   if (isMobile.value) mobileMenuOpen.value = !mobileMenuOpen.value
   else railPinned.value = !railPinned.value
 }
 
+// syncMobileViewport 协调当前组件的状态和交互。
 function syncMobileViewport(event) {
   const matches = Boolean(event?.matches)
   isMobile.value = matches
   if (!matches) closeMobileMenu()
 }
 
+// handleEscape 协调当前组件的状态和交互。
 function handleEscape(event) {
   if (event.key === "Escape" && mobileMenuOpen.value) closeMobileMenu()
 }
 
+// setTopbarCollapsed 接收编辑页滚动状态，在沉浸编辑时收起全局顶栏。
+function setTopbarCollapsed(event) {
+  topbarCollapsed.value = Boolean(event?.detail?.collapsed)
+}
+
+// signOut 协调当前组件的状态和交互。
 async function signOut() {
   await auth.logout()
   toast.info("已退出登录")
   await router.replace({ name: "login" })
 }
 
-watch(() => route.fullPath, closeMobileMenu)
+watch(() => route.fullPath, () => {
+  closeMobileMenu()
+  topbarCollapsed.value = false
+})
 
 onMounted(async () => {
   mobileMediaQuery = window.matchMedia?.("(max-width: 767px)") || null
   syncMobileViewport(mobileMediaQuery)
   mobileMediaQuery?.addEventListener?.("change", syncMobileViewport)
   window.addEventListener("keydown", handleEscape)
+  window.addEventListener("learning-space:editor-chrome", setTopbarCollapsed)
   await settings.load()
 })
 
 onBeforeUnmount(() => {
   mobileMediaQuery?.removeEventListener?.("change", syncMobileViewport)
   window.removeEventListener("keydown", handleEscape)
+  window.removeEventListener("learning-space:editor-chrome", setTopbarCollapsed)
 })
 </script>
 
 <template>
-  <div class="app-shell" data-testid="formal-app-shell">
+  <div class="app-shell" :class="{ 'is-topbar-collapsed': topbarCollapsed }" data-testid="formal-app-shell">
     <a class="app-skip-link" href="#app-main-content">跳到主要内容</a>
 
     <button

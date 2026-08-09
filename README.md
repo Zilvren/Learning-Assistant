@@ -16,6 +16,8 @@ http://127.0.0.1:8000
 
 服务器 Docker 部署、更新 Bug、备份与安全检查请见：[服务器部署与日常维护指南](docs/deployment.md)。
 
+想从源码理解项目，可按：[项目阅读指南](docs/project-reading-guide.md) 的顺序阅读。
+
 ## 快速开始
 
 下载 `Tracker.zip`，解压后双击：
@@ -161,7 +163,7 @@ $env:TRACKER_JWT_SECRET="请换成一段固定的强随机密钥"
 .\start-postgres.ps1 -DatabaseUrl $env:TRACKER_DATABASE_URL
 ```
 
-该脚本会强制使用 PostgreSQL；连接配置缺失或错误时不会回退到 JSON 模式。数据库迁移会在应用启动时从内嵌的 SQL 文件自动、按版本执行。
+该脚本会强制使用 PostgreSQL；连接配置缺失或错误时不会回退到 JSON 模式。`TRACKER_DATABASE_URL` 必须是包含主机和数据库名的 `postgres://` 或 `postgresql://` 地址，生产环境的 `TRACKER_JWT_SECRET` 至少应为 32 个字符。数据库迁移会在应用启动时从内嵌的 SQL 文件自动、按版本执行。
 
 相关环境变量：
 
@@ -170,7 +172,7 @@ $env:TRACKER_JWT_SECRET="请换成一段固定的强随机密钥"
 | `TRACKER_STORAGE` | `json` 或 `postgres`，默认 `json` |
 | `TRACKER_DATABASE_URL` | PostgreSQL 连接字符串，`postgres` 模式必填 |
 | `TRACKER_REQUIRE_POSTGRES` | 为 `true` 时禁止服务意外以 JSON 模式启动；Docker 部署已默认开启 |
-| `TRACKER_JWT_SECRET` | 登录 Cookie/JWT 签名密钥，生产环境必须设置固定强密钥 |
+| `TRACKER_JWT_SECRET` | 登录 Cookie/JWT 签名密钥，PostgreSQL 模式至少 32 个字符；生产环境必须设置固定强密钥 |
 | `TRACKER_EMAIL_VERIFICATION_ENABLED` | 设为 `true` 后，新用户必须先验证邮箱才可登录 |
 | `TRACKER_PUBLIC_URL` | 生产环境对外访问地址，例如 `https://study.example.com`，用于生成验证链接 |
 | `TRACKER_SMTP_HOST` / `TRACKER_SMTP_PORT` | SMTP 主机与端口；端口默认 `465` |
@@ -208,6 +210,10 @@ $env:TRACKER_SMTP_TLS_MODE="implicit"
 ```
 
 如果不启用邮箱验证，无需配置 SMTP。生产环境应使用能从公网访问的 `TRACKER_PUBLIC_URL`，否则邮件中的验证链接无法打开。
+
+## 接口排错与审计日志
+
+每次请求都会返回 `X-Request-ID`。若接口报错，请一并提供这个值和服务端对应的 `[AUDIT]` / `[ERROR]` 日志，便于定位问题。API 错误同时兼容旧字段 `detail`，并提供稳定的 `error.code`、`error.message` 与 `request_id`；5xx 错误不会把数据库连接或内部堆栈暴露给浏览器。
 
 ## 自动更新
 

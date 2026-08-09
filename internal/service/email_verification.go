@@ -19,6 +19,7 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
+// validateEmailVerificationConfig 在业务层中校验输入或判断当前条件。
 func validateEmailVerificationConfig(cfg config.Config) error {
 	if !cfg.EmailVerificationEnabled {
 		return nil
@@ -60,6 +61,7 @@ func validateEmailVerificationConfig(cfg config.Config) error {
 	return nil
 }
 
+// isLocalHost 在业务层中校验输入或判断当前条件。
 func isLocalHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "localhost" {
@@ -69,6 +71,7 @@ func isLocalHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// validateEmailAddress 在业务层中校验输入或判断当前条件。
 func validateEmailAddress(value string) (string, error) {
 	email := strings.ToLower(strings.TrimSpace(value))
 	parsed, err := mail.ParseAddress(email)
@@ -78,6 +81,7 @@ func validateEmailAddress(value string) (string, error) {
 	return email, nil
 }
 
+// createEmailVerification 在业务层中创建或更新相应状态。
 func createEmailVerification(ctx context.Context, repo repository.AuthRepository, cfg config.Config, user models.User) error {
 	token, err := randomToken(32)
 	if err != nil {
@@ -94,6 +98,7 @@ func createEmailVerification(ctx context.Context, repo repository.AuthRepository
 
 var timeNow = func() time.Time { return time.Now() }
 
+// sendVerificationEmail 在业务层中完成本文件定义的局部处理。
 func sendVerificationEmail(ctx context.Context, cfg config.Config, recipient string, token string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -106,6 +111,7 @@ func sendVerificationEmail(ctx context.Context, cfg config.Config, recipient str
 
 var smtpSend = sendSMTP
 
+// buildEmailMessage 在业务层中构造、编码或标准化数据。
 func buildEmailMessage(from string, recipient string, subject string, body string) []byte {
 	encodedSubject := mime.QEncoding.Encode("UTF-8", subject)
 	encodedBody := base64.StdEncoding.EncodeToString([]byte(body))
@@ -118,6 +124,7 @@ func buildEmailMessage(from string, recipient string, subject string, body strin
 		encodedBody + "\r\n")
 }
 
+// sendSMTP 在业务层中完成本文件定义的局部处理。
 func sendSMTP(cfg config.Config, recipient string, message []byte) error {
 	address := net.JoinHostPort(cfg.SMTPHost, strconv.Itoa(cfg.SMTPPort))
 	var (

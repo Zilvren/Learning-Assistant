@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestCompareVersions 在业务层中验证对应场景的行为与边界条件。
 func TestCompareVersions(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -29,6 +30,7 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
+// TestParseReleasePayloadFindsConfiguredAsset 在业务层中验证对应场景的行为与边界条件。
 func TestParseReleasePayloadFindsConfiguredAsset(t *testing.T) {
 	info := VersionInfo{
 		Version:       "2026.06.16-1253",
@@ -60,6 +62,7 @@ func TestParseReleasePayloadFindsConfiguredAsset(t *testing.T) {
 	}
 }
 
+// TestParseReleasePayloadMissingAsset 在业务层中验证对应场景的行为与边界条件。
 func TestParseReleasePayloadMissingAsset(t *testing.T) {
 	info := VersionInfo{
 		Version:       "2026.06.16-1253",
@@ -85,6 +88,7 @@ func TestParseReleasePayloadMissingAsset(t *testing.T) {
 	}
 }
 
+// decodeReleaseFixture 在业务层中解析外部输入为内部数据。
 func decodeReleaseFixture(t *testing.T, text string) githubReleaseResponse {
 	t.Helper()
 	var payload githubReleaseResponse

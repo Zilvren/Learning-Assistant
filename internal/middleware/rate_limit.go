@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"study-tracker-go/internal/apierror"
 )
 
 type rateWindow struct {
@@ -16,6 +18,7 @@ type rateWindow struct {
 // RateLimit provides a small in-process guard for public authentication and
 // mail endpoints. It deliberately fails closed per client IP and periodically
 // removes idle entries to avoid an unbounded map.
+// RateLimit 创建按客户端 IP 限制请求频率的 Gin 中间件。
 func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	if limit < 1 {
 		limit = 1
@@ -44,7 +47,8 @@ func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 		mu.Unlock()
 		if exceeded {
 			c.Header("Retry-After", "60")
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"detail": "请求过于频繁，请稍后再试"})
+			apierror.Write(c, http.StatusTooManyRequests, "rate_limited", "请求过于频繁，请稍后再试")
+			c.Abort()
 			return
 		}
 		c.Next()

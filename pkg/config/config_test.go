@@ -2,6 +2,7 @@ package config
 
 import "testing"
 
+// TestLoadParsesFlags 在配置层中验证对应场景的行为与边界条件。
 func TestLoadParsesFlags(t *testing.T) {
 	cfg := Load([]string{"--port", "8010", "--host", "0.0.0.0", "--no-browser"})
 	if cfg.Port != 8010 {
@@ -23,6 +24,7 @@ func TestLoadParsesFlags(t *testing.T) {
 	}
 }
 
+// TestLoadReadsEnvironment 在配置层中验证对应场景的行为与边界条件。
 func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("TRACKER_PORT", "8030")
 	t.Setenv("TRACKER_HOST", "localhost")
@@ -70,6 +72,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 }
 
+// TestLoadKeepsJSONAuthDisabled 在配置层中验证对应场景的行为与边界条件。
 func TestLoadKeepsJSONAuthDisabled(t *testing.T) {
 	t.Setenv("TRACKER_STORAGE", "json")
 
@@ -79,11 +82,41 @@ func TestLoadKeepsJSONAuthDisabled(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsJSONWhenPostgresIsRequired 在配置层中验证对应场景的行为与边界条件。
 func TestValidateRejectsJSONWhenPostgresIsRequired(t *testing.T) {
 	t.Setenv("TRACKER_STORAGE", "json")
 	t.Setenv("TRACKER_REQUIRE_POSTGRES", "true")
 
 	if err := Load(nil).Validate(); err == nil {
 		t.Fatal("expected a required PostgreSQL configuration to reject JSON storage")
+	}
+}
+
+// TestValidateRejectsIncompletePostgresConfiguration 在配置层中验证对应场景的行为与边界条件。
+func TestValidateRejectsIncompletePostgresConfiguration(t *testing.T) {
+	tests := []Config{
+		{Host: "127.0.0.1", Port: 8000, StorageDriver: "postgres", JWTSecret: "01234567890123456789012345678901"},
+		{Host: "127.0.0.1", Port: 8000, StorageDriver: "postgres", DatabaseURL: "mysql://db/study", JWTSecret: "01234567890123456789012345678901"},
+		{Host: "127.0.0.1", Port: 8000, StorageDriver: "postgres", DatabaseURL: "postgres://db/study", JWTSecret: "short"},
+	}
+	for _, cfg := range tests {
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("expected invalid PostgreSQL configuration to fail: %#v", cfg)
+		}
+	}
+}
+
+// TestValidateAcceptsPostgresConfiguration 在配置层中验证对应场景的行为与边界条件。
+func TestValidateAcceptsPostgresConfiguration(t *testing.T) {
+	cfg := Config{
+		Host:          "0.0.0.0",
+		Port:          8000,
+		GinMode:       "release",
+		StorageDriver: "postgres",
+		DatabaseURL:   "postgres://user:password@db:5432/study?sslmode=disable",
+		JWTSecret:     "01234567890123456789012345678901",
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid PostgreSQL configuration, got %v", err)
 	}
 }

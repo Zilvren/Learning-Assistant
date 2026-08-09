@@ -11,6 +11,7 @@ import (
 	postgresrepo "study-tracker-go/internal/repository/postgres"
 )
 
+// main 在命令行工具中组装应用依赖并启动服务。
 func main() {
 	var dataDir string
 	var databaseURL string
@@ -31,6 +32,7 @@ func main() {
 	}
 }
 
+// run 在命令行工具中执行流程或启动外部操作。
 func run(dataDir string, databaseURL string, username string, dryRun bool, replace bool) error {
 	ctx := context.Background()
 	base.SetDataDir(dataDir)

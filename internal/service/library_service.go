@@ -10,6 +10,7 @@ import (
 	"study-tracker-go/internal/repository"
 )
 
+// libraryRepository 在业务层中完成本文件定义的局部处理。
 func libraryRepository(ctx context.Context) (repository.LibraryRepository, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -24,6 +25,7 @@ func libraryRepository(ctx context.Context) (repository.LibraryRepository, error
 	return repos.Library, nil
 }
 
+// ListLibrary 在业务层中读取并整理所需数据。
 func ListLibrary(ctx context.Context, filter repository.LibraryFilter) ([]models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -31,6 +33,8 @@ func ListLibrary(ctx context.Context, filter repository.LibraryFilter) ([]models
 	}
 	return r.List(ctx, filter)
 }
+
+// GetLibraryItem 在业务层中读取并整理所需数据。
 func GetLibraryItem(ctx context.Context, id int64) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -38,6 +42,8 @@ func GetLibraryItem(ctx context.Context, id int64) (models.LibraryItem, error) {
 	}
 	return r.Get(ctx, id)
 }
+
+// CreateLibraryItem 在业务层中创建或更新相应状态。
 func CreateLibraryItem(ctx context.Context, req models.CreateLibraryItemRequest, content []byte) (models.LibraryItem, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
@@ -52,6 +58,8 @@ func CreateLibraryItem(ctx context.Context, req models.CreateLibraryItemRequest,
 	}
 	return r.Create(ctx, req, content)
 }
+
+// UpdateLibraryItem 在业务层中创建或更新相应状态。
 func UpdateLibraryItem(ctx context.Context, id int64, req models.UpdateLibraryItemRequest) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -59,6 +67,8 @@ func UpdateLibraryItem(ctx context.Context, id int64, req models.UpdateLibraryIt
 	}
 	return r.Update(ctx, id, req)
 }
+
+// SaveLibraryContent 在业务层中创建或更新相应状态。
 func SaveLibraryContent(ctx context.Context, id int64, req models.SaveLibraryContentRequest) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -66,6 +76,8 @@ func SaveLibraryContent(ctx context.Context, id int64, req models.SaveLibraryCon
 	}
 	return r.SaveContent(ctx, id, []byte(req.Content), req.BaseVersion, req.Checkpoint, req.Force)
 }
+
+// ReadLibraryContent 在业务层中读取并整理所需数据。
 func ReadLibraryContent(ctx context.Context, id int64) ([]byte, models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -73,6 +85,8 @@ func ReadLibraryContent(ctx context.Context, id int64) ([]byte, models.LibraryIt
 	}
 	return r.ReadContent(ctx, id)
 }
+
+// TrashLibraryItem 在业务层中删除、清理或撤销相应状态。
 func TrashLibraryItem(ctx context.Context, id int64) error {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -80,6 +94,8 @@ func TrashLibraryItem(ctx context.Context, id int64) error {
 	}
 	return r.Trash(ctx, id)
 }
+
+// RestoreLibraryItem 在业务层中完成本文件定义的局部处理。
 func RestoreLibraryItem(ctx context.Context, id int64) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -87,6 +103,8 @@ func RestoreLibraryItem(ctx context.Context, id int64) (models.LibraryItem, erro
 	}
 	return r.Restore(ctx, id)
 }
+
+// PurgeLibraryItem 在业务层中删除、清理或撤销相应状态。
 func PurgeLibraryItem(ctx context.Context, id int64) error {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -98,6 +116,7 @@ func PurgeLibraryItem(ctx context.Context, id int64) error {
 	return r.Purge(ctx, id)
 }
 
+// BatchLibraryItems 在业务层中完成本文件定义的局部处理。
 func BatchLibraryItems(ctx context.Context, action string, ids []int64, parentID *int64) error {
 	r, err := libraryRepository(ctx)
 	if err != nil {
@@ -105,6 +124,8 @@ func BatchLibraryItems(ctx context.Context, action string, ids []int64, parentID
 	}
 	return r.Batch(ctx, action, ids, parentID)
 }
+
+// DuplicateLibraryItem 在业务层中完成本文件定义的局部处理。
 func DuplicateLibraryItem(ctx context.Context, id int64, parent *int64) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -112,6 +133,8 @@ func DuplicateLibraryItem(ctx context.Context, id int64, parent *int64) (models.
 	}
 	return r.Duplicate(ctx, id, parent)
 }
+
+// LibraryVersions 在业务层中完成本文件定义的局部处理。
 func LibraryVersions(ctx context.Context, id int64) ([]models.LibraryVersion, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -119,6 +142,8 @@ func LibraryVersions(ctx context.Context, id int64) ([]models.LibraryVersion, er
 	}
 	return r.Versions(ctx, id)
 }
+
+// RestoreLibraryVersion 在业务层中完成本文件定义的局部处理。
 func RestoreLibraryVersion(ctx context.Context, id, vid int64) (models.LibraryItem, error) {
 	r, e := libraryRepository(ctx)
 	if e != nil {
@@ -127,6 +152,7 @@ func RestoreLibraryVersion(ctx context.Context, id, vid int64) (models.LibraryIt
 	return r.RestoreVersion(ctx, id, vid)
 }
 
+// ListLibraryTags 在业务层中读取并整理所需数据。
 func ListLibraryTags(ctx context.Context) ([]string, error) {
 	r, err := libraryRepository(ctx)
 	if err != nil {
@@ -135,6 +161,7 @@ func ListLibraryTags(ctx context.Context) ([]string, error) {
 	return r.ListTags(ctx)
 }
 
+// DueLibraryReviews 在业务层中完成本文件定义的局部处理。
 func DueLibraryReviews(ctx context.Context) ([]models.LibraryItem, error) {
 	r, err := libraryRepository(ctx)
 	if err != nil {
@@ -143,6 +170,7 @@ func DueLibraryReviews(ctx context.Context) ([]models.LibraryItem, error) {
 	return r.DueReviews(ctx, time.Now())
 }
 
+// ReviewLibraryNote 在业务层中完成本文件定义的局部处理。
 func ReviewLibraryNote(ctx context.Context, id int64) (models.LibraryItem, error) {
 	r, err := libraryRepository(ctx)
 	if err != nil {

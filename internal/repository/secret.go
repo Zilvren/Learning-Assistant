@@ -22,6 +22,7 @@ var secretKeyMu sync.Mutex
 // An explicit TRACKER_ENCRYPTION_KEY is preferred. Local installations get a
 // random per-data-directory key with restrictive permissions, so encryption
 // remains stable across restarts without silently falling back to plaintext.
+// SealSecret 使用本地持久化密钥加密敏感设置值。
 func SealSecret(value string) (string, error) {
 	if value == "" || strings.HasPrefix(value, sealedSecretPrefix) {
 		return value, nil
@@ -48,6 +49,7 @@ func SealSecret(value string) (string, error) {
 
 // OpenSecret also accepts legacy plaintext values so existing installations
 // continue to work and are upgraded the next time the setting is saved.
+// OpenSecret 解密已加密的敏感设置值，并兼容旧版明文值。
 func OpenSecret(value string) (string, error) {
 	if value == "" || !strings.HasPrefix(value, sealedSecretPrefix) {
 		return value, nil
@@ -78,6 +80,7 @@ func OpenSecret(value string) (string, error) {
 	return string(plain), nil
 }
 
+// dataEncryptionKey 在存储层中完成本文件定义的局部处理。
 func dataEncryptionKey() ([]byte, error) {
 	if configured := strings.TrimSpace(os.Getenv("TRACKER_ENCRYPTION_KEY")); configured != "" {
 		sum := sha256.Sum256([]byte(configured))

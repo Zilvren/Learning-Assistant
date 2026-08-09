@@ -32,6 +32,7 @@ type ImportBackupResult struct {
 	LibraryItems int      `json:"library_items"`
 }
 
+// ExportBackupZip 在业务层中完成本文件定义的局部处理。
 func ExportBackupZip(ctx context.Context) ([]byte, string, error) {
 	data, err := loadBackupData(ctx)
 	if err != nil {
@@ -48,6 +49,7 @@ func ExportBackupZip(ctx context.Context) ([]byte, string, error) {
 	return content, filename, nil
 }
 
+// ImportBackupZip 在业务层中完成本文件定义的局部处理。
 func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, error) {
 	data, files, err := decodeBackupZip(body)
 	if err != nil {
@@ -59,6 +61,7 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 // ImportBackupReader keeps uploaded archives out of process memory. zip.Reader
 // needs random access, so the bounded stream is staged in an OS temp file and
 // removed immediately after validation and import.
+// ImportBackupReader 从备份流导入用户数据，并返回导入结果摘要。
 func ImportBackupReader(ctx context.Context, input io.Reader) (ImportBackupResult, error) {
 	temp, err := os.CreateTemp("", "study-tracker-backup-*.zip")
 	if err != nil {
@@ -89,6 +92,7 @@ func ImportBackupReader(ctx context.Context, input io.Reader) (ImportBackupResul
 	return restoreBackupData(ctx, data, files)
 }
 
+// restoreBackupData 在业务层中完成本文件定义的局部处理。
 func restoreBackupData(ctx context.Context, data store.BackupData, files []string) (ImportBackupResult, error) {
 	snapshot, err := SaveCurrentBackupSnapshot(ctx, "pre-import")
 	if err != nil {
@@ -115,7 +119,11 @@ func restoreBackupData(ctx context.Context, data store.BackupData, files []strin
 	}
 	// JSON mode keeps its library index in library.json. PostgreSQL mode
 	// restores it through BackupRepository.Import into library_items instead.
-	if data.Library != nil && currentConfig().StorageDriver != "postgres" {
+	appConfig, configErr := currentConfig(ctx)
+	if configErr != nil {
+		return ImportBackupResult{}, configErr
+	}
+	if data.Library != nil && appConfig.StorageDriver != "postgres" {
 		if err := store.SaveJSON("library.json", data.Library); err != nil {
 			return ImportBackupResult{}, err
 		}
@@ -132,6 +140,7 @@ func restoreBackupData(ctx context.Context, data store.BackupData, files []strin
 	}, nil
 }
 
+// SaveCurrentBackupSnapshot 在业务层中创建或更新相应状态。
 func SaveCurrentBackupSnapshot(ctx context.Context, prefix string) (string, error) {
 	content, _, err := ExportBackupZip(ctx)
 	if err != nil {
@@ -145,6 +154,7 @@ func SaveCurrentBackupSnapshot(ctx context.Context, prefix string) (string, erro
 	return snapshot, os.WriteFile(snapshot, content, 0600)
 }
 
+// loadBackupData 在业务层中读取并整理所需数据。
 func loadBackupData(ctx context.Context) (store.BackupData, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -167,6 +177,7 @@ func loadBackupData(ctx context.Context) (store.BackupData, error) {
 	return data, nil
 }
 
+// libraryBlobHashes 在业务层中完成本文件定义的局部处理。
 func libraryBlobHashes(library store.LibraryBackup) map[string]struct{} {
 	hashes := map[string]struct{}{}
 	for _, item := range library.Items {
@@ -182,6 +193,7 @@ func libraryBlobHashes(library store.LibraryBackup) map[string]struct{} {
 	return hashes
 }
 
+// encodeBackupZip 在业务层中构造、编码或标准化数据。
 func encodeBackupZip(data store.BackupData) ([]byte, error) {
 	var buffer bytes.Buffer
 	zw := zip.NewWriter(&buffer)
@@ -232,6 +244,7 @@ func encodeBackupZip(data store.BackupData) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
+// writeBackupJSON 在业务层中创建或更新相应状态。
 func writeBackupJSON(zw *zip.Writer, name string, value interface{}) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
@@ -245,6 +258,7 @@ func writeBackupJSON(zw *zip.Writer, name string, value interface{}) error {
 	return err
 }
 
+// decodeBackupZip 在业务层中解析外部输入为内部数据。
 func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 	if len(body) == 0 {
 		return store.BackupData{}, nil, fmt.Errorf("备份文件不能为空")
@@ -257,6 +271,7 @@ func decodeBackupZip(body []byte) (store.BackupData, []string, error) {
 	return decodeBackupZipReader(reader)
 }
 
+// decodeBackupZipReader 在业务层中解析外部输入为内部数据。
 func decodeBackupZipReader(reader *zip.Reader) (store.BackupData, []string, error) {
 	if len(reader.File) > BackupMaxArchiveEntries {
 		return store.BackupData{}, nil, fmt.Errorf("备份包中的文件数量超过限制")
@@ -332,6 +347,7 @@ func decodeBackupZipReader(reader *zip.Reader) (store.BackupData, []string, erro
 	return data, files, nil
 }
 
+// redactBackupCredentials 在业务层中完成本文件定义的局部处理。
 func redactBackupCredentials(data *store.BackupData) {
 	if data.Config == nil {
 		return
@@ -341,6 +357,7 @@ func redactBackupCredentials(data *store.BackupData) {
 	data.Config = &config
 }
 
+// readBackupZipFile 在业务层中读取并整理所需数据。
 func readBackupZipFile(file *zip.File) ([]byte, error) {
 	rc, err := file.Open()
 	if err != nil {
@@ -357,6 +374,7 @@ func readBackupZipFile(file *zip.File) ([]byte, error) {
 	return data, nil
 }
 
+// decodeBackupJSON 在业务层中解析外部输入为内部数据。
 func decodeBackupJSON(name string, raw []byte, data *store.BackupData) error {
 	switch name {
 	case "errors.json":
@@ -401,6 +419,7 @@ func decodeBackupJSON(name string, raw []byte, data *store.BackupData) error {
 
 const libraryMaxBackupBlobSize = 200 * 1024 * 1024
 
+// readBackupZipFileLimit 在业务层中读取并整理所需数据。
 func readBackupZipFileLimit(file *zip.File, limit int64) ([]byte, error) {
 	rc, e := file.Open()
 	if e != nil {
@@ -417,6 +436,7 @@ func readBackupZipFileLimit(file *zip.File, limit int64) ([]byte, error) {
 	return body, nil
 }
 
+// isBackupFile 在业务层中校验输入或判断当前条件。
 func isBackupFile(name string) bool {
 	for _, allowed := range backupFileNames {
 		if name == allowed {
@@ -426,6 +446,7 @@ func isBackupFile(name string) bool {
 	return false
 }
 
+// backupInputName 在业务层中完成本文件定义的局部处理。
 func backupInputName(value string) string {
 	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 	if slash := strings.LastIndex(value, "/"); slash >= 0 {
@@ -434,6 +455,7 @@ func backupInputName(value string) string {
 	return strings.ToLower(value)
 }
 
+// isBackupBlobName 在业务层中校验输入或判断当前条件。
 func isBackupBlobName(name string) bool {
 	if len(name) != 64 {
 		return false
@@ -442,6 +464,7 @@ func isBackupBlobName(name string) bool {
 	return err == nil
 }
 
+// validateBackupBlobs 在业务层中校验输入或判断当前条件。
 func validateBackupBlobs(data store.BackupData) error {
 	if data.Library == nil {
 		return nil

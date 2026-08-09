@@ -35,14 +35,17 @@ var libraryMIMETypes = map[string]string{
 	".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
+// parseLibraryID 在HTTP 处理层中解析外部输入为内部数据。
 func parseLibraryID(c *gin.Context) (int64, bool) {
 	id, e := strconv.ParseInt(c.Param("id"), 10, 64)
 	if e != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "ID格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_id", "ID格式错误")
 		return 0, false
 	}
 	return id, true
 }
+
+// parseParent 在HTTP 处理层中解析外部输入为内部数据。
 func parseParent(raw string) (*int64, error) {
 	if raw == "" || raw == "root" {
 		return nil, nil
@@ -54,10 +57,11 @@ func parseParent(raw string) (*int64, error) {
 	return &id, nil
 }
 
+// ListLibraryItems 在HTTP 处理层中读取并整理所需数据。
 func ListLibraryItems(c *gin.Context) {
 	parentID, e := parseParent(c.Query("parent_id"))
 	if e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": e.Error()})
+		respondError(c, http.StatusBadRequest, e)
 		return
 	}
 	items, e := service.ListLibrary(c.Request.Context(), repository.LibraryFilter{ParentID: parentID, Kind: c.Query("kind"), Query: c.Query("q"), Tag: c.Query("tag"), ReviewOnly: c.Query("review") == "true", DueOnly: c.Query("due") == "true", Trashed: c.Query("trashed") == "true"})
@@ -67,6 +71,8 @@ func ListLibraryItems(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
 }
+
+// SearchLibrary 在HTTP 处理层中完成本文件定义的局部处理。
 func SearchLibrary(c *gin.Context) {
 	items, e := service.ListLibrary(c.Request.Context(), repository.LibraryFilter{Query: c.Query("q"), Kind: c.Query("kind"), Tag: c.Query("tag")})
 	if e != nil {
@@ -76,6 +82,7 @@ func SearchLibrary(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
 }
 
+// ListLibraryTags 在HTTP 处理层中读取并整理所需数据。
 func ListLibraryTags(c *gin.Context) {
 	tags, err := service.ListLibraryTags(c.Request.Context())
 	if err != nil {
@@ -85,6 +92,7 @@ func ListLibraryTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tags": tags})
 }
 
+// ListLibraryReviews 在HTTP 处理层中读取并整理所需数据。
 func ListLibraryReviews(c *gin.Context) {
 	items, err := service.DueLibraryReviews(c.Request.Context())
 	if err != nil {
@@ -94,6 +102,7 @@ func ListLibraryReviews(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
 }
 
+// ReviewLibraryNote 在HTTP 处理层中完成本文件定义的局部处理。
 func ReviewLibraryNote(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -106,6 +115,8 @@ func ReviewLibraryNote(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, item)
 }
+
+// GetLibraryItem 在HTTP 处理层中读取并整理所需数据。
 func GetLibraryItem(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -118,10 +129,12 @@ func GetLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, item)
 }
+
+// CreateLibraryItem 在HTTP 处理层中创建或更新相应状态。
 func CreateLibraryItem(c *gin.Context) {
 	var req models.CreateLibraryItemRequest
 	if e := c.ShouldBindJSON(&req); e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 	if req.Kind == "note" && req.MimeType == "" {
@@ -134,6 +147,8 @@ func CreateLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, item)
 }
+
+// UpdateLibraryItem 在HTTP 处理层中创建或更新相应状态。
 func UpdateLibraryItem(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -141,7 +156,7 @@ func UpdateLibraryItem(c *gin.Context) {
 	}
 	var req models.UpdateLibraryItemRequest
 	if e := c.ShouldBindJSON(&req); e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 	item, e := service.UpdateLibraryItem(c.Request.Context(), id, req)
@@ -151,6 +166,8 @@ func UpdateLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, item)
 }
+
+// DeleteLibraryItem 在HTTP 处理层中删除、清理或撤销相应状态。
 func DeleteLibraryItem(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -162,6 +179,8 @@ func DeleteLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已移入回收站"})
 }
+
+// RestoreLibraryItem 在HTTP 处理层中完成本文件定义的局部处理。
 func RestoreLibraryItem(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -174,6 +193,8 @@ func RestoreLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, item)
 }
+
+// PurgeLibraryItem 在HTTP 处理层中删除、清理或撤销相应状态。
 func PurgeLibraryItem(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -185,6 +206,8 @@ func PurgeLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已永久删除"})
 }
+
+// DuplicateLibraryItem 在HTTP 处理层中完成本文件定义的局部处理。
 func DuplicateLibraryItem(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -194,7 +217,7 @@ func DuplicateLibraryItem(c *gin.Context) {
 		ParentID *int64 `json:"parent_id"`
 	}
 	if e := c.ShouldBindJSON(&body); e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 	item, e := service.DuplicateLibraryItem(c.Request.Context(), id, body.ParentID)
@@ -204,6 +227,8 @@ func DuplicateLibraryItem(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, item)
 }
+
+// GetLibraryContent 在HTTP 处理层中读取并整理所需数据。
 func GetLibraryContent(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -229,6 +254,8 @@ func GetLibraryContent(c *gin.Context) {
 	}
 	c.Data(http.StatusOK, ct, body)
 }
+
+// SaveLibraryContent 在HTTP 处理层中创建或更新相应状态。
 func SaveLibraryContent(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -237,13 +264,13 @@ func SaveLibraryContent(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, libraryMaxNoteSize)
 	var req models.SaveLibraryContentRequest
 	if e := c.ShouldBindJSON(&req); e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请求格式错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 	item, e := service.SaveLibraryContent(c.Request.Context(), id, req)
 	if e != nil {
 		if strings.Contains(e.Error(), "版本冲突") {
-			c.JSON(http.StatusConflict, gin.H{"detail": "内容已被其他操作更新", "code": "version_conflict"})
+			respondProblem(c, http.StatusConflict, "version_conflict", "内容已被其他操作更新")
 			return
 		}
 		respondError(c, http.StatusBadRequest, e)
@@ -251,18 +278,20 @@ func SaveLibraryContent(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, item)
 }
+
+// UploadLibraryFile 在HTTP 处理层中完成本文件定义的局部处理。
 func UploadLibraryFile(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, libraryMaxUploadSize)
 	file, header, e := c.Request.FormFile("file")
 	if e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "请选择不超过 200MB 的文件"})
+		respondProblem(c, http.StatusBadRequest, "missing_file", "请选择不超过 200MB 的文件")
 		return
 	}
 	defer file.Close()
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	ct, allowed := libraryMIMETypes[ext]
 	if !allowed {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "不支持该文件类型"})
+		respondProblem(c, http.StatusBadRequest, "unsupported_file_type", "不支持该文件类型")
 		return
 	}
 	data, e := io.ReadAll(io.LimitReader(file, libraryMaxUploadSize+1))
@@ -271,7 +300,7 @@ func UploadLibraryFile(c *gin.Context) {
 		return
 	}
 	if len(data) > libraryMaxUploadSize {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "文件不能超过 200MB"})
+		respondProblem(c, http.StatusRequestEntityTooLarge, "payload_too_large", "文件不能超过 200MB")
 		return
 	}
 	kind := "file"
@@ -280,7 +309,7 @@ func UploadLibraryFile(c *gin.Context) {
 	}
 	parentID, e := parseParent(c.PostForm("parent_id"))
 	if e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": e.Error()})
+		respondError(c, http.StatusBadRequest, e)
 		return
 	}
 	item, e := service.CreateLibraryItem(c.Request.Context(), models.CreateLibraryItemRequest{ParentID: parentID, Kind: kind, Name: filepath.Base(header.Filename), MimeType: ct}, data)
@@ -290,6 +319,8 @@ func UploadLibraryFile(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, item)
 }
+
+// ListLibraryVersions 在HTTP 处理层中读取并整理所需数据。
 func ListLibraryVersions(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -302,6 +333,8 @@ func ListLibraryVersions(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"versions": items})
 }
+
+// RestoreLibraryVersion 在HTTP 处理层中完成本文件定义的局部处理。
 func RestoreLibraryVersion(c *gin.Context) {
 	id, ok := parseLibraryID(c)
 	if !ok {
@@ -309,7 +342,7 @@ func RestoreLibraryVersion(c *gin.Context) {
 	}
 	vid, e := strconv.ParseInt(c.Param("versionId"), 10, 64)
 	if e != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "版本ID错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_version_id", "版本ID错误")
 		return
 	}
 	item, e := service.RestoreLibraryVersion(c.Request.Context(), id, vid)
@@ -320,6 +353,7 @@ func RestoreLibraryVersion(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+// BatchLibraryItems 在HTTP 处理层中完成本文件定义的局部处理。
 func BatchLibraryItems(c *gin.Context) {
 	var req struct {
 		Action   string          `json:"action"`
@@ -327,14 +361,14 @@ func BatchLibraryItems(c *gin.Context) {
 		ParentID json.RawMessage `json:"parent_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "批量操作参数错误"})
+		respondProblem(c, http.StatusBadRequest, "invalid_batch", "批量操作参数错误")
 		return
 	}
 	var parentID *int64
 	if len(req.ParentID) > 0 && string(req.ParentID) != "null" {
 		var id int64
 		if err := json.Unmarshal(req.ParentID, &id); err != nil || id <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"detail": "父文件夹 ID 格式错误"})
+			respondProblem(c, http.StatusBadRequest, "invalid_parent_id", "父文件夹 ID 格式错误")
 			return
 		}
 		parentID = &id

@@ -3,6 +3,7 @@ import mark from "markdown-it-mark"
 import katex from "katex"
 import hljs from "highlight.js/lib/common"
 
+// highlightCode 优先按指定语言高亮，语言未知或解析失败时回退到安全转义文本。
 function highlightCode(code, language = "") {
   try {
     if (language && hljs.getLanguage(language)) return hljs.highlight(code, { language }).value
@@ -22,12 +23,14 @@ const md = markdownit({
 const safeDataImageSource = /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i
 const defaultImageRenderer = md.renderer.rules.image
 
+// embeddedImageWidth 从图片 title 元数据取宽度，并把范围限制在安全的展示尺寸内。
 function embeddedImageWidth(value) {
   const match = /(?:^|;)width=(\d{1,4})(?:;|$)/.exec(String(value || ""))
   const width = Number(match?.[1])
   return Number.isInteger(width) && width >= 120 && width <= 1200 ? width : 400
 }
 
+// embeddedImageAlignment 从图片 title 元数据读取左、中、右对齐方式。
 function embeddedImageAlignment(value) {
   return /(?:^|;)align=(left|center|right)(?:;|$)/.exec(String(value || ""))?.[1] || "left"
 }
@@ -43,6 +46,7 @@ md.renderer.rules.image = (tokens, index, options, env, self) => {
   return `<img class="markdown-image--align-${alignment}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" width="${width}">`
 }
 
+// headingID 为标题生成稳定、可用于目录跳转的 HTML id。
 function headingID(text, index) {
   const slug = String(text || "")
     .toLowerCase()
@@ -69,6 +73,7 @@ const inlineRegex = /\$(.+?)\$/g
 // Block math: $$...$$
 const blockRegex = /\$\$(.+?)\$\$/gs
 
+// renderKatex 将公式渲染为 HTML；公式异常时仍返回可读的错误占位内容。
 function renderKatex(text, isBlock) {
   try {
     return katex.renderToString(text, {
@@ -82,6 +87,7 @@ function renderKatex(text, isBlock) {
   }
 }
 
+// escapeHtml 转义用户文本，避免 Markdown 渲染中的 HTML 注入。
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({
     "&": "&amp;",
@@ -92,6 +98,7 @@ function escapeHtml(value = "") {
   }[ch]))
 }
 
+// normalizeMathDelimiters 自动补齐未成对的数学分隔符，避免后续占位替换失配。
 function normalizeMathDelimiters(src) {
   const blockMatches = src.match(/\$\$/g) || []
   const singleDollarCount = (src.match(/(?<!\$)\$(?!\$)/g) || []).length
@@ -108,12 +115,14 @@ function normalizeMathDelimiters(src) {
   return normalized
 }
 
+// removeLooseDollars 清理正文中不构成公式的孤立美元符号。
 function removeLooseDollars(html) {
   return html
     .replace(/(^|[\s>])\$([\s<.,，。；;:：!?！？)]|$)/g, "$1$2")
     .replace(/([\s(（])\$([\s<]|$)/g, "$1$2")
 }
 
+// normalizeSafeDataImages 将允许的内嵌 Base64 图片规范成受控的 Markdown 图片语法。
 function normalizeSafeDataImages(src) {
   return src.replace(
     /<img\s+[^>]*src=["'](data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+)["'][^>]*>/gi,
@@ -126,14 +135,17 @@ function normalizeSafeDataImages(src) {
   )
 }
 
+// mathPlaceholder 创建不会与用户正文冲突的公式临时标记。
 function mathPlaceholder(index) {
   return `\uE000ST_MATH_${index}\uE000`
 }
 
+// alignmentPlaceholder 创建图片/内容对齐块的临时标记。
 function alignmentPlaceholder(index) {
   return `\uE001ST_ALIGN_${index}\uE001`
 }
 
+// replaceAlignmentBlocks 先抽离自定义对齐块，避免 Markdown 解析打散其边界。
 function replaceAlignmentBlocks(src) {
   const blocks = []
   const result = src.replace(/^\[\[align:(left|center|right)\]\][ \t]*\r?\n([\s\S]*?)\r?\n\[\[\/align\]\][ \t]*$/gm, (_, alignment, content) => {
@@ -144,6 +156,7 @@ function replaceAlignmentBlocks(src) {
   return { result, blocks }
 }
 
+// replaceMathWithPlaceholders 在 Markdown 渲染前保护公式 HTML，防止被再次转义。
 function replaceMathWithPlaceholders(src) {
   const placeholders = []
   let result = src.replace(blockRegex, (_, code) => {
@@ -161,6 +174,7 @@ function replaceMathWithPlaceholders(src) {
   return { result, placeholders }
 }
 
+// renderMd 是笔记预览入口：依次处理对齐、图片、公式、Markdown 与安全清理。
 export function renderMd(src) {
   if (!src) return ""
   const { result: alignedSource, blocks } = replaceAlignmentBlocks(src)
@@ -178,6 +192,7 @@ export function renderMd(src) {
   return html
 }
 
+// extractOutline 从 Markdown token 中提取标题层级，供右侧目录或锚点跳转使用。
 export function extractOutline(src) {
   if (!src) return []
   const tokens = md.parse(src, {})

@@ -15,4 +15,16 @@ describe("accessible dialogs", () => {
     expect(wrapper.get(`#${titleIds[0]}`).text()).toBe("编辑错题")
     expect(wrapper.get(`#${titleIds[1]}`).text()).toBe("舍弃修改")
   })
+
+  it("connects the description and supplies a fallback name without a title", () => {
+    const wrapper = mount(BaseDialog, {
+      props: { open: true, description: "删除后无法恢复", showClose: false },
+      slots: { default: "确认内容" },
+      global: { stubs: { teleport: true } },
+    })
+    const dialog = wrapper.get('[role="dialog"]')
+    const descriptionId = dialog.attributes("aria-describedby")
+    expect(dialog.attributes("aria-label")).toBe("对话框")
+    expect(wrapper.get(`#${descriptionId}`).text()).toBe("删除后无法恢复")
+  })
 })

@@ -121,6 +121,7 @@ describe("MarkdownEditor", () => {
   })
 
   it("keeps remaining image controls visible after a deletion", async () => {
+    // image 完成当前模块的局部交互。
     const image = (name) => `![${name}](data:image/png;base64,cGl4ZWw= "width=400")`
     const source = `${image("一")}\n${image("二")}\n${image("三")}`
     const wrapper = mount(MarkdownEditor, { props: { modelValue: source } })

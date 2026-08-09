@@ -10,6 +10,7 @@ import (
 	"study-tracker-go/internal/repository"
 )
 
+// CreateError 在业务层中创建或更新相应状态。
 func CreateError(ctx context.Context, req models.AddErrorRequest) (models.ErrorProblem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -91,6 +92,7 @@ func CreateError(ctx context.Context, req models.AddErrorRequest) (models.ErrorP
 	return created, nil
 }
 
+// firstRunes 在业务层中完成本文件定义的局部处理。
 func firstRunes(text string, max int) string {
 	runes := []rune(text)
 	if len(runes) <= max {
@@ -99,6 +101,7 @@ func firstRunes(text string, max int) string {
 	return string(runes[:max])
 }
 
+// GetAllErrors 在业务层中读取并整理所需数据。
 func GetAllErrors(ctx context.Context, subject, keyword, tag, reasonTag string) ([]models.ErrorProblem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -112,6 +115,7 @@ func GetAllErrors(ctx context.Context, subject, keyword, tag, reasonTag string) 
 	})
 }
 
+// UpdateError 在业务层中创建或更新相应状态。
 func UpdateError(ctx context.Context, id int, req models.UpdateErrorRequest) error {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -142,6 +146,7 @@ func UpdateError(ctx context.Context, id int, req models.UpdateErrorRequest) err
 	return repos.Library.EnsureLegacy(ctx, all, subjects)
 }
 
+// DeleteError 在业务层中删除、清理或撤销相应状态。
 func DeleteError(ctx context.Context, id int) error {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -152,6 +157,7 @@ func DeleteError(ctx context.Context, id int) error {
 
 var reviewIntervals = []int{0, 1, 2, 4, 7, 15}
 
+// ReviewError 在业务层中完成本文件定义的局部处理。
 func ReviewError(ctx context.Context, id int) (models.ErrorProblem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -160,6 +166,7 @@ func ReviewError(ctx context.Context, id int) (models.ErrorProblem, error) {
 	return repos.Errors.Review(ctx, id, time.Now(), reviewIntervals)
 }
 
+// GetAllTags 在业务层中读取并整理所需数据。
 func GetAllTags(ctx context.Context) ([]string, error) {
 	repos, err := repositories(ctx)
 	if err != nil {

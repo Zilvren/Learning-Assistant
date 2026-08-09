@@ -16,17 +16,21 @@ type LibraryRepository struct{ store *Store }
 
 const libraryColumns = `id,parent_id,original_parent_id,kind,name,mime_type,file_size,tags,pinned,current_version,error_problem_id,blob_hash,review_enabled,review_count,review_stage,last_review,next_review,created_at,updated_at,deleted_at`
 
+// scanLibrary 在存储层中完成本文件定义的局部处理。
 func scanLibrary(row pgx.Row) (models.LibraryItem, error) {
 	var x models.LibraryItem
 	err := row.Scan(&x.ID, &x.ParentID, &x.OriginalParent, &x.Kind, &x.Name, &x.MimeType, &x.Size, &x.Tags, &x.Pinned, &x.CurrentVersion, &x.ErrorProblemID, &x.BlobHash, &x.ReviewEnabled, &x.ReviewCount, &x.ReviewStage, &x.LastReview, &x.NextReview, &x.CreatedAt, &x.UpdatedAt, &x.DeletedAt)
 	return x, err
 }
+
+// scanLibraryRows 在存储层中完成本文件定义的局部处理。
 func scanLibraryRows(rows pgx.Rows) (models.LibraryItem, error) {
 	var x models.LibraryItem
 	err := rows.Scan(&x.ID, &x.ParentID, &x.OriginalParent, &x.Kind, &x.Name, &x.MimeType, &x.Size, &x.Tags, &x.Pinned, &x.CurrentVersion, &x.ErrorProblemID, &x.BlobHash, &x.ReviewEnabled, &x.ReviewCount, &x.ReviewStage, &x.LastReview, &x.NextReview, &x.CreatedAt, &x.UpdatedAt, &x.DeletedAt)
 	return x, err
 }
 
+// List 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]models.LibraryItem, error) {
 	args := []any{r.store.userID}
 	where := []string{"user_id=$1"}
@@ -83,6 +87,8 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	}
 	return out, rows.Err()
 }
+
+// Get 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) Get(ctx context.Context, id int64) (models.LibraryItem, error) {
 	x, e := scanLibrary(r.store.pool.QueryRow(ctx, "SELECT "+libraryColumns+" FROM library_items WHERE user_id=$1 AND id=$2", r.store.userID, id))
 	if e == pgx.ErrNoRows {
@@ -90,6 +96,8 @@ func (r *LibraryRepository) Get(ctx context.Context, id int64) (models.LibraryIt
 	}
 	return x, e
 }
+
+// Create 在存储层中创建或更新相应状态。
 func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibraryItemRequest, content []byte) (models.LibraryItem, error) {
 	var out models.LibraryItem
 	name := strings.TrimSpace(req.Name)
@@ -131,6 +139,8 @@ func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibrary
 	}
 	return out, tx.Commit(ctx)
 }
+
+// boolInt 在存储层中完成本文件定义的局部处理。
 func boolInt(v bool) int {
 	if v {
 		return 1
@@ -138,6 +148,7 @@ func boolInt(v bool) int {
 	return 0
 }
 
+// normalizeLibraryTags 在存储层中构造、编码或标准化数据。
 func normalizeLibraryTags(tags []string) []string {
 	seen := make(map[string]struct{}, len(tags))
 	result := make([]string, 0, len(tags))
@@ -156,6 +167,7 @@ func normalizeLibraryTags(tags []string) []string {
 	return result
 }
 
+// Update 在存储层中创建或更新相应状态。
 func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.UpdateLibraryItemRequest) (models.LibraryItem, error) {
 	item, err := r.Get(ctx, id)
 	if err != nil {
@@ -197,6 +209,8 @@ func (r *LibraryRepository) Update(ctx context.Context, id int64, req models.Upd
 	}
 	return scanLibrary(r.store.pool.QueryRow(ctx, "UPDATE library_items SET parent_id=$3,name=$4,tags=$5,pinned=$6,review_enabled=$7,next_review=$8,updated_at=now() WHERE user_id=$1 AND id=$2 RETURNING "+libraryColumns, r.store.userID, id, item.ParentID, item.Name, item.Tags, item.Pinned, item.ReviewEnabled, item.NextReview))
 }
+
+// SaveContent 在存储层中创建或更新相应状态。
 func (r *LibraryRepository) SaveContent(ctx context.Context, id int64, content []byte, baseVersion int, checkpoint, force bool) (models.LibraryItem, error) {
 	hash, size, err := base.StoreBlob(bytes.NewReader(content))
 	if err != nil {
@@ -240,6 +254,8 @@ func (r *LibraryRepository) SaveContent(ctx context.Context, id int64, content [
 	}
 	return item, tx.Commit(ctx)
 }
+
+// ReadContent 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) ReadContent(ctx context.Context, id int64) ([]byte, models.LibraryItem, error) {
 	item, err := r.Get(ctx, id)
 	if err != nil {
@@ -251,10 +267,14 @@ func (r *LibraryRepository) ReadContent(ctx context.Context, id int64) ([]byte, 
 	b, err := base.ReadBlob(item.BlobHash)
 	return b, item, err
 }
+
+// Trash 在存储层中删除、清理或撤销相应状态。
 func (r *LibraryRepository) Trash(ctx context.Context, id int64) error {
 	_, err := r.store.pool.Exec(ctx, "WITH RECURSIVE tree AS (SELECT id FROM library_items WHERE user_id=$1 AND id=$2 UNION ALL SELECT c.id FROM library_items c JOIN tree p ON c.parent_id=p.id WHERE c.user_id=$1) UPDATE library_items SET original_parent_id=parent_id,deleted_at=now() WHERE id IN(SELECT id FROM tree)", r.store.userID, id)
 	return err
 }
+
+// Restore 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Restore(ctx context.Context, id int64) (models.LibraryItem, error) {
 	_, err := r.store.pool.Exec(ctx, "WITH RECURSIVE tree AS (SELECT id FROM library_items WHERE user_id=$1 AND id=$2 UNION ALL SELECT c.id FROM library_items c JOIN tree p ON c.parent_id=p.id WHERE c.user_id=$1) UPDATE library_items SET parent_id=COALESCE(original_parent_id,parent_id),original_parent_id=NULL,deleted_at=NULL,updated_at=now() WHERE id IN(SELECT id FROM tree)", r.store.userID, id)
 	if err != nil {
@@ -262,6 +282,8 @@ func (r *LibraryRepository) Restore(ctx context.Context, id int64) (models.Libra
 	}
 	return r.Get(ctx, id)
 }
+
+// Purge 在存储层中删除、清理或撤销相应状态。
 func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
 	_, err := r.store.pool.Exec(ctx, "WITH RECURSIVE tree AS (SELECT id FROM library_items WHERE user_id=$1 AND id=$2 AND deleted_at IS NOT NULL UNION ALL SELECT c.id FROM library_items c JOIN tree p ON c.parent_id=p.id WHERE c.user_id=$1) DELETE FROM library_items WHERE id IN(SELECT id FROM tree)", r.store.userID, id)
 	return err
@@ -277,6 +299,7 @@ type batchLibraryItem struct {
 // Batch performs all validation and mutations inside one database transaction.
 // A failed member therefore never leaves a partially moved, restored, or
 // deleted selection behind.
+// Batch 在一个 PostgreSQL 事务中批量移动、恢复或删除资料库条目。
 func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int64, parentID *int64) error {
 	ids = uniqueLibraryIDs(ids)
 	if len(ids) == 0 {
@@ -397,6 +420,7 @@ func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int6
 	return tx.Commit(ctx)
 }
 
+// uniqueLibraryIDs 在存储层中完成本文件定义的局部处理。
 func uniqueLibraryIDs(ids []int64) []int64 {
 	seen := make(map[int64]struct{}, len(ids))
 	out := make([]int64, 0, len(ids))
@@ -413,6 +437,7 @@ func uniqueLibraryIDs(ids []int64) []int64 {
 	return out
 }
 
+// batchLibraryRoots 在存储层中完成本文件定义的局部处理。
 func batchLibraryRoots(ids []int64, items map[int64]batchLibraryItem) []int64 {
 	roots := make([]int64, 0, len(ids))
 	for _, id := range ids {
@@ -431,6 +456,8 @@ func batchLibraryRoots(ids []int64, items map[int64]batchLibraryItem) []int64 {
 	}
 	return roots
 }
+
+// Duplicate 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parent *int64) (models.LibraryItem, error) {
 	b, x, e := r.ReadContent(ctx, id)
 	if e != nil {
@@ -438,6 +465,8 @@ func (r *LibraryRepository) Duplicate(ctx context.Context, id int64, parent *int
 	}
 	return r.Create(ctx, models.CreateLibraryItemRequest{ParentID: parent, Kind: x.Kind, Name: x.Name, MimeType: x.MimeType, Tags: x.Tags, ReviewEnabled: x.ReviewEnabled}, b)
 }
+
+// Versions 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Versions(ctx context.Context, id int64) ([]models.LibraryVersion, error) {
 	rows, e := r.store.pool.Query(ctx, "SELECT id,item_id,version,blob_hash,file_size,created_at FROM library_versions WHERE user_id=$1 AND item_id=$2 ORDER BY version DESC", r.store.userID, id)
 	if e != nil {
@@ -454,6 +483,8 @@ func (r *LibraryRepository) Versions(ctx context.Context, id int64) ([]models.Li
 	}
 	return out, rows.Err()
 }
+
+// RestoreVersion 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, vid int64) (models.LibraryItem, error) {
 	var hash string
 	e := r.store.pool.QueryRow(ctx, "SELECT blob_hash FROM library_versions WHERE user_id=$1 AND item_id=$2 AND id=$3", r.store.userID, id, vid).Scan(&hash)
@@ -472,6 +503,8 @@ func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, vid int64) (
 	// history entry. SaveContent still advances the internal revision token.
 	return r.SaveContent(ctx, id, b, x.CurrentVersion, false, true)
 }
+
+// EnsureLegacy 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) EnsureLegacy(ctx context.Context, errs []models.ErrorProblem, subjects []string) error {
 	for _, p := range errs {
 		var existingID int64
@@ -518,6 +551,7 @@ func (r *LibraryRepository) EnsureLegacy(ctx context.Context, errs []models.Erro
 	return err
 }
 
+// ListTags 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) ListTags(ctx context.Context) ([]string, error) {
 	rows, err := r.store.pool.Query(ctx, "SELECT DISTINCT tag FROM library_items, unnest(tags) tag WHERE user_id=$1 AND deleted_at IS NULL AND btrim(tag)<>'' ORDER BY tag", r.store.userID)
 	if err != nil {
@@ -535,10 +569,12 @@ func (r *LibraryRepository) ListTags(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
+// DueReviews 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) DueReviews(ctx context.Context, day time.Time) ([]models.LibraryItem, error) {
 	return r.List(ctx, base.LibraryFilter{ReviewOnly: true, DueOnly: true})
 }
 
+// Review 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
@@ -571,10 +607,12 @@ func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt tim
 	return item, tx.Commit(ctx)
 }
 
+// postgresLegacyMarkdown 在存储层中完成本文件定义的局部处理。
 func postgresLegacyMarkdown(p models.ErrorProblem) string {
 	return "## 题目\n\n" + strings.TrimSpace(p.Question) + "\n\n## 错解\n\n" + strings.TrimSpace(p.Wrong) + "\n\n## 正解\n\n" + strings.TrimSpace(p.Correct) + "\n\n## 错因\n\n" + strings.TrimSpace(p.Reason) + "\n"
 }
 
+// postgresMergeTags 在存储层中完成本文件定义的局部处理。
 func postgresMergeTags(groups ...[]string) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -591,6 +629,7 @@ func postgresMergeTags(groups ...[]string) []string {
 	return out
 }
 
+// postgresParseLegacyReview 在存储层中完成本文件定义的局部处理。
 func postgresParseLegacyReview(value *string) *time.Time {
 	if value == nil || strings.TrimSpace(*value) == "" {
 		return nil
@@ -603,6 +642,7 @@ func postgresParseLegacyReview(value *string) *time.Time {
 	return nil
 }
 
+// Cleanup 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Cleanup(ctx context.Context, before time.Time) error {
 	_, err := r.store.pool.Exec(ctx, "DELETE FROM library_items WHERE user_id=$1 AND deleted_at IS NOT NULL AND deleted_at<$2", r.store.userID, before)
 	return err
@@ -612,6 +652,7 @@ type queryRower interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
+// uniqueName 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) uniqueName(ctx context.Context, q queryRower, parent *int64, name string, except int64) (string, error) {
 	baseName := name
 	for n := 1; ; n++ {

@@ -15,6 +15,7 @@ const isSuccess = computed(() => state.value === "success")
 
 const token = typeof route.query.token === "string" ? route.query.token : ""
 
+// verify 协调当前组件的状态和交互。
 async function verify() {
   if (!token || busy.value) return
   busy.value = true
@@ -36,10 +37,12 @@ if (!token) {
   error.value = "验证链接不完整，请重新打开邮件中的链接。"
 }
 
+// continueToApp 协调当前组件的状态和交互。
 function continueToApp() {
   router.replace({ name: "home" })
 }
 
+// backToLogin 协调当前组件的状态和交互。
 function backToLogin() {
   router.replace({ name: "login" })
 }

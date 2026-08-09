@@ -4,6 +4,7 @@ package repository
 
 import "golang.org/x/sys/windows"
 
+// replaceFileAtomic 在存储层中创建或更新相应状态。
 func replaceFileAtomic(source string, target string) error {
 	sourcePtr, err := windows.UTF16PtrFromString(source)
 	if err != nil {

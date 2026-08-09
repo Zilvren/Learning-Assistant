@@ -6,6 +6,7 @@ import AppShell from "../layouts/AppShell.vue"
 vi.mock("../store/auth.js", async () => {
   const { ref } = await import("vue")
   return {
+    // useAuth 完成当前模块的局部交互。
     useAuth: () => ({
       enabled: ref(false),
       ready: ref(true),
@@ -18,6 +19,7 @@ vi.mock("../store/auth.js", async () => {
 vi.mock("../store/settings.js", async () => {
   const { ref } = await import("vue")
   return {
+    // useSettings 完成当前模块的局部交互。
     useSettings: () => ({
       username: ref("自律人"),
       darkMode: ref(false),
@@ -29,6 +31,7 @@ vi.mock("../store/settings.js", async () => {
 vi.mock("../store/subjects.js", async () => {
   const { ref } = await import("vue")
   return {
+    // useSubjects 完成当前模块的局部交互。
     useSubjects: () => ({
       subjectRef: ref(["数学"]),
       load: vi.fn().mockResolvedValue(undefined),
@@ -37,11 +40,13 @@ vi.mock("../store/subjects.js", async () => {
 })
 
 vi.mock("../store/toast.js", () => ({
+  // useToast 完成当前模块的局部交互。
   useToast: () => ({ info: vi.fn() }),
 }))
 
 const TestPage = { template: '<section data-testid="route-page">页面内容</section>' }
 
+// mockViewport 完成当前模块的局部交互。
 function mockViewport(matches) {
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
     matches,
@@ -55,6 +60,7 @@ function mockViewport(matches) {
   }))
 }
 
+// mountShell 完成当前模块的局部交互。
 async function mountShell(path = "/library") {
   const router = createRouter({
     history: createMemoryHistory(),

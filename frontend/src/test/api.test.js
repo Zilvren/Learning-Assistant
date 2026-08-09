@@ -15,4 +15,24 @@ describe("API errors", () => {
     })
     await expect(api.getSubjects()).rejects.toBeInstanceOf(ApiError)
   })
+
+  it("retries a binary backup request only once after a 401", async () => {
+    const unauthorized = () => new Response(JSON.stringify({ detail: "登录已过期" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    })
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(unauthorized())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(unauthorized())
+    vi.stubGlobal("fetch", fetch)
+
+    await expect(api.exportBackup()).rejects.toMatchObject({ status: 401 })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      "/api/backup/export",
+      "/api/auth/refresh",
+      "/api/backup/export",
+    ])
+  })
 })

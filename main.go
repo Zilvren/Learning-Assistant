@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"study-tracker-go/api/handlers"
+	"study-tracker-go/internal/apierror"
 	"study-tracker-go/internal/middleware"
 	"study-tracker-go/internal/repository"
 	jsonrepo "study-tracker-go/internal/repository/jsonrepo"
@@ -27,6 +28,7 @@ import (
 	"study-tracker-go/pkg/logger"
 )
 
+// main 按“配置 → 存储 → 服务容器 → 路由 → 监听”的顺序组装应用；任一步失败都会阻止服务带着错误配置启动。
 func main() {
 	cfg := config.Load(os.Args[1:])
 	log := logger.New()
@@ -43,7 +45,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer cleanup()
-	if err := service.InitApp(cfg, repos, pool); err != nil {
+	app, err := service.NewApp(cfg, repos, pool)
+	if err != nil {
 		log.Errorf("failed to initialize services: %v", err)
 		os.Exit(1)
 	}
@@ -57,9 +60,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	r := gin.Default()
-	r.Use(middleware.SecurityHeaders(), middleware.LocalCORS(), middleware.CookieOriginGuard())
-	registerRoutes(r, cfg)
+	r := gin.New()
+	registerRoutes(r, app)
 
 	url := fmt.Sprintf("http://%s:%d/", cfg.Host, port)
 	if port != cfg.Port {
@@ -77,6 +79,7 @@ func main() {
 	}
 }
 
+// setupRepositories 根据存储模式创建对应的 Repository 集合；PostgreSQL 模式还会建立连接池、执行迁移并准备本地导入用户。
 func setupRepositories(cfg config.Config) (repository.Repositories, *pgxpool.Pool, func(), error) {
 	switch cfg.StorageDriver {
 	case "", "json":
@@ -98,6 +101,7 @@ func setupRepositories(cfg config.Config) (repository.Repositories, *pgxpool.Poo
 	}
 }
 
+// listenWithFallback 从首选端口开始尝试监听，开发环境中端口被占用时自动寻找后续可用端口。
 func listenWithFallback(host string, preferredPort int) (net.Listener, int, error) {
 	const attempts = 20
 	for offset := 0; offset < attempts; offset++ {
@@ -114,11 +118,26 @@ func listenWithFallback(host string, preferredPort int) (net.Listener, int, erro
 	return nil, 0, fmt.Errorf("ports %d-%d are unavailable", preferredPort, preferredPort+attempts-1)
 }
 
-func registerRoutes(r *gin.Engine, configs ...config.Config) {
-	cfg := config.Config{StorageDriver: "json"}
-	if len(configs) > 0 {
-		cfg = configs[0]
+// registerRoutes 安装统一的请求上下文、审计、恢复与安全中间件，然后注册公开和受认证保护的 API。
+func registerRoutes(r *gin.Engine, apps ...*service.App) {
+	app := service.DefaultApp()
+	if len(apps) > 0 && apps[0] != nil {
+		app = apps[0]
 	}
+	if app == nil {
+		panic("registerRoutes requires a service.App")
+	}
+	cfg := app.Config()
+	requestLog := logger.New()
+	r.Use(
+		gin.Logger(),
+		middleware.RequestContext(app),
+		middleware.RequestAudit(requestLog),
+		middleware.Recovery(requestLog),
+		middleware.SecurityHeaders(),
+		middleware.LocalCORS(),
+		middleware.CookieOriginGuard(app),
+	)
 	//健康检查
 	r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -142,7 +161,7 @@ func registerRoutes(r *gin.Engine, configs ...config.Config) {
 	r.GET("/api/update/check", handlers.CheckUpdate)
 
 	api := r.Group("/api")
-	api.Use(middleware.AuthRequired())
+	api.Use(middleware.AuthRequired(app))
 	{
 		api.GET("/auth/me", handlers.Me)
 
@@ -205,6 +224,7 @@ func registerRoutes(r *gin.Engine, configs ...config.Config) {
 	r.NoRoute(serveFrontend)
 }
 
+// openBrowserLater 让 HTTP 监听先完成，再异步唤起默认浏览器，避免浏览器抢在服务就绪前访问。
 func openBrowserLater(url string) {
 	go func() {
 		time.Sleep(1200 * time.Millisecond)
@@ -212,6 +232,7 @@ func openBrowserLater(url string) {
 	}()
 }
 
+// openBrowser 根据当前操作系统调用对应命令打开 URL。
 func openBrowser(url string) error {
 	switch runtime.GOOS {
 	case "windows":
@@ -227,7 +248,7 @@ func openBrowser(url string) error {
 func serveFrontend(c *gin.Context) {
 	// /api 开头但没匹配到路由 → 404
 	if strings.HasPrefix(c.Request.URL.Path, "/api") {
-		c.JSON(http.StatusNotFound, gin.H{"detail": "接口不存在"})
+		apierror.Write(c, http.StatusNotFound, "not_found", "接口不存在")
 		return
 	}
 
@@ -266,10 +287,12 @@ func serveFrontend(c *gin.Context) {
 	c.Data(http.StatusOK, contentType, data)
 }
 
+// isFrontendAssetRequest 判断不存在的路径是否应被视为静态资源，而不是 Vue Router 的页面路由。
 func isFrontendAssetRequest(requestPath string) bool {
 	return strings.HasPrefix(requestPath, "assets/") || path.Ext(requestPath) != ""
 }
 
+// setFrontendCacheHeaders 为带哈希的构建资源设置长期缓存，为 HTML 和路由回退禁用缓存。
 func setFrontendCacheHeaders(c *gin.Context, immutable bool) {
 	if immutable {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")

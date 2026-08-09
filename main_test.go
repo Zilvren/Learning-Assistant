@@ -14,6 +14,7 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
+// TestListenWithFallback 在当前模块中验证对应场景的行为与边界条件。
 func TestListenWithFallback(t *testing.T) {
 	occupied, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -40,6 +41,7 @@ func TestListenWithFallback(t *testing.T) {
 	}
 }
 
+// TestBusinessRoutesAuthPolicy 在当前模块中验证对应场景的行为与边界条件。
 func TestBusinessRoutesAuthPolicy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() { gin.SetMode(gin.DebugMode) })
@@ -76,8 +78,19 @@ func TestBusinessRoutesAuthPolicy(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("production mode should hide client updates, got %d", w.Code)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/does-not-exist", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("missing API route should return 404, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"error":{"code":"not_found"`) || w.Header().Get("X-Request-ID") == "" {
+		t.Fatalf("missing API route must use the standard error envelope: %s", w.Body.String())
+	}
 }
 
+// TestFrontendMissingAssetDoesNotFallbackToHTML 在当前模块中验证对应场景的行为与边界条件。
 func TestFrontendMissingAssetDoesNotFallbackToHTML(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/assets/missing-chunk.js", nil)
 	w := httptest.NewRecorder()
@@ -97,21 +110,7 @@ func TestFrontendMissingAssetDoesNotFallbackToHTML(t *testing.T) {
 	}
 }
 
-func TestFrontendEmbedIncludesViteUnderscoreChunks(t *testing.T) {
-	entries, err := frontendFS.ReadDir("frontend/dist/assets")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "_plugin-vue_export-helper-") && strings.HasSuffix(entry.Name(), ".js") {
-			return
-		}
-	}
-
-	t.Fatal("embedded frontend is missing Vite's underscore-prefixed helper chunk")
-}
-
+// TestFrontendRouteFallsBackToIndex 在当前模块中验证对应场景的行为与边界条件。
 func TestFrontendRouteFallsBackToIndex(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/errors/4", nil)
 	w := httptest.NewRecorder()

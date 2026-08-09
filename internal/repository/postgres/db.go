@@ -17,6 +17,7 @@ type Store struct {
 	userID int64
 }
 
+// NewPool 在存储层中创建所需对象并完成初始化。
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if strings.TrimSpace(databaseURL) == "" {
 		return nil, fmt.Errorf("TRACKER_DATABASE_URL 不能为空")
@@ -48,10 +49,12 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// EnsureLocalUser 在存储层中完成本文件定义的局部处理。
 func EnsureLocalUser(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	return EnsureUser(ctx, pool, "local")
 }
 
+// EnsureUser 在存储层中完成本文件定义的局部处理。
 func EnsureUser(ctx context.Context, pool *pgxpool.Pool, username string) (int64, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -80,6 +83,7 @@ func EnsureUser(ctx context.Context, pool *pgxpool.Pool, username string) (int64
 	return id, nil
 }
 
+// NewRepositories 在存储层中创建所需对象并完成初始化。
 func NewRepositories(pool *pgxpool.Pool, userID int64) base.Repositories {
 	store := &Store{pool: pool, userID: userID}
 	return base.Repositories{
@@ -94,6 +98,7 @@ func NewRepositories(pool *pgxpool.Pool, userID int64) base.Repositories {
 	}
 }
 
+// UserID 在存储层中完成本文件定义的局部处理。
 func (s *Store) UserID() int64 {
 	return s.userID
 }

@@ -1,38 +1,26 @@
 import { createRouter, createWebHistory } from "vue-router"
 import { useAuth } from "../store/auth.js"
 
+// AppShell 配置页面跳转或认证守卫。
 const AppShell = () => import("../layouts/AppShell.vue")
-const DesignPreviewShell = () => import("../layouts/DesignPreviewShell.vue")
-const KnowtPreviewShell = () => import("../layouts/KnowtPreviewShell.vue")
+// AuthPage 配置页面跳转或认证守卫。
 const AuthPage = () => import("../components/AuthPage.vue")
+// VerifyEmailPage 配置页面跳转或认证守卫。
 const VerifyEmailPage = () => import("../components/VerifyEmailPage.vue")
+// HomePage 配置页面跳转或认证守卫。
 const HomePage = () => import("../components/HomePage.vue")
+// ReviewPage 配置页面跳转或认证守卫。
 const ReviewPage = () => import("../components/review/ReviewPage.vue")
-const ErrorPreviewPage = () => import("../components/design-preview/ErrorPreviewPage.vue")
-const KnowtErrorPreviewPage = () => import("../components/design-preview/knowt/KnowtErrorPreviewPage.vue")
+// SettingsPage 配置页面跳转或认证守卫。
 const SettingsPage = () => import("../components/SettingsPage.vue")
+// LibraryPage 配置页面跳转或认证守卫。
 const LibraryPage = () => import("../components/library/LibraryPage.vue")
+// LibraryItemPage 配置页面跳转或认证守卫。
 const LibraryItemPage = () => import("../components/library/LibraryItemPage.vue")
 
 export const routes = [
   { path: "/login", name: "login", component: AuthPage, meta: { public: true } },
   { path: "/verify-email", name: "verify-email", component: VerifyEmailPage, meta: { public: true } },
-  {
-    path: "/design-preview/knowt",
-    component: KnowtPreviewShell,
-    children: [
-      { path: "", redirect: { name: "knowt-preview-errors" } },
-      { path: "errors/:id?", name: "knowt-preview-errors", component: KnowtErrorPreviewPage, props: true },
-    ],
-  },
-  {
-    path: "/design-preview",
-    component: DesignPreviewShell,
-    children: [
-      { path: "", redirect: { name: "design-preview-errors" } },
-      { path: "errors/:id?", name: "design-preview-errors", component: ErrorPreviewPage, props: true },
-    ],
-  },
   {
     path: "/",
     component: AppShell,
@@ -49,8 +37,10 @@ export const routes = [
   { path: "/:pathMatch(.*)*", redirect: "/" },
 ]
 
+// installAuthGuard 配置页面跳转或认证守卫。
 export function installAuthGuard(targetRouter, auth = useAuth()) {
   targetRouter.beforeEach(async (to) => {
+    if (to.meta.skipAuth) return true
     if (!auth.ready.value) await auth.init()
 
     if (to.meta.public) {
@@ -66,6 +56,7 @@ export function installAuthGuard(targetRouter, auth = useAuth()) {
   return targetRouter
 }
 
+// createAppRouter 配置页面跳转或认证守卫。
 export function createAppRouter(history = createWebHistory()) {
   return installAuthGuard(createRouter({ history, routes, scrollBehavior: () => ({ top: 0 }) }))
 }

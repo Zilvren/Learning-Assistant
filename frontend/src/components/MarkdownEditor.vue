@@ -9,7 +9,7 @@ const props = defineProps({
   fill: { type: Boolean, default: false },
   label: { type: String, default: "" },
 })
-const emit = defineEmits(["update:modelValue"])
+const emit = defineEmits(["update:modelValue", "scroll"])
 const textarea = ref(null)
 const visualEditor = ref(null)
 const imageInput = ref(null)
@@ -23,21 +23,25 @@ const maxEmbeddedImageSize = 2 * 1024 * 1024
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"])
 const imageMarkdownPattern = /!\[([^\]]*)\]\(\s*(data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+)(?:\s+"([^"]*)")?\s*\)/gi
 
+// imageAltText 协调当前组件的状态和交互。
 function imageAltText(filename) {
   const name = String(filename || "图片").replace(/\.[^.]+$/, "")
   const cleaned = name.replace(/[()[\]\\\r\n]/g, " ").replace(/\s+/g, " ").trim()
   return cleaned && !cleaned.toLowerCase().includes("data:image/") ? cleaned : "图片"
 }
 
+// imageWidth 协调当前组件的状态和交互。
 function imageWidth(value) {
   const width = Number.parseInt(value, 10)
   return Number.isInteger(width) && width >= 120 && width <= 1200 ? width : 400
 }
 
+// imageSetting 协调当前组件的状态和交互。
 function imageSetting(title, name) {
   return new RegExp(`(?:^|;)${name}=(-?\\d{1,4})(?:;|$)`).exec(String(title || ""))?.[1]
 }
 
+// imageSettings 协调当前组件的状态和交互。
 function imageSettings(title) {
   return {
     width: imageWidth(imageSetting(title, "width")),
@@ -45,12 +49,14 @@ function imageSettings(title) {
   }
 }
 
+// imageMarkdown 协调当前组件的状态和交互。
 function imageMarkdown(image) {
   const alignment = ["left", "center", "right"].includes(image.alignment) ? image.alignment : "left"
   const source = String(image.src || "").replace(/\s/g, "")
   return `![${imageAltText(image.alt)}](${source} "width=${imageWidth(image.width)};align=${alignment}")`
 }
 
+// parseEmbeddedImages 协调当前组件的状态和交互。
 function parseEmbeddedImages(source) {
   const images = []
   imageMarkdownPattern.lastIndex = 0
@@ -100,6 +106,7 @@ watch(() => props.modelValue, (value) => {
   visualTextSelection.value = null
 })
 
+// setValue 协调当前组件的状态和交互。
 function setValue(value, rebuildVisual = false) {
   const next = String(value ?? "")
   if (rebuildVisual) {
@@ -109,6 +116,7 @@ function setValue(value, rebuildVisual = false) {
   emit("update:modelValue", next)
 }
 
+// editorSelection 协调当前组件的状态和交互。
 function editorSelection() {
   const input = textarea.value
   if (input) return { mode: "textarea", value: input.value, start: input.selectionStart, end: input.selectionEnd }
@@ -127,7 +135,12 @@ function editorSelection() {
   return { mode: "visual", value: props.modelValue, start: props.modelValue.length, end: props.modelValue.length }
 }
 
+// onInput 协调当前组件的状态和交互。
 function onInput(event) { setValue(event.target.value) }
+
+// notifyScroll 将编辑器滚动位置上报给页面，以便收起不需要的顶部界面。
+function notifyScroll(event) { emit("scroll", event) }
+// rememberVisualTextSelection 协调当前组件的状态和交互。
 function rememberVisualTextSelection(segment, target, segmentIndex) {
   visualTextSelection.value = {
     segmentIndex,
@@ -137,6 +150,7 @@ function rememberVisualTextSelection(segment, target, segmentIndex) {
   }
 }
 
+// onVisualTextInput 协调当前组件的状态和交互。
 function onVisualTextInput(segment, segmentIndex, event) {
   const value = event.target.value
   const next = visualSource.value.slice(0, segment.start) + value + visualSource.value.slice(segment.end)
@@ -145,11 +159,13 @@ function onVisualTextInput(segment, segmentIndex, event) {
   setValue(next)
 }
 
+// visualTextStyle 协调当前组件的状态和交互。
 function visualTextStyle(value) {
   const lines = Math.max(1, String(value || "").split(/\r?\n/).length)
   return { height: `${Math.max(38, lines * 24 + 14)}px` }
 }
 
+// focusVisualTextSegment 协调当前组件的状态和交互。
 async function focusVisualTextSegment(segmentIndex, start, end = start) {
   await nextTick()
   const target = visualEditor.value?.querySelector(`[data-visual-text-segment="${segmentIndex}"]`) || visualEditor.value?.querySelector(".md-text-segment")
@@ -159,6 +175,7 @@ async function focusVisualTextSegment(segmentIndex, start, end = start) {
   target.setSelectionRange(Math.max(0, Math.min(start, max)), Math.max(0, Math.min(end, max)))
 }
 
+// replaceSelection 协调当前组件的状态和交互。
 async function replaceSelection(replacement) {
   const selection = editorSelection()
   const next = selection.value.slice(0, selection.start) + replacement + selection.value.slice(selection.end)
@@ -173,6 +190,7 @@ async function replaceSelection(replacement) {
   }
 }
 
+// insertText 协调当前组件的状态和交互。
 async function insertText(before, after = "") {
   const selection = editorSelection()
   const selected = selection.value.slice(selection.start, selection.end)
@@ -188,11 +206,13 @@ async function insertText(before, after = "") {
   }
 }
 
+// openImagePicker 协调当前组件的状态和交互。
 function openImagePicker() {
   imageError.value = ""
   imageInput.value?.click()
 }
 
+// readAsDataUrl 协调当前组件的状态和交互。
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -202,6 +222,7 @@ function readAsDataUrl(file) {
   })
 }
 
+// onImageSelected 协调当前组件的状态和交互。
 async function onImageSelected(event) {
   const file = event.target.files?.[0]
   event.target.value = ""
@@ -231,6 +252,7 @@ async function onImageSelected(event) {
   }
 }
 
+// updateEmbeddedImage 协调当前组件的状态和交互。
 function updateEmbeddedImage(index, patch) {
   const currentImages = parseEmbeddedImages(visualSource.value)
   const current = currentImages[index]
@@ -240,14 +262,17 @@ function updateEmbeddedImage(index, patch) {
   setValue(next, true)
 }
 
+// displayedImageName 协调当前组件的状态和交互。
 function displayedImageName(image) {
   return imageNameDrafts.value[image.index] ?? image.alt
 }
 
+// draftImageName 协调当前组件的状态和交互。
 function draftImageName(index, value) {
   imageNameDrafts.value = { ...imageNameDrafts.value, [index]: value }
 }
 
+// saveImageName 协调当前组件的状态和交互。
 function saveImageName(index) {
   if (!(index in imageNameDrafts.value)) return
   const alt = imageNameDrafts.value[index]
@@ -256,14 +281,17 @@ function saveImageName(index) {
   updateEmbeddedImage(index, { alt })
 }
 
+// updateImageWidth 协调当前组件的状态和交互。
 function updateImageWidth(index, value) {
   updateEmbeddedImage(index, { width: imageWidth(value) })
 }
 
+// updateImageAlignment 协调当前组件的状态和交互。
 function updateImageAlignment(index, alignment) {
   updateEmbeddedImage(index, { alignment })
 }
 
+// removeEmbeddedImage 协调当前组件的状态和交互。
 function removeEmbeddedImage(index) {
   const currentImages = parseEmbeddedImages(visualSource.value)
   const current = currentImages[index]
@@ -273,10 +301,12 @@ function removeEmbeddedImage(index) {
   setValue(next, true)
 }
 
+// toggleImageControls 协调当前组件的状态和交互。
 function toggleImageControls(index) {
   activeImageIndex.value = activeImageIndex.value === index ? null : index
 }
 
+// applyAlignment 协调当前组件的状态和交互。
 async function applyAlignment(alignment) {
   const selection = editorSelection()
   const selected = selection.value.slice(selection.start, selection.end)
@@ -326,7 +356,7 @@ defineExpose({ insertText })
       <span v-if="imageError" class="md-toolbar__status" role="status">{{ imageError }}</span>
     </div>
     <input ref="imageInput" class="md-image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" tabindex="-1" @change="onImageSelected" />
-    <div v-if="hasEmbeddedImages" ref="visualEditor" class="md-textarea md-textarea--visual" :class="{ 'md-textarea--fill': fill }" role="group" aria-label="含图片的笔记正文">
+    <div v-if="hasEmbeddedImages" ref="visualEditor" class="md-textarea md-textarea--visual" :class="{ 'md-textarea--fill': fill }" role="group" aria-label="含图片的笔记正文" @scroll="notifyScroll">
       <template v-for="(segment, segmentIndex) in visualSegments" :key="`${segment.type}-${segmentIndex}`">
         <textarea v-if="segment.type === 'text'" class="md-text-segment" :data-visual-text-segment="segmentIndex" :value="segment.value" :style="visualTextStyle(segment.value)" :placeholder="segmentIndex === 0 ? placeholder : '继续输入…'" spellcheck="false" @focus="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @click="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @select="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @input="onVisualTextInput(segment, segmentIndex, $event)" />
         <div v-else class="md-image-row" :class="'md-image-row--align-' + segment.image.alignment">
@@ -344,6 +374,6 @@ defineExpose({ insertText })
         </div>
       </template>
     </div>
-    <textarea v-else ref="textarea" :value="modelValue" class="md-textarea" :class="{ 'md-textarea--fill': fill }" :placeholder="placeholder" :rows="rows" spellcheck="false" @input="onInput"></textarea>
+    <textarea v-else ref="textarea" :value="modelValue" class="md-textarea" :class="{ 'md-textarea--fill': fill }" :placeholder="placeholder" :rows="rows" spellcheck="false" @input="onInput" @scroll="notifyScroll"></textarea>
   </div>
 </template>

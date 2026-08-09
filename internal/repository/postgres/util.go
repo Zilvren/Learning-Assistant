@@ -14,6 +14,7 @@ const (
 	dateTimeLayout = "2006-01-02 15:04:05"
 )
 
+// parseDate 在存储层中解析外部输入为内部数据。
 func parseDate(value string) *time.Time {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -26,6 +27,7 @@ func parseDate(value string) *time.Time {
 	return &parsed
 }
 
+// parseDateTime 在存储层中解析外部输入为内部数据。
 func parseDateTime(value string) *time.Time {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -41,6 +43,7 @@ func parseDateTime(value string) *time.Time {
 	return &parsed
 }
 
+// formatDate 在存储层中完成本文件定义的局部处理。
 func formatDate(value *time.Time) string {
 	if value == nil || value.IsZero() {
 		return ""
@@ -48,6 +51,7 @@ func formatDate(value *time.Time) string {
 	return value.Local().Format(dateLayout)
 }
 
+// formatDateTime 在存储层中完成本文件定义的局部处理。
 func formatDateTime(value *time.Time) string {
 	if value == nil || value.IsZero() {
 		return ""
@@ -55,6 +59,7 @@ func formatDateTime(value *time.Time) string {
 	return value.Local().Format(dateTimeLayout)
 }
 
+// normalizeProblem 在存储层中构造、编码或标准化数据。
 func normalizeProblem(item *models.ErrorProblem) {
 	if item.Tags == nil {
 		item.Tags = []string{}
@@ -67,6 +72,7 @@ func normalizeProblem(item *models.ErrorProblem) {
 	}
 }
 
+// applyErrorUpdate 在存储层中执行流程或启动外部操作。
 func applyErrorUpdate(item *models.ErrorProblem, req models.UpdateErrorRequest) {
 	if req.Subject != nil {
 		item.Subject = *req.Subject
@@ -94,6 +100,7 @@ func applyErrorUpdate(item *models.ErrorProblem, req models.UpdateErrorRequest) 
 	}
 }
 
+// matchesFilter 在存储层中完成本文件定义的局部处理。
 func matchesFilter(item models.ErrorProblem, filter base.ErrorFilter) bool {
 	if filter.Subject != "" && filter.Subject != "全部" && item.Subject != filter.Subject {
 		return false
@@ -110,6 +117,7 @@ func matchesFilter(item models.ErrorProblem, filter base.ErrorFilter) bool {
 	return true
 }
 
+// matchesKeyword 在存储层中完成本文件定义的局部处理。
 func matchesKeyword(item models.ErrorProblem, keyword string) bool {
 	keyword = strings.ToLower(keyword)
 	if strings.Contains(strings.ToLower(item.Question), keyword) {
@@ -124,6 +132,7 @@ func matchesKeyword(item models.ErrorProblem, keyword string) bool {
 	return listContainsFold(item.Tags, keyword) || listContainsFold(item.ReasonTags, keyword)
 }
 
+// listContainsFold 在存储层中读取并整理所需数据。
 func listContainsFold(list []string, keyword string) bool {
 	keyword = strings.ToLower(keyword)
 	for _, item := range list {
@@ -134,6 +143,7 @@ func listContainsFold(list []string, keyword string) bool {
 	return false
 }
 
+// notFound 在存储层中完成本文件定义的局部处理。
 func notFound(kind string, id int) error {
 	return fmt.Errorf("未找到%s #%d", kind, id)
 }

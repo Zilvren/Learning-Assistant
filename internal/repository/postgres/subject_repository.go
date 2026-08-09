@@ -10,6 +10,7 @@ type SubjectRepository struct {
 	store *Store
 }
 
+// List 在存储层中读取并整理所需数据。
 func (r *SubjectRepository) List(ctx context.Context) ([]string, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT name
@@ -34,6 +35,7 @@ func (r *SubjectRepository) List(ctx context.Context) ([]string, error) {
 	return subjects, rows.Err()
 }
 
+// Exists 在存储层中完成本文件定义的局部处理。
 func (r *SubjectRepository) Exists(ctx context.Context, name string) (bool, error) {
 	var exists bool
 	err := r.store.pool.QueryRow(ctx, `
@@ -48,6 +50,7 @@ func (r *SubjectRepository) Exists(ctx context.Context, name string) (bool, erro
 	return exists, err
 }
 
+// Create 在存储层中创建或更新相应状态。
 func (r *SubjectRepository) Create(ctx context.Context, name string) ([]string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -70,6 +73,7 @@ func (r *SubjectRepository) Create(ctx context.Context, name string) ([]string, 
 	return r.List(ctx)
 }
 
+// Delete 在存储层中删除、清理或撤销相应状态。
 func (r *SubjectRepository) Delete(ctx context.Context, name string) ([]string, error) {
 	tag, err := r.store.pool.Exec(ctx, `
 		UPDATE subjects
@@ -87,6 +91,7 @@ func (r *SubjectRepository) Delete(ctx context.Context, name string) ([]string, 
 	return r.List(ctx)
 }
 
+// Replace 在存储层中创建或更新相应状态。
 func (r *SubjectRepository) Replace(ctx context.Context, subjects []string) error {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
@@ -117,6 +122,7 @@ func (r *SubjectRepository) Replace(ctx context.Context, subjects []string) erro
 	return tx.Commit(ctx)
 }
 
+// findID 在存储层中读取并整理所需数据。
 func (r *SubjectRepository) findID(ctx context.Context, name string) (int64, error) {
 	var id int64
 	err := r.store.pool.QueryRow(ctx, `
@@ -132,6 +138,7 @@ func (r *SubjectRepository) findID(ctx context.Context, name string) (int64, err
 	return id, nil
 }
 
+// ensureID 在存储层中完成本文件定义的局部处理。
 func (r *SubjectRepository) ensureID(ctx context.Context, name string) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
