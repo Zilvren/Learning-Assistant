@@ -43,7 +43,7 @@ onMounted(load);watch(()=>props.itemId,(nextId)=>{restoreEditorChrome();load(nex
   <input ref="ocrInput" hidden type="file" accept="image/*,.pdf" @change="ocr"/>
   <main v-if="item" class="item-editor-layout" :class="{'is-note':isNote,'is-preview-mode':isNote&&mode==='preview'}">
     <section v-if="isNote" class="note-workspace" :class="{'is-preview-mode':mode==='preview'}">
-      <aside v-if="mode==='preview'" class="note-outline"><h2><ListTree :size="16"/>本文大纲</h2><nav v-if="outline.length" aria-label="笔记大纲"><button v-for="entry in outline" :key="entry.id" :style="{paddingLeft:`${8+(entry.level-1)*10}px`}" @click="jumpToHeading(entry)">{{entry.text}}</button></nav><p v-else>添加 Markdown 标题后，大纲会显示在这里。</p></aside>
+      <aside v-if="mode==='preview'" class="note-outline"><h2><ListTree :size="16"/>本文大纲</h2><nav v-if="outline.length" aria-label="笔记大纲"><button v-for="entry in outline" :key="entry.id" :data-level="entry.level" @click="jumpToHeading(entry)">{{entry.text}}</button></nav><p v-else>添加 Markdown 标题后，大纲会显示在这里。</p></aside>
       <div v-else class="note-edit"><MarkdownEditor v-model="content" :fill="true" label="笔记正文" @scroll="handleWorkspaceScroll"/></div>
       <div ref="previewPane" class="note-preview" @scroll="handleWorkspaceScroll"><MarkdownRenderer :content="content"/></div>
     </section>
