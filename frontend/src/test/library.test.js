@@ -30,22 +30,28 @@ describe("personal library", () => {
   it("turns card tags into filters and sorts visible files", async () => {
     vi.useFakeTimers()
     const list = vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [
-      { id: 20, kind: "file", name: "小文件.pdf", size: 120, tags: ["Redis", "压缩列表"], created_at: "2026-08-01T09:00:00+08:00", updated_at: "2026-08-03T09:00:00+08:00" },
-      { id: 21, kind: "file", name: "大文件.pdf", size: 4096, tags: ["Redis"], created_at: "2026-08-02T09:00:00+08:00", updated_at: "2026-08-02T09:00:00+08:00" },
+      { id: 20, kind: "file", name: "Zebra.pdf", size: 120, tags: ["Redis", "压缩列表"], created_at: "2026-08-01T09:00:00+08:00", updated_at: "2026-08-03T09:00:00+08:00" },
+      { id: 21, kind: "file", name: "apple.pdf", size: 4096, tags: ["Redis"], created_at: "2026-08-02T09:00:00+08:00", updated_at: "2026-08-02T09:00:00+08:00" },
     ] })
-    vi.spyOn(api, "getLibraryTags").mockResolvedValue({ tags: ["Redis", "压缩列表"] })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/library/:folderId?", name: "library", component: LibraryPage }, { path: "/library/items/:itemId", name: "library-item", component: { template: "<div/>" } }] })
     await router.push("/library"); await router.isReady()
     const wrapper = mount(LibraryPage, { global: { plugins: [router], stubs: { BaseDialog: true } } }); await flushPromises()
 
+    expect(wrapper.find('.library-toolbar .library-filter--tag').exists()).toBe(false)
     expect(wrapper.findAll('[aria-label="筛选标签 Redis"]')).toHaveLength(2)
-    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["小文件.pdf", "大文件.pdf"])
-    await wrapper.findAll(".library-filter__trigger")[2].trigger("click")
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["Zebra.pdf", "apple.pdf"])
+    await wrapper.get(".library-filter--sort .library-filter__trigger").trigger("click")
     await wrapper.get('[aria-label="资料排序"] button:nth-child(3)').trigger("click")
-    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["大文件.pdf", "小文件.pdf"])
-    await wrapper.findAll(".library-filter__trigger")[2].trigger("click")
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["apple.pdf", "Zebra.pdf"])
+    await wrapper.get(".library-filter--sort .library-filter__trigger").trigger("click")
     await wrapper.get('[aria-label="资料排序"] button:nth-child(3)').trigger("click")
-    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["小文件.pdf", "大文件.pdf"])
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["Zebra.pdf", "apple.pdf"])
+    await wrapper.get(".library-filter--sort .library-filter__trigger").trigger("click")
+    await wrapper.get('[aria-label="资料排序"] button:nth-child(4)').trigger("click")
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["Zebra.pdf", "apple.pdf"])
+    await wrapper.get(".library-filter--sort .library-filter__trigger").trigger("click")
+    await wrapper.get('[aria-label="资料排序"] button:nth-child(4)').trigger("click")
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["apple.pdf", "Zebra.pdf"])
 
     await wrapper.get('[aria-label="筛选标签 Redis"]').trigger("click")
     await vi.advanceTimersByTimeAsync(250); await flushPromises()

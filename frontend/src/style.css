@@ -3556,3 +3556,24 @@
     padding-inline: 14px;
   }
 }
+
+/* The compact rail still uses a two-column grid when expanded. Reset the
+   older centered-grid fallback so icons and their labels stay on one row. */
+@media (max-width: 1180px) {
+  .app-rail .primary-nav__item,
+  .app-rail .rail-logout {
+    place-items: initial;
+    align-items: center;
+    justify-items: stretch;
+  }
+
+  .app-rail .app-nav-icon {
+    display: grid;
+  }
+
+  .app-rail .app-nav-label {
+    display: block;
+    align-self: center;
+    justify-self: start;
+  }
+}
