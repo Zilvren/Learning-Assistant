@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { ArchiveRestore, ChevronDown, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tags, Trash2, Upload } from "lucide-vue-next"
+import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tag, Trash2, Upload } from "lucide-vue-next"
 import { api } from "../../api/index.js"
 import { useToast } from "../../store/toast.js"
 import { rememberLibraryPath } from "../../utils/libraryPath.js"
@@ -11,12 +11,13 @@ import ConfirmDialog from "../ui/ConfirmDialog.vue"
 
 const props = defineProps({ folderId: [String, Number], trash: Boolean })
 const route = useRoute(); const router = useRouter(); const toast = useToast()
-const items = ref([]); const loading = ref(false); const query = ref(""); const kind = ref("all"); const tag = ref(String(route.query.tag || "")); const tags = ref([]); const view = ref(localStorage.getItem("libraryView") || "grid")
+const items = ref([]); const loading = ref(false); const query = ref(""); const kind = ref("all"); const tag = ref(String(route.query.tag || "")); const tags = ref([]); const view = ref(localStorage.getItem("libraryView") || "grid"); const sort = ref(localStorage.getItem("librarySort") || "updated_desc")
 const currentFolder = ref(null); const breadcrumbs = ref([]); const selected = ref(new Set()); const menuId = ref(null); const fileInput = ref(null)
 const dialog = ref(""); const formName = ref(""); const formTags = ref(""); const formReview = ref(false); const editing = ref(null); const busy = ref(false); const deleting = ref(false)
 const batchPurgeOpen = ref(false)
 const notePreviews = ref({}); const previewLoading = ref(new Set()); const previewErrors = ref(new Set())
 const activeFilter = ref("")
+const ctrlHeld = ref(false)
 let loadVersion = 0
 const folderId = computed(() => Number(props.folderId || route.params.folderId || 0) || null)
 const title = computed(() => currentFolder.value?.name || (props.trash ? "回收站" : "我的资料库"))
@@ -25,10 +26,24 @@ const description = computed(() => {
   return folderId.value ? "文件夹内容仍在回收站中，可随文件夹一起恢复或永久删除。" : "删除内容保留 30 天；文件夹及其内容会作为一个项目恢复或永久删除。"
 })
 const kindOptions = [{ value:"all", label:"全部类型" }, { value:"folder", label:"文件夹" }, { value:"note", label:"笔记" }, { value:"file", label:"文件" }]
-const tagOptions = computed(() => [{ value:"", label:"全部标签" }, ...tags.value.map((value) => ({ value, label:`# ${value}` }))])
+const tagOptions = computed(() => [{ value:"", label:"全部标签" }, ...tags.value.map((value) => ({ value, label:value }))])
+const sortOptions = [{ value:"updated", label:"修改时间" }, { value:"created", label:"创建时间" }, { value:"size", label:"文件大小" }]
 const kindLabel = computed(() => kindOptions.find((option) => option.value === kind.value)?.label || "全部类型")
 const tagLabel = computed(() => tagOptions.value.find((option) => option.value === tag.value)?.label || "全部标签")
+const sortField = computed(() => sort.value.split("_")[0] || "updated")
+const sortDirection = computed(() => sort.value.split("_")[1] || "desc")
+const sortLabel = computed(() => { const field = sortField.value; const direction = sortDirection.value; const label = sortOptions.find((option) => option.value === field)?.label || "修改时间"; const directionLabel = field === "size" ? (direction === "desc" ? "从大到小" : "从小到大") : (direction === "desc" ? "最新" : "最早"); return `${label}（${directionLabel}）` })
 const batchPurgeMessage = computed(() => `将永久删除已选择的 ${selected.value.size} 项；其中的文件夹会连同全部内容一起删除。此操作无法撤销。`)
+const sortedItems = computed(() => {
+  const [field, direction] = sort.value.split("_")
+  const valueOf = (item) => field === "size" ? Number(item.size || 0) : Date.parse(item[`${field}_at`] || 0) || 0
+  return [...items.value].sort((left, right) => {
+    if (field === "size" && left.kind === "folder" !== (right.kind === "folder")) return left.kind === "folder" ? 1 : -1
+    const difference = valueOf(left) - valueOf(right)
+    if (difference) return direction === "asc" ? difference : -difference
+    return String(left.name || "").localeCompare(String(right.name || ""), "zh-CN")
+  })
+})
 
 // itemIcon 协调当前组件的状态和交互。
 function itemIcon(item) { return item.kind === "folder" ? Folder : item.kind === "note" ? FileText : File }
@@ -169,15 +184,22 @@ function setView(next) { view.value=next; localStorage.setItem("libraryView",nex
 // toggleFilter 协调当前组件的状态和交互。
 function toggleFilter(name) { activeFilter.value = activeFilter.value === name ? "" : name }
 // selectFilter 协调当前组件的状态和交互。
-function selectFilter(name, value) { if (name === "kind") kind.value = value; else tag.value = value; activeFilter.value = "" }
-// closeFilter 协调当前组件的状态和交互。
-function closeFilter(event) { if (!event.target.closest(".library-filter")) activeFilter.value = "" }
+function saveSort(field=sortField.value, direction=sortDirection.value) { const value = `${field}_${direction}`; sort.value = value; localStorage.setItem("librarySort", value) }
+function selectFilter(name, value) { if (name === "kind") kind.value = value; else if (name === "tag") tag.value = value; else { selectSortOption(value); return }; activeFilter.value = "" }
+// selectSortOption 再次点击当前排序字段会在升序和降序间切换，新字段默认按降序排列。
+function selectSortOption(field) { const direction = sortField.value === field && sortDirection.value === "desc" ? "asc" : "desc"; saveSort(field, direction); activeFilter.value = "" }
+// filterByTag 将卡片标签转换为当前资料库范围内的可分享筛选条件。
+function filterByTag(value) { const next = String(value || ""); tag.value = next; const nextQuery = { ...route.query }; if (next) nextQuery.tag = next; else delete nextQuery.tag; void router.push({ name: props.trash ? "trash" : "library", params: folderId.value ? { folderId: folderId.value } : {}, query: nextQuery }) }
+// closeOverlays 点击筛选器或操作菜单之外时，统一收起浮层。
+function closeOverlays(event) { const target = event.target instanceof Element ? event.target : null; if (!target?.closest(".library-filter")) activeFilter.value = ""; if (!target?.closest(".library-menu, .library-more")) menuId.value = null }
+function syncCtrlHeld(event) { ctrlHeld.value = event.ctrlKey }
+function clearCtrlHeld() { ctrlHeld.value = false }
 let searchTimer
 watch(()=>route.query.tag,(value)=>{tag.value=String(value||"")})
 watch([query,kind,tag,folderId,()=>props.trash],()=>{selected.value=new Set();batchPurgeOpen.value=false;clearTimeout(searchTimer);searchTimer=setTimeout(load,250)})
 watch([folderId,()=>props.trash],([nextFolderId,isTrash])=>{if(!isTrash)rememberLibraryPath(nextFolderId)},{immediate:true})
-onMounted(() => { load(); document.addEventListener("pointerdown", closeFilter) })
-onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
+onMounted(() => { load(); document.addEventListener("pointerdown", closeOverlays); document.addEventListener("keydown", syncCtrlHeld); document.addEventListener("keyup", syncCtrlHeld); window.addEventListener("blur", clearCtrlHeld) })
+onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOverlays); document.removeEventListener("keydown", syncCtrlHeld); document.removeEventListener("keyup", syncCtrlHeld); window.removeEventListener("blur", clearCtrlHeld) })
 </script>
 
 <template>
@@ -195,22 +217,23 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeFilter))
     <section class="library-toolbar" aria-label="资料筛选">
       <label class="library-search"><Search :size="18"/><input v-model="query" placeholder="搜索名称、标签和笔记正文" aria-label="搜索资料"/></label>
       <div class="library-filter" :class="{open:activeFilter==='kind'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='kind'" @click="toggleFilter('kind')"><span>类型</span><strong>{{ kindLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='kind'" class="library-filter__menu" role="listbox" aria-label="资料类型"><button v-for="option in kindOptions" :key="option.value" type="button" role="option" :aria-selected="kind===option.value" :class="{active:kind===option.value}" @click="selectFilter('kind',option.value)">{{ option.label }}</button></div></div>
-      <div class="library-filter" :class="{open:activeFilter==='tag'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='tag'" @click="toggleFilter('tag')"><span>标签</span><strong>{{ tagLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='tag'" class="library-filter__menu" role="listbox" aria-label="标签筛选"><button v-for="option in tagOptions" :key="option.value" type="button" role="option" :aria-selected="tag===option.value" :class="{active:tag===option.value}" @click="selectFilter('tag',option.value)">{{ option.label }}</button></div></div>
+      <div class="library-filter library-filter--tag" :class="{open:activeFilter==='tag'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='tag'" @click="toggleFilter('tag')"><span>标签</span><strong><Tag v-if="tag" :size="13" aria-hidden="true"/><span>{{ tagLabel }}</span></strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='tag'" class="library-filter__menu" role="listbox" aria-label="标签筛选"><button v-for="option in tagOptions" :key="option.value" type="button" role="option" :aria-selected="tag===option.value" :class="{active:tag===option.value}" @click="selectFilter('tag',option.value)"><Tag v-if="option.value" :size="14" aria-hidden="true"/><span>{{ option.label }}</span></button></div></div>
+      <div class="library-filter library-filter--sort" :class="{open:activeFilter==='sort'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='sort'" @click="toggleFilter('sort')"><span>排序</span><strong>{{ sortLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='sort'" class="library-filter__menu" role="listbox" aria-label="资料排序"><button v-for="option in sortOptions" :key="option.value" type="button" role="option" :aria-selected="sortField===option.value" :class="{active:sortField===option.value,'is-asc':sortField===option.value&&sortDirection==='asc','is-desc':sortField===option.value&&sortDirection==='desc'}" @click="selectSortOption(option.value)"><span>{{ option.label }}</span><ArrowUp v-if="sortField===option.value&&sortDirection==='asc'" :size="15" aria-label="升序"/><ArrowDown v-else-if="sortField===option.value" :size="15" aria-label="降序"/></button></div></div>
       <div class="library-view-toggle"><button :class="{active:view==='grid'}" aria-label="网格视图" @click="setView('grid')"><Grid2X2 :size="17"/></button><button :class="{active:view==='list'}" aria-label="列表视图" @click="setView('list')"><List :size="18"/></button></div>
     </section>
 
     <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="requestBatch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>
     <div v-if="loading" class="library-loading" role="status" aria-live="polite">加载中</div>
     <section v-else-if="items.length" class="library-items" :class="`library-items--${view}`" aria-label="资料列表">
-      <article v-for="(item, index) in items" :key="item.id" class="library-card" :class="{selected:selected.has(item.id),'is-previewable':item.kind==='note','has-menu':menuId===item.id}" :style="{'--library-card-enter-delay': `${Math.min(index, 5) * 20}ms`}" draggable="true" tabindex="0" @contextmenu.prevent="menuId=item.id" @mouseenter="loadNotePreview(item)"
+      <article v-for="(item, index) in sortedItems" :key="item.id" class="library-card" :class="{selected:selected.has(item.id),'is-previewable':item.kind==='note','has-menu':menuId===item.id,'is-flip-locked':ctrlHeld}" :style="{'--library-card-enter-delay': `${Math.min(index, 5) * 20}ms`}" draggable="true" tabindex="0" @contextmenu.prevent="menuId=item.id" @mouseenter="loadNotePreview(item)"
         @click="openOrSelect(item)" @dragstart="$event.dataTransfer.setData('text/library-item',String(item.id))" @dragover.prevent @drop="dropOnFolder($event,item)" @keydown.enter="openOrSelect(item)">
-        <div class="library-card__utility"><input type="checkbox" :checked="selected.has(item.id)" :aria-label="`选择 ${item.name}`" @click.stop="toggleSelected(item.id)"/>
-          <button class="library-more" :aria-label="`${item.name} 操作`" @click.stop="menuId=menuId===item.id?null:item.id"><MoreVertical :size="18"/></button></div>
         <div class="library-card__flip">
           <div class="library-card__face library-card__front">
+            <div class="library-card__utility"><input type="checkbox" :checked="selected.has(item.id)" :aria-label="`选择 ${item.name}`" @click.stop="toggleSelected(item.id)"/>
+              <button class="library-more" :aria-label="`${item.name} 操作`" @click.stop="menuId=menuId===item.id?null:item.id"><MoreVertical :size="18"/></button></div>
             <div class="library-card__top"><span class="library-card__icon" :class="`is-${item.kind}`"><component :is="itemIcon(item)" :size="21"/></span></div>
             <div class="library-card__body"><strong>{{ item.name }}</strong><span>{{ item.kind==='folder'?'文件夹':item.kind==='note'?'Markdown 笔记':item.mime_type || '文件' }}</span></div>
-            <footer><span class="library-card__created" :title="`创建时间：${creationDate(item)}`">{{ creationDate(item) }}</span><span v-if="item.tags?.length" class="library-card__footer-tags" :title="`标签：${item.tags.join('、')}`"><Tags :size="11" aria-hidden="true"/><span v-for="value in item.tags" :key="value">{{ value }}</span></span><span class="library-card__size">{{ item.kind==='folder'?'':formatSize(item.size) }}</span></footer>
+            <footer><span class="library-card__created" :title="`创建时间：${creationDate(item)}`">{{ creationDate(item) }}</span><span v-if="item.tags?.length" class="library-card__footer-tags" aria-label="标签筛选"><button v-for="value in item.tags" :key="value" type="button" :aria-label="`筛选标签 ${value}`" @click.stop="filterByTag(value)"><Tag :size="11" aria-hidden="true"/><span>{{ value }}</span></button></span><span class="library-card__size">{{ item.kind==='folder'?'':formatSize(item.size) }}</span></footer>
           </div>
           <div v-if="item.kind==='note'" class="library-card__face library-card__back" role="button" tabindex="-1">
             <span class="library-card__preview-label">Markdown 预览</span>

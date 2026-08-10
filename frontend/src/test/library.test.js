@@ -27,6 +27,33 @@ describe("personal library", () => {
     expect(router.currentRoute.value.fullPath).toBe("/library/2")
   })
 
+  it("turns card tags into filters and sorts visible files", async () => {
+    vi.useFakeTimers()
+    const list = vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [
+      { id: 20, kind: "file", name: "小文件.pdf", size: 120, tags: ["Redis", "压缩列表"], created_at: "2026-08-01T09:00:00+08:00", updated_at: "2026-08-03T09:00:00+08:00" },
+      { id: 21, kind: "file", name: "大文件.pdf", size: 4096, tags: ["Redis"], created_at: "2026-08-02T09:00:00+08:00", updated_at: "2026-08-02T09:00:00+08:00" },
+    ] })
+    vi.spyOn(api, "getLibraryTags").mockResolvedValue({ tags: ["Redis", "压缩列表"] })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/library/:folderId?", name: "library", component: LibraryPage }, { path: "/library/items/:itemId", name: "library-item", component: { template: "<div/>" } }] })
+    await router.push("/library"); await router.isReady()
+    const wrapper = mount(LibraryPage, { global: { plugins: [router], stubs: { BaseDialog: true } } }); await flushPromises()
+
+    expect(wrapper.findAll('[aria-label="筛选标签 Redis"]')).toHaveLength(2)
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["小文件.pdf", "大文件.pdf"])
+    await wrapper.findAll(".library-filter__trigger")[2].trigger("click")
+    await wrapper.get('[aria-label="资料排序"] button:nth-child(3)').trigger("click")
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["大文件.pdf", "小文件.pdf"])
+    await wrapper.findAll(".library-filter__trigger")[2].trigger("click")
+    await wrapper.get('[aria-label="资料排序"] button:nth-child(3)').trigger("click")
+    expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["小文件.pdf", "大文件.pdf"])
+
+    await wrapper.get('[aria-label="筛选标签 Redis"]').trigger("click")
+    await vi.advanceTimersByTimeAsync(250); await flushPromises()
+    expect(router.currentRoute.value.query.tag).toBe("Redis")
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "Redis" }))
+    vi.useRealTimers()
+  })
+
   it("opens a trashed folder inside the trash route", async () => {
     vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:5,kind:"folder",name:"Note",tags:[],deleted_at:"2026-08-08T10:00:00+08:00"}]})
     const router=createRouter({history:createMemoryHistory(),routes:[{path:"/trash/:folderId?",name:"trash",component:LibraryPage,props:route=>({trash:true,folderId:route.params.folderId})},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
@@ -53,7 +80,7 @@ describe("personal library", () => {
   })
 
   it("loads a Markdown preview only when a note card is hovered", async () => {
-    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:9,kind:"note",name:"Redis学习.md",size:128,updated_at:"2026-08-02"}]})
+    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[{id:9,kind:"note",name:"Redis学习.md",size:128,tags:["Redis"],updated_at:"2026-08-02"}]})
     const content=vi.spyOn(api,"getLibraryContent").mockResolvedValue({content:"# Redis\n\n缓存学习笔记",version:1})
     const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/:folderId?",name:"library",component:LibraryPage},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
     await router.push("/library");await router.isReady()
@@ -62,6 +89,20 @@ describe("personal library", () => {
     await wrapper.get(".library-card").trigger("mouseenter");await flushPromises()
     expect(content).toHaveBeenCalledWith(9)
     expect(wrapper.get(".library-card__back").text()).toContain("缓存学习笔记")
+    expect(wrapper.find('.library-card__back [aria-label="筛选标签 Redis"]').exists()).toBe(false)
+    expect(wrapper.get(".library-card__front .library-card__utility").exists()).toBe(true)
+    expect(wrapper.find(".library-card > .library-card__utility").exists()).toBe(false)
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }))
+    await flushPromises()
+    expect(wrapper.get(".library-card").classes()).toContain("is-flip-locked")
+    document.dispatchEvent(new KeyboardEvent("keyup", { key: "Control", ctrlKey: false }))
+    await flushPromises()
+    expect(wrapper.get(".library-card").classes()).not.toContain("is-flip-locked")
+    await wrapper.get(".library-more").trigger("click")
+    expect(wrapper.find(".library-menu").exists()).toBe(true)
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }))
+    await flushPromises()
+    expect(wrapper.find(".library-menu").exists()).toBe(false)
     expect(wrapper.find('input[type="file"]').attributes("hidden")).toBeDefined()
   })
 
