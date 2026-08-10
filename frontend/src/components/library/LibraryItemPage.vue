@@ -9,19 +9,15 @@ import MarkdownEditor from "../MarkdownEditor.vue"
 import MarkdownRenderer from "../MarkdownRenderer.vue"
 import { extractOutline } from "../../utils/markdown.js"
 
-const props=defineProps({itemId:[String,Number]});const router=useRouter();const toast=useToast();const item=ref(null);const content=ref("");const version=ref(0);const saving=ref(false);const dirty=ref(false);const mode=ref("preview");const previewPane=ref(null);const tagInput=ref("");const chromeCollapsed=ref(false);let timer;let hydratingContent=false;let loadSequence=0;let savePromise=null;let lastWorkspaceScrollTop=0
+const props=defineProps({itemId:[String,Number]});const router=useRouter();const toast=useToast();const item=ref(null);const content=ref("");const version=ref(0);const saving=ref(false);const dirty=ref(false);const mode=ref("preview");const previewPane=ref(null);const tagInput=ref("");let timer;let hydratingContent=false;let loadSequence=0;let savePromise=null
 const ocrInput=ref(null);const isNote=computed(()=>item.value?.kind==="note");const contentUrl=computed(()=>`/api/library/items/${item.value?.id ?? props.itemId}/content`)
 const outline=computed(()=>extractOutline(content.value))
 // jumpToHeading 协调当前组件的状态和交互。
 function jumpToHeading(entry){const target=previewPane.value?.querySelector(`[data-outline-index="${entry.index}"]`);if(!target)return;previewPane.value.scrollTo({top:Math.max(0,target.offsetTop-18),behavior:"smooth"})}
 // clearSaveTimer 协调当前组件的状态和交互。
 function clearSaveTimer(){clearTimeout(timer);timer=null}
-// setEditorChromeCollapsed 同步笔记页与应用外壳的沉浸编辑状态。
-function setEditorChromeCollapsed(collapsed){const next=Boolean(collapsed);if(chromeCollapsed.value===next)return;chromeCollapsed.value=next;window.dispatchEvent(new CustomEvent("learning-space:editor-chrome",{detail:{collapsed:next}}))}
-// handleWorkspaceScroll 根据滚动方向收起或恢复顶部栏，避免小幅抖动频繁切换。
-function handleWorkspaceScroll(event){const next=Math.max(0,Number(event?.target?.scrollTop)||0);const delta=next-lastWorkspaceScrollTop;if(next<=8)setEditorChromeCollapsed(false);else if(delta>5)setEditorChromeCollapsed(true);else if(delta<-5)setEditorChromeCollapsed(false);lastWorkspaceScrollTop=next}
-// restoreEditorChrome 在切换笔记或离开页面时恢复正常应用导航。
-function restoreEditorChrome(){lastWorkspaceScrollTop=0;setEditorChromeCollapsed(false)}
+// restoreEditorChrome 确保从旧页面切入时恢复固定的应用顶部栏；滚动笔记不会再改变整体页面高度。
+function restoreEditorChrome(){window.dispatchEvent(new CustomEvent("learning-space:editor-chrome",{detail:{collapsed:false}}))}
 // scheduleSave 协调当前组件的状态和交互。
 function scheduleSave(delay=800){clearSaveTimer();timer=setTimeout(()=>{void save(false)},delay)}
 // load 协调当前组件的状态和交互。
@@ -36,16 +32,16 @@ async function ocr(event){const file=event.target.files?.[0];if(!file)return;con
 // saveMeta 协调当前组件的状态和交互。
 async function saveMeta(changes={}){const targetItemId=props.itemId;const targetSequence=loadSequence;try{const tags=tagInput.value.split(/[,，]/).map(value=>value.trim()).filter(Boolean);const updated=await api.updateLibraryItem(targetItemId,{tags,...changes});if(targetSequence!==loadSequence||String(props.itemId)!==String(targetItemId))return;item.value=updated;tagInput.value=(updated.tags||[]).join(", ");toast.success("笔记属性已更新")}catch(e){if(targetSequence===loadSequence)toast.error(e.message||"更新失败")}}
 async function confirmPendingChanges(){if(!dirty.value)return true;const saved=await save();if(saved&&!dirty.value)return true;return confirm("笔记尚未保存。离开将丢失这次修改，仍要离开吗？")}
-onMounted(load);watch(()=>props.itemId,(nextId)=>{restoreEditorChrome();load(nextId)});watch(mode,restoreEditorChrome);onBeforeUnmount(()=>{clearSaveTimer();restoreEditorChrome()});onBeforeRouteUpdate(async(to)=>{if(String(to.params.itemId)===String(props.itemId))return true;restoreEditorChrome();return confirmPendingChanges()});onBeforeRouteLeave(async()=>{restoreEditorChrome();return confirmPendingChanges()})
+onMounted(()=>{restoreEditorChrome();load()});watch(()=>props.itemId,(nextId)=>{restoreEditorChrome();load(nextId)});onBeforeUnmount(()=>{clearSaveTimer();restoreEditorChrome()});onBeforeRouteUpdate(async(to)=>{if(String(to.params.itemId)===String(props.itemId))return true;restoreEditorChrome();return confirmPendingChanges()});onBeforeRouteLeave(async()=>{restoreEditorChrome();return confirmPendingChanges()})
 </script>
 <template><div class="library-item-page page-stage">
-  <header class="item-editor-head" :class="{ 'is-collapsed': chromeCollapsed }" :aria-hidden="chromeCollapsed ? 'true' : undefined" :inert="chromeCollapsed"><button class="item-back" @click="backToLibrary"><ArrowLeft :size="18"/>返回资料库</button><div><h1>{{ item?.name||'加载中…' }}</h1><p v-if="isNote">{{ saving?'正在保存…':dirty?'等待自动保存':'已保存' }}</p><div v-if="isNote" class="item-meta-editor"><input v-model="tagInput" aria-label="笔记标签" placeholder="添加标签，用逗号分隔" @change="saveMeta()"/><label><input type="checkbox" :checked="item?.review_enabled" @change="saveMeta({review_enabled:$event.target.checked})"/>加入复习计划</label></div></div><div class="item-head-actions"><button v-if="isNote" class="lib-btn" @click="ocrInput?.click()"><ScanText :size="16"/>OCR 插入</button><button v-if="isNote" class="lib-btn" @click="mode=mode==='preview'?'edit':'preview'"><component :is="mode==='preview'?Pencil:Eye" :size="16"/>{{mode==='preview'?'开始编辑':'专注预览'}}</button><a v-else class="lib-btn lib-btn--primary" :href="contentUrl" download><Download :size="16"/>下载</a></div></header>
+  <header class="item-editor-head"><button class="item-back" @click="backToLibrary"><ArrowLeft :size="18"/>返回资料库</button><div><h1>{{ item?.name||'加载中…' }}</h1><p v-if="isNote">{{ saving?'正在保存…':dirty?'等待自动保存':'已保存' }}</p><div v-if="isNote" class="item-meta-editor"><input v-model="tagInput" aria-label="笔记标签" placeholder="添加标签，用逗号分隔" @change="saveMeta()"/><label><input type="checkbox" :checked="item?.review_enabled" @change="saveMeta({review_enabled:$event.target.checked})"/>加入复习计划</label></div></div><div class="item-head-actions"><button v-if="isNote" class="lib-btn" @click="ocrInput?.click()"><ScanText :size="16"/>OCR 插入</button><button v-if="isNote" class="lib-btn" @click="mode=mode==='preview'?'edit':'preview'"><component :is="mode==='preview'?Pencil:Eye" :size="16"/>{{mode==='preview'?'开始编辑':'专注预览'}}</button><a v-else class="lib-btn lib-btn--primary" :href="contentUrl" download><Download :size="16"/>下载</a></div></header>
   <input ref="ocrInput" hidden type="file" accept="image/*,.pdf" @change="ocr"/>
   <main v-if="item" class="item-editor-layout" :class="{'is-note':isNote,'is-preview-mode':isNote&&mode==='preview'}">
     <section v-if="isNote" class="note-workspace" :class="{'is-preview-mode':mode==='preview'}">
       <aside v-if="mode==='preview'" class="note-outline"><h2><ListTree :size="16"/>本文大纲</h2><nav v-if="outline.length" aria-label="笔记大纲"><button v-for="entry in outline" :key="entry.id" :data-level="entry.level" @click="jumpToHeading(entry)">{{entry.text}}</button></nav><p v-else>添加 Markdown 标题后，大纲会显示在这里。</p></aside>
-      <div v-else class="note-edit"><MarkdownEditor v-model="content" :fill="true" label="笔记正文" @scroll="handleWorkspaceScroll"/></div>
-      <div ref="previewPane" class="note-preview" @scroll="handleWorkspaceScroll"><MarkdownRenderer :content="content"/></div>
+      <div v-else class="note-edit"><MarkdownEditor v-model="content" :fill="true" label="笔记正文"/></div>
+      <div ref="previewPane" class="note-preview"><MarkdownRenderer :content="content"/></div>
     </section>
     <section v-else class="file-preview"><img v-if="item.mime_type?.startsWith('image/')" :src="contentUrl" :alt="item.name"/><iframe v-else-if="item.mime_type==='application/pdf'" :src="contentUrl" :title="item.name"></iframe><div v-else><Download :size="42"/><h2>{{item.name}}</h2><p>此文件类型暂不支持在线预览，可以下载后使用本地应用打开。</p><a class="lib-btn lib-btn--primary" :href="contentUrl" download>下载文件</a></div></section>
   </main>

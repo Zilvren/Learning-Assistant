@@ -50,6 +50,8 @@
   .library-item-page .item-editor-head{flex:0 0 auto}
   .library-item-page .item-editor-layout{min-height:0;flex:1 1 auto}
   .library-item-page .note-workspace,.library-item-page .version-panel{height:100%;min-height:0}
+  /* Keep wheel and touch scrolling inside the note reader when it reaches an edge. */
+  .note-edit,.note-preview,.note-outline,.note-edit .md-textarea--fill,.note-edit .md-textarea--visual{overscroll-behavior-y:contain}
   /* Outline hierarchy: headings get progressively quieter and more indented. */
   .note-outline nav{gap:2px}
   .note-outline button{position:relative;padding:8px 8px 8px 10px}
