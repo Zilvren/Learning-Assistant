@@ -30,6 +30,27 @@ describe("MarkdownEditor", () => {
     vi.unstubAllGlobals()
   })
 
+  it("embeds an image pasted from the clipboard at the cursor", async () => {
+    class FakeFileReader {
+      readAsDataURL() {
+        this.result = "data:image/png;base64,cGl4ZWw="
+        this.onload()
+      }
+    }
+    vi.stubGlobal("FileReader", FakeFileReader)
+
+    const wrapper = mount(MarkdownEditor, { props: { modelValue: "笔记：" } })
+    const textarea = wrapper.get("textarea")
+    await textarea.trigger("focus")
+    textarea.element.setSelectionRange(3, 3)
+    const file = new File(["pixel"], "", { type: "image/png" })
+    await textarea.trigger("paste", { clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => file }] } })
+    await nextTick()
+
+    expect(wrapper.emitted("update:modelValue")?.at(-1)?.[0]).toBe('笔记：![剪贴板图片](data:image/png;base64,cGl4ZWw= "width=400;align=left")')
+    vi.unstubAllGlobals()
+  })
+
   it("rejects image types that cannot be safely embedded", async () => {
     const wrapper = mount(MarkdownEditor, { props: { modelValue: "" } })
     const input = wrapper.get('input[type="file"]')

@@ -19,7 +19,7 @@ const visualSource = ref(props.modelValue)
 const imageNameDrafts = ref({})
 const activeImageIndex = ref(null)
 const visualTextSelection = ref(null)
-const maxEmbeddedImageSize = 2 * 1024 * 1024
+const maxEmbeddedImageSize = 20 * 1024 * 1024
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"])
 const imageMarkdownPattern = /!\[([^\]]*)\]\(\s*(data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+)(?:\s+"([^"]*)")?\s*\)/gi
 
@@ -222,19 +222,24 @@ function readAsDataUrl(file) {
   })
 }
 
-// onImageSelected 协调当前组件的状态和交互。
-async function onImageSelected(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ""
-  if (!file) return
+// imageFilename 为剪贴板截图补充一个可读的 Markdown 图片名称。
+function imageFilename(file) {
+  const name = String(file?.name || "").trim()
+  if (name) return name
+  const extension = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/gif": "gif", "image/webp": "webp" }[file?.type] || "png"
+  return `剪贴板图片.${extension}`
+}
 
+// embedImage 校验并将本地文件或剪贴板图片嵌入为可随笔记保存的 Markdown 图片。
+async function embedImage(file) {
+  if (!file) return
   imageError.value = ""
   if (!supportedImageTypes.has(file.type)) {
     imageError.value = "仅支持 PNG、JPG、GIF 或 WebP 图片"
     return
   }
   if (file.size > maxEmbeddedImageSize) {
-    imageError.value = "图片请控制在 2 MB 以内"
+    imageError.value = "图片请控制在 20 MB 以内"
     return
   }
 
@@ -244,12 +249,29 @@ async function onImageSelected(event) {
     if (typeof dataUrl !== "string" || !/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(dataUrl)) {
       throw new Error("图片编码无效")
     }
-    await replaceSelection(imageMarkdown({ alt: file.name, src: dataUrl, width: 400 }))
+    await replaceSelection(imageMarkdown({ alt: imageFilename(file), src: dataUrl, width: 400 }))
   } catch (error) {
     imageError.value = error instanceof Error ? error.message : "图片读取失败"
   } finally {
     imageBusy.value = false
   }
+}
+
+// onImageSelected 协调当前组件的状态和交互。
+async function onImageSelected(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ""
+  await embedImage(file)
+}
+
+// onPaste 在光标所在处粘贴截图或复制的图片；普通文字粘贴仍保持浏览器默认行为。
+function onPaste(event) {
+  if (event.target instanceof HTMLInputElement && event.target.type !== "file") return
+  const item = Array.from(event.clipboardData?.items || []).find(candidate => candidate.kind === "file" && supportedImageTypes.has(candidate.type))
+  const file = item?.getAsFile()
+  if (!file) return
+  event.preventDefault()
+  void embedImage(file)
 }
 
 // updateEmbeddedImage 协调当前组件的状态和交互。
@@ -349,7 +371,7 @@ defineExpose({ insertText })
 </script>
 
 <template>
-  <div class="md-editor" :class="{ 'md-editor--fill': fill }">
+  <div class="md-editor" :class="{ 'md-editor--fill': fill }" @paste="onPaste">
     <div class="md-toolbar" role="toolbar" :aria-label="`${label || 'Markdown'} 编辑工具`">
       <button v-for="tool in tools" :key="tool.label" type="button" :aria-label="tool.label" :title="tool.label" :disabled="tool.label === '插入图片' && imageBusy" @mousedown.prevent @click="tool.action"><component :is="tool.icon" :size="15" /></button>
       <span class="md-toolbar__spacer"></span>

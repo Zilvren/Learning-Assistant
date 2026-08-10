@@ -43,7 +43,7 @@ func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType str
 	if len(imageBytes) == 0 || len(imageBytes) > OCRMaxUploadSize {
 		return "", fmt.Errorf("OCR 文件必须在 1B 到 50MB 之间")
 	}
-	fileName, mimeType, err := normalizeOCRSource(fileName, mimeType)
+	fileName, _, err := normalizeOCRSource(fileName, mimeType)
 	if err != nil {
 		return "", err
 	}
@@ -85,7 +85,6 @@ func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType str
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", mimeType)
 	resp, err := ocrHTTPClient.Do(req)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
