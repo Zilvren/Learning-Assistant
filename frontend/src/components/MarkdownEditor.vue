@@ -190,9 +190,9 @@ async function insertTextLineAroundImage(index, placement) {
   const before = visualSource.value.slice(0, position)
   const after = visualSource.value.slice(position)
   const insertion = placement === "above"
-    ? (before && !before.endsWith("\n") ? "\n " : " ")
-    : (after && !after.startsWith("\n") ? " \n" : " ")
-  const placeholderOffset = placement === "above" ? insertion.length - 1 : 0
+    ? `${before && !before.endsWith("\n") ? "\n" : ""} \n`
+    : `\n ${after ? "\n" : ""}`
+  const placeholderOffset = placement === "above" ? insertion.indexOf(" ") : 1
   const placeholderStart = position + placeholderOffset
   const next = before + insertion + after
 

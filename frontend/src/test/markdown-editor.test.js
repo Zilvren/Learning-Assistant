@@ -123,14 +123,14 @@ describe("MarkdownEditor", () => {
     const above = mount(MarkdownEditor, { props: { modelValue: source } })
     await above.get('button[aria-label="编辑图片 1"]').trigger("click")
     await above.get('button[aria-label="在图片 1 上方添加文字"]').trigger("click")
-    expect(above.emitted("update:modelValue")?.at(-1)?.[0]).toBe(` ${source}`)
-    expect(above.get(".md-text-segment").element.value).toBe(" ")
+    expect(above.emitted("update:modelValue")?.at(-1)?.[0]).toBe(` \n${source}`)
+    expect(above.get(".md-text-segment").element.value).toBe(" \n")
 
     const below = mount(MarkdownEditor, { props: { modelValue: source } })
     await below.get('button[aria-label="编辑图片 1"]').trigger("click")
     await below.get('button[aria-label="在图片 1 下方添加文字"]').trigger("click")
-    expect(below.emitted("update:modelValue")?.at(-1)?.[0]).toBe(`${source} `)
-    expect(below.get(".md-text-segment").element.value).toBe(" ")
+    expect(below.emitted("update:modelValue")?.at(-1)?.[0]).toBe(`${source}\n `)
+    expect(below.get(".md-text-segment").element.value).toBe("\n ")
   })
 
   it("restores image controls when a reused note page returns to an image note", async () => {
