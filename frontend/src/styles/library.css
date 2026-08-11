@@ -59,6 +59,7 @@
   .library-filter--sort .library-filter__menu button{display:flex;align-items:center;justify-content:space-between;gap:8px}.library-filter--sort .library-filter__menu button span{min-width:0;overflow:hidden;text-overflow:ellipsis}.library-filter--sort .library-filter__menu button.is-asc{color:var(--accent-dark);background:var(--accent-soft)}.library-filter--sort .library-filter__menu button.is-asc svg{color:var(--accent)}.library-filter--sort .library-filter__menu button.is-desc{color:#506d7b;background:#eef4f5}.library-filter--sort .library-filter__menu button.is-desc svg{color:#5f8190}
   .library-card__footer-tags>button:hover{border-color:color-mix(in srgb,var(--accent) 52%,var(--line));background:var(--accent-soft);transform:translateY(-1px)}
   .library-card__footer-tags>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .item-meta-editor>input:focus-visible{outline:0;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
   .library-toolbar{grid-template-columns:minmax(260px,1fr) 164px 188px auto}
   @media(max-width:767px){.library-toolbar{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.library-toolbar .library-search{grid-column:1/-1}.library-filter--sort{grid-column:auto}}
   /* Outline hierarchy: headings get progressively quieter and more indented. */
