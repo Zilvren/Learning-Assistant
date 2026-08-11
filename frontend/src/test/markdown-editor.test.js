@@ -97,6 +97,18 @@ describe("MarkdownEditor", () => {
     expect(wrapper.emitted("update:modelValue")?.at(-1)?.[0]).toBe('更新的开始\n![证书](data:image/png;base64,cGl4ZWw= "width=400")\n结束')
   })
 
+  it("sizes text blocks beside an image by their rendered content height", async () => {
+    const source = '开始\n![证书](data:image/png;base64,cGl4ZWw= "width=400")\n结束'
+    const wrapper = mount(MarkdownEditor, { props: { modelValue: source } })
+
+    const firstTextBlock = wrapper.get('.md-text-segment')
+    Object.defineProperty(firstTextBlock.element, "scrollHeight", { configurable: true, value: 212 })
+    await firstTextBlock.setValue('一\n二\n三\n四\n五\n六\n七\n八')
+
+    expect(firstTextBlock.element.style.height).toBe('212px')
+    expect(wrapper.find('input[aria-label*="高度"]').exists()).toBe(false)
+  })
+
   it("keeps an editable text anchor after a final image node", async () => {
     const source = '![证书](data:image/png;base64,cGl4ZWw= "width=400")'
     const wrapper = mount(MarkdownEditor, { props: { modelValue: source } })
@@ -104,6 +116,21 @@ describe("MarkdownEditor", () => {
     await anchor.setValue("图片旁的说明")
 
     expect(wrapper.emitted("update:modelValue")?.at(-1)?.[0]).toBe(`${source}图片旁的说明`)
+  })
+
+  it("adds an editable text line above or below an image from its controls", async () => {
+    const source = '![证书](data:image/png;base64,cGl4ZWw= "width=400")'
+    const above = mount(MarkdownEditor, { props: { modelValue: source } })
+    await above.get('button[aria-label="编辑图片 1"]').trigger("click")
+    await above.get('button[aria-label="在图片 1 上方添加文字"]').trigger("click")
+    expect(above.emitted("update:modelValue")?.at(-1)?.[0]).toBe(` ${source}`)
+    expect(above.get(".md-text-segment").element.value).toBe(" ")
+
+    const below = mount(MarkdownEditor, { props: { modelValue: source } })
+    await below.get('button[aria-label="编辑图片 1"]').trigger("click")
+    await below.get('button[aria-label="在图片 1 下方添加文字"]').trigger("click")
+    expect(below.emitted("update:modelValue")?.at(-1)?.[0]).toBe(`${source} `)
+    expect(below.get(".md-text-segment").element.value).toBe(" ")
   })
 
   it("restores image controls when a reused note page returns to an image note", async () => {

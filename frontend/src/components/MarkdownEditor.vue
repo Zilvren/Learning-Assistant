@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue"
-import { AlignCenter, AlignLeft, AlignRight, Bold, Braces, Code2, Heading2, Image, Italic, Link, List, Sigma, Strikethrough, Trash2, X } from "lucide-vue-next"
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Bold, Braces, Code2, Heading2, Image, Italic, Link, List, Sigma, Strikethrough, Trash2, X } from "lucide-vue-next"
 
 const props = defineProps({
   modelValue: { type: String, default: "" },
@@ -153,16 +153,56 @@ function rememberVisualTextSelection(segment, target, segmentIndex) {
 // onVisualTextInput 协调当前组件的状态和交互。
 function onVisualTextInput(segment, segmentIndex, event) {
   const value = event.target.value
+  resizeVisualTextSegment(event.target)
   const next = visualSource.value.slice(0, segment.start) + value + visualSource.value.slice(segment.end)
   visualSource.value = next
   rememberVisualTextSelection({ ...segment, end: segment.start + value.length }, event.target, segmentIndex)
   setValue(next)
 }
 
-// visualTextStyle 协调当前组件的状态和交互。
-function visualTextStyle(value) {
-  const lines = Math.max(1, String(value || "").split(/\r?\n/).length)
-  return { height: `${Math.max(38, lines * 24 + 14)}px` }
+// resizeVisualTextSegment 按实际内容（包括自动换行）调整文本框高度。
+function resizeVisualTextSegment(target) {
+  if (!(target instanceof HTMLTextAreaElement)) return
+  const parent = visualEditor.value
+  const scrollTop = parent?.scrollTop
+  target.style.height = "0px"
+  target.style.height = `${target.scrollHeight}px`
+  target.scrollTop = 0
+  if (parent && Number.isFinite(scrollTop)) parent.scrollTop = scrollTop
+}
+
+// resizeVisualTextSegments 在初次显示、切换笔记或图片分段变化后，重新量取全部文本框。
+function resizeVisualTextSegments() {
+  visualEditor.value?.querySelectorAll(".md-text-segment").forEach(resizeVisualTextSegment)
+}
+
+watch(visualSegments, () => {
+  void nextTick(resizeVisualTextSegments)
+}, { flush: "post", immediate: true })
+
+// insertTextLineAroundImage 在图片上方或下方插入一行，并选中空白占位以便直接输入。
+async function insertTextLineAroundImage(index, placement) {
+  const currentImages = parseEmbeddedImages(visualSource.value)
+  const current = currentImages[index]
+  if (!current) return
+
+  const position = placement === "above" ? current.start : current.end
+  const before = visualSource.value.slice(0, position)
+  const after = visualSource.value.slice(position)
+  const insertion = placement === "above"
+    ? (before && !before.endsWith("\n") ? "\n " : " ")
+    : (after && !after.startsWith("\n") ? " \n" : " ")
+  const placeholderOffset = placement === "above" ? insertion.length - 1 : 0
+  const placeholderStart = position + placeholderOffset
+  const next = before + insertion + after
+
+  activeImageIndex.value = null
+  setValue(next, true)
+  await nextTick()
+  const segmentIndex = visualSegments.value.findIndex(candidate => candidate.type === "text" && candidate.start <= placeholderStart && candidate.end >= placeholderStart + 1)
+  if (segmentIndex < 0) return
+  const relativeStart = placeholderStart - visualSegments.value[segmentIndex].start
+  await focusVisualTextSegment(segmentIndex, relativeStart, relativeStart + 1)
 }
 
 // focusVisualTextSegment 协调当前组件的状态和交互。
@@ -380,12 +420,16 @@ defineExpose({ insertText })
     <input ref="imageInput" class="md-image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" tabindex="-1" @change="onImageSelected" />
     <div v-if="hasEmbeddedImages" ref="visualEditor" class="md-textarea md-textarea--visual" :class="{ 'md-textarea--fill': fill }" role="group" aria-label="含图片的笔记正文" @scroll="notifyScroll">
       <template v-for="(segment, segmentIndex) in visualSegments" :key="`${segment.type}-${segmentIndex}`">
-        <textarea v-if="segment.type === 'text'" class="md-text-segment" :data-visual-text-segment="segmentIndex" :value="segment.value" :style="visualTextStyle(segment.value)" :placeholder="segmentIndex === 0 ? placeholder : '继续输入…'" spellcheck="false" @focus="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @click="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @select="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @input="onVisualTextInput(segment, segmentIndex, $event)" />
+        <textarea v-if="segment.type === 'text'" class="md-text-segment" :data-visual-text-segment="segmentIndex" :value="segment.value" :rows="1" :placeholder="segmentIndex === 0 ? placeholder : '继续输入…'" spellcheck="false" @focus="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @click="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @select="rememberVisualTextSelection(segment, $event.target, segmentIndex)" @input="onVisualTextInput(segment, segmentIndex, $event)" />
         <div v-else class="md-image-row" :class="'md-image-row--align-' + segment.image.alignment">
           <span class="md-image-control" :class="{ 'is-active': activeImageIndex === segment.image.index }" :data-image-index="segment.image.index">
             <button class="md-image-control__button" type="button" :aria-label="'编辑图片 ' + (segment.image.index + 1)" title="点击编辑名称和尺寸；选中后可用上方对齐按钮。按 Delete 可删除" @click.stop="toggleImageControls(segment.image.index)" @keydown.delete.stop.prevent="removeEmbeddedImage(segment.image.index)" @keydown.backspace.stop.prevent="removeEmbeddedImage(segment.image.index)"><Image :size="17" /><span>{{ segment.image.index + 1 }}</span></button>
             <span v-if="activeImageIndex === segment.image.index" class="md-image-control__details">
               <input class="md-image-control__name" :value="displayedImageName(segment.image)" aria-label="图片名称" @input.stop="draftImageName(segment.image.index, $event.target.value)" @blur.stop="saveImageName(segment.image.index)" @keydown.enter.prevent.stop="$event.target.blur()" />
+              <span class="md-image-control__text-actions" aria-label="在图片附近添加文字">
+                <button type="button" :aria-label="'在图片 ' + (segment.image.index + 1) + ' 上方添加文字'" title="在图片上方添加一行文字" @mousedown.prevent @click.stop="insertTextLineAroundImage(segment.image.index, 'above')"><ArrowUp :size="11" />上方文字</button>
+                <button type="button" :aria-label="'在图片 ' + (segment.image.index + 1) + ' 下方添加文字'" title="在图片下方添加一行文字" @mousedown.prevent @click.stop="insertTextLineAroundImage(segment.image.index, 'below')"><ArrowDown :size="11" />下方文字</button>
+              </span>
               <span class="md-image-control__sizes" aria-label="图片显示宽度">
                 <button v-for="size in [{ label: '小', width: 240 }, { label: '中', width: 400 }, { label: '大', width: 640 }]" :key="size.width" type="button" :class="{ active: segment.image.width === size.width }" :aria-label="'图片 ' + (segment.image.index + 1) + '：' + size.label" @mousedown.prevent @click.stop="updateImageWidth(segment.image.index, size.width)">{{ size.label }}</button>
                 <label>宽 <input type="number" min="120" max="1200" step="10" :value="segment.image.width" aria-label="自定义图片宽度" @input.stop @change.stop="updateImageWidth(segment.image.index, $event.target.value)" /><span>px</span></label>

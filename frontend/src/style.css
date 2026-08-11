@@ -1419,12 +1419,12 @@
   .md-image-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   .md-textarea { width: 100%; min-height: 160px; padding: 14px; resize: vertical; border: 0; outline: 0; color: var(--ink); background: var(--sheet); font-family: var(--font-mono); font-size: 13px; line-height: 1.7; }
   .md-textarea--fill { min-height: 0; flex: 1; resize: none; }
-  .md-textarea--visual { display: flex; flex-direction: column; gap: 6px; overflow: auto; padding: 10px; cursor: default; }
+  .md-textarea--visual { display: flex; flex-direction: column; gap: 6px; overflow-x: hidden; overflow-y: auto; overflow-anchor: none; scrollbar-gutter: stable; padding: 10px; cursor: default; }
   .md-textarea--visual:focus-within { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
-  .md-text-segment { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px 9px; resize: none; overflow: auto; border: 1px solid transparent; border-radius: 7px; outline: 0; color: var(--ink); background: transparent; font: inherit; line-height: 1.7; }
+  .md-text-segment { box-sizing: border-box; flex: 0 0 auto; width: 100%; min-height: 0; padding: 0 9px; resize: none; overflow: hidden; border: 0; border-radius: 7px; outline: 0; color: var(--ink); background: transparent; font: inherit; line-height: 1.7; }
   .md-text-segment:hover { background: color-mix(in srgb, var(--sheet-soft) 62%, transparent); }
-  .md-text-segment:focus { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--sheet); }
-  .md-image-row { display: flex; width: 100%; min-height: 48px; }
+  .md-text-segment:focus { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--sheet); }
+  .md-image-row { display: flex; flex: 0 0 auto; width: 100%; min-height: 48px; }
   .md-image-row--align-left { justify-content: flex-start; }
   .md-image-row--align-center { justify-content: center; }
   .md-image-row--align-right { justify-content: flex-end; }
@@ -1436,8 +1436,12 @@
   .md-image-control__button:hover { border-color: var(--accent); background: var(--accent-soft); }
   .md-image-control.is-active .md-image-control__button { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
   .md-image-control__details { position: absolute; z-index: 4; top: 0; left: 51px; display: flex; width: max-content; min-width: 212px; align-items: center; gap: 6px; padding: 6px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 9px; background: var(--sheet); box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 16%, transparent); }
+  .md-image-row--align-right .md-image-control__details { right: 51px; left: auto; }
   .md-image-control__name { width: 92px; min-width: 0; padding: 0 0 1px; overflow: hidden; border: 0; border-bottom: 1px solid transparent; outline: 0; color: var(--ink); background: transparent; font-family: var(--font-display); font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
   .md-image-control__name:focus { border-bottom-color: var(--accent); }
+  .md-image-control__text-actions { display: flex; align-items: center; gap: 2px; padding-right: 6px; border-right: 1px solid var(--line); }
+  .md-image-control__text-actions button { width: auto; height: 20px; display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 6px; color: var(--accent-dark); background: color-mix(in srgb, var(--accent-soft) 46%, var(--sheet)); font-size: 8px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+  .md-image-control__text-actions button:hover { border-color: var(--accent); background: var(--accent-soft); }
   .md-image-control__sizes { display: flex; align-items: center; gap: 2px; color: var(--ink-muted); font-size: 8px; }
   .md-image-control__sizes button { width: auto; height: 18px; padding: 0 5px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-secondary); background: var(--sheet); font-size: 8px; font-weight: 800; cursor: pointer; }
   .md-image-control__sizes button:hover, .md-image-control__sizes button.active { border-color: var(--accent); color: var(--accent-dark); background: var(--accent-soft); }
