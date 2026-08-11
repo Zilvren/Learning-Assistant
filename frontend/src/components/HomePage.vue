@@ -196,7 +196,7 @@ onMounted(async () => {
 
           <section class="home-index" aria-labelledby="home-index-title">
             <header><Tags :size="16"/><strong id="home-index-title">知识索引</strong><small>{{ tags.length }} 个标签</small></header>
-            <div v-if="tagStats.length" class="home-index__tags"><RouterLink v-for="tag in tagStats" :key="tag.name" :to="{name:'library',query:{tag:tag.name}}"><span># {{ tag.name }}</span><small>{{ tag.count }}</small></RouterLink></div>
+            <div v-if="tagStats.length" class="home-index__tags"><RouterLink v-for="tag in tagStats" :key="tag.name" :to="{name:'library',query:{tag:tag.name}}"><Tags :size="13" aria-hidden="true"/><span>{{ tag.name }}</span><small>{{ tag.count }}</small></RouterLink></div>
             <p v-else>给笔记添加标签后会显示在这里。</p>
           </section>
         </aside>

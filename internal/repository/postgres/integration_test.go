@@ -39,6 +39,18 @@ func TestPostgresRepositoriesIntegration(t *testing.T) {
 	})
 
 	repos := NewRepositories(pool, userID)
+	previousDataDir := base.DataDir()
+	base.SetDataDir(t.TempDir())
+	t.Cleanup(func() { base.SetDataDir(previousDataDir) })
+
+	note, err := repos.Library.Create(ctx, models.CreateLibraryItemRequest{Kind: "note", Name: "正文搜索"}, []byte("这是一段只存在于笔记正文中的检索词。"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchedNotes, err := repos.Library.List(ctx, base.LibraryFilter{Query: "检索词"})
+	if err != nil || len(matchedNotes) != 1 || matchedNotes[0].ID != note.ID {
+		t.Fatalf("expected note body search result: %#v %v", matchedNotes, err)
+	}
 
 	subjects, err := repos.Subjects.Create(ctx, "数学")
 	if err != nil {

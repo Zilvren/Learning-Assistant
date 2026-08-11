@@ -32,6 +32,7 @@ func scanLibraryRows(rows pgx.Rows) (models.LibraryItem, error) {
 
 // List 在存储层中读取并整理所需数据。
 func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]models.LibraryItem, error) {
+	query := strings.ToLower(strings.TrimSpace(f.Query))
 	args := []any{r.store.userID}
 	where := []string{"user_id=$1"}
 	if f.Trashed {
@@ -51,7 +52,7 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	if f.ParentID != nil {
 		args = append(args, *f.ParentID)
 		where = append(where, fmt.Sprintf("parent_id=$%d", len(args)))
-	} else if f.Query == "" && !f.Trashed && !f.ReviewOnly {
+	} else if query == "" && !f.Trashed && !f.ReviewOnly {
 		where = append(where, "parent_id IS NULL")
 	}
 	if f.Kind != "" && f.Kind != "all" {
@@ -68,10 +69,6 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	if f.DueOnly {
 		where = append(where, "review_enabled=TRUE AND (next_review='' OR next_review<=CURRENT_DATE::text)")
 	}
-	if strings.TrimSpace(f.Query) != "" {
-		args = append(args, "%"+strings.ToLower(strings.TrimSpace(f.Query))+"%")
-		where = append(where, fmt.Sprintf("(lower(name) LIKE $%d OR EXISTS(SELECT 1 FROM unnest(tags) t WHERE lower(t) LIKE $%d))", len(args), len(args)))
-	}
 	rows, err := r.store.pool.Query(ctx, "SELECT "+libraryColumns+" FROM library_items WHERE "+strings.Join(where, " AND ")+" ORDER BY pinned DESC,updated_at DESC", args...)
 	if err != nil {
 		return nil, err
@@ -83,9 +80,26 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 		if e != nil {
 			return nil, e
 		}
+		if query != "" && !postgresLibraryMatchesQuery(x, query) {
+			continue
+		}
 		out = append(out, x)
 	}
 	return out, rows.Err()
+}
+
+// postgresLibraryMatchesQuery matches metadata first, then reads Markdown text
+// only when needed so a library query can also find note body content.
+// postgresLibraryMatchesQuery 先匹配元数据，未命中时再读取 Markdown 正文。
+func postgresLibraryMatchesQuery(item models.LibraryItem, query string) bool {
+	if strings.Contains(strings.ToLower(item.Name+" "+strings.Join(item.Tags, " ")), query) {
+		return true
+	}
+	if item.Kind != "note" || item.BlobHash == "" {
+		return false
+	}
+	body, err := base.ReadBlob(item.BlobHash)
+	return err == nil && strings.Contains(strings.ToLower(string(body)), query)
 }
 
 // Get 在存储层中读取并整理所需数据。
