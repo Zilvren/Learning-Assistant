@@ -117,11 +117,12 @@ type ErrorProblem struct {
 
 // Config 是用户设置
 type Config struct {
-	MineruToken   string            `json:"mineru_token"` // OCR 服务的 token
-	DeepSeekToken string            `json:"deepseek_token"`
-	DeepSeekModel string            `json:"deepseek_model"`
-	Username      string            `json:"username"` // 用户名
-	DailyGoal     DailyGoalSettings `json:"daily_goal"`
+	MineruToken   string                  `json:"mineru_token"` // OCR 服务的 token
+	DeepSeekToken string                  `json:"deepseek_token"`
+	DeepSeekModel string                  `json:"deepseek_model"`
+	AIChatContext []AIConversationMessage `json:"ai_chat_context,omitempty"`
+	Username      string                  `json:"username"` // 用户名
+	DailyGoal     DailyGoalSettings       `json:"daily_goal"`
 }
 
 // DailyGoalSettings keeps the user's repeatable daily study targets. A zero
@@ -257,6 +258,18 @@ type AIChatMessage struct {
 	Content string `json:"content"`
 }
 
+// AIConversationMessage is the durable representation used to restore an AI
+// chat in the browser. It keeps display-only metadata separate from the small
+// provider history sent in AIChatRequest.
+type AIConversationMessage struct {
+	Role       string         `json:"role"`
+	Content    string         `json:"content"`
+	Scope      string         `json:"scope,omitempty"`
+	Model      string         `json:"model,omitempty"`
+	Sources    []AIChatSource `json:"sources,omitempty"`
+	Incomplete bool           `json:"incomplete,omitempty"`
+}
+
 type AIChatRequest struct {
 	Message  string          `json:"message"`
 	History  []AIChatMessage `json:"history"`
@@ -272,9 +285,10 @@ type AIChatSource struct {
 }
 
 type AIChatResponse struct {
-	Answer  string         `json:"answer"`
-	Model   string         `json:"model"`
-	Sources []AIChatSource `json:"sources"`
+	Answer     string         `json:"answer"`
+	Model      string         `json:"model"`
+	Sources    []AIChatSource `json:"sources"`
+	Incomplete bool           `json:"incomplete"`
 }
 
 // AddErrorRequest 是创建错题时的请求体

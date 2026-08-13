@@ -205,6 +205,9 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 
 		// AI 学习助手：DeepSeek Key 保持在服务端，资料上下文按请求即时生成。
 		api.POST("/ai/chat", middleware.RateLimit(20, time.Minute), handlers.AIChat)
+		api.GET("/ai/conversation", handlers.GetAIConversation)
+		api.PUT("/ai/conversation", handlers.SaveAIConversation)
+		api.DELETE("/ai/conversation", handlers.ClearAIConversation)
 
 		//备份接口
 		api.GET("/backup/export", handlers.ExportBackup)

@@ -44,14 +44,33 @@ func TestChatWithDeepSeekOpenAIUsesCompatibleChatCompletions(t *testing.T) {
 	previousBaseURL := deepSeekBaseURL
 	deepSeekBaseURL = server.URL
 	t.Cleanup(func() { deepSeekBaseURL = previousBaseURL })
-	answer, model, err := chatWithDeepSeekOpenAI(context.Background(), "sk-local-test", deepSeekProModel, "系统约束", []models.AIChatMessage{
+	answer, model, incomplete, err := chatWithDeepSeekOpenAI(context.Background(), "sk-local-test", deepSeekProModel, "系统约束", []models.AIChatMessage{
 		{Role: "user", Content: "上一轮问题"},
 		{Role: "assistant", Content: "上一轮回答"},
 	}, "新的学习问题")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer != "先复习导数的符号表。" || model != "deepseek-chat" {
-		t.Fatalf("unexpected completion: answer=%q model=%q", answer, model)
+	if answer != "先复习导数的符号表。" || model != "deepseek-chat" || incomplete {
+		t.Fatalf("unexpected completion: answer=%q model=%q incomplete=%v", answer, model, incomplete)
+	}
+}
+
+func TestChatWithDeepSeekOpenAIMarksLengthFinishedResponsesIncomplete(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-local","object":"chat.completion","created":0,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"尚未写完"},"finish_reason":"length"}]}`))
+	}))
+	defer server.Close()
+
+	previousBaseURL := deepSeekBaseURL
+	deepSeekBaseURL = server.URL
+	t.Cleanup(func() { deepSeekBaseURL = previousBaseURL })
+	_, _, incomplete, err := chatWithDeepSeekOpenAI(context.Background(), "sk-local-test", deepSeekFlashModel, "系统约束", nil, "生成完整清单")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !incomplete {
+		t.Fatal("expected length-finished completion to be marked incomplete")
 	}
 }

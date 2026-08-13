@@ -12,8 +12,12 @@ import (
 )
 
 const (
-	deepSeekBaseURLDefault      = "https://api.deepseek.com"
-	deepSeekMaxCompletionTokens = 1_200
+	deepSeekBaseURLDefault = "https://api.deepseek.com"
+	// A 1,200-token cap often ends structured summaries in the middle of a
+	// list or Markdown link. 4,096 is sufficient for normal library reports;
+	// the completion finish reason still tells the UI when a continuation is
+	// required for unusually long answers.
+	deepSeekMaxCompletionTokens = 4_096
 )
 
 // deepSeekBaseURL is a package variable only so the SDK adapter can be verified
@@ -28,7 +32,7 @@ func init() {
 // chatWithDeepSeekOpenAI calls DeepSeek through its OpenAI-compatible Chat
 // Completions endpoint. Request and response shapes are owned by openai-go rather
 // than being duplicated as provider-specific application structs.
-func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, modelName, systemPrompt string, history []models.AIChatMessage, message string) (string, string, error) {
+func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, modelName, systemPrompt string, history []models.AIChatMessage, message string) (string, string, bool, error) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(history)+2)
 	messages = append(messages, openai.SystemMessage(systemPrompt))
 	for _, item := range history {
@@ -54,18 +58,19 @@ func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, modelName, systemPrompt
 		MaxTokens: openai.Int(deepSeekMaxCompletionTokens),
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("DeepSeek 请求失败：%w", err)
+		return "", "", false, fmt.Errorf("DeepSeek 请求失败：%w", err)
 	}
 	if len(completion.Choices) == 0 {
-		return "", "", fmt.Errorf("DeepSeek 没有返回回答，请重试")
+		return "", "", false, fmt.Errorf("DeepSeek 没有返回回答，请重试")
 	}
 	answer := strings.TrimSpace(completion.Choices[0].Message.Content)
 	if answer == "" {
-		return "", "", fmt.Errorf("DeepSeek 没有返回可显示的内容，请重试")
+		return "", "", false, fmt.Errorf("DeepSeek 没有返回可显示的内容，请重试")
 	}
 	model := strings.TrimSpace(completion.Model)
 	if model == "" {
 		model = modelName
 	}
-	return answer, model, nil
+	incomplete := strings.EqualFold(strings.TrimSpace(completion.Choices[0].FinishReason), "length")
+	return answer, model, incomplete, nil
 }

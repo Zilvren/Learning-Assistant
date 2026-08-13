@@ -34,3 +34,45 @@ func AIChat(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, response)
 }
+
+type aiConversationRequest struct {
+	Messages []models.AIConversationMessage `json:"messages"`
+}
+
+// GetAIConversation restores the signed-in user's latest saved conversation.
+func GetAIConversation(c *gin.Context) {
+	messages, err := service.GetAIConversation(c.Request.Context())
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
+}
+
+// SaveAIConversation persists a bounded user/assistant transcript. API keys
+// and provider prompts are never included in this payload.
+func SaveAIConversation(c *gin.Context) {
+	var request aiConversationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_ai_conversation", "对话上下文格式错误")
+		return
+	}
+	messages, err := service.SaveAIConversation(c.Request.Context(), request.Messages)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidAIConversation) {
+			respondProblem(c, http.StatusBadRequest, "invalid_ai_conversation", err.Error())
+			return
+		}
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
+}
+
+func ClearAIConversation(c *gin.Context) {
+	if err := service.ClearAIConversation(c.Request.Context()); err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

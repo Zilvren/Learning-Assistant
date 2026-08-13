@@ -37,8 +37,8 @@ var (
 // runDeepSeekChat is deliberately provider-agnostic at this layer. The
 // production implementation is registered by the OpenAI SDK adapter, keeping
 // DeepSeek's OpenAI-compatible request and response types out of our models.
-var runDeepSeekChat = func(context.Context, string, string, string, []models.AIChatMessage, string) (string, string, error) {
-	return "", "", ErrDeepSeekClientUnavailable
+var runDeepSeekChat = func(context.Context, string, string, string, []models.AIChatMessage, string) (string, string, bool, error) {
+	return "", "", false, ErrDeepSeekClientUnavailable
 }
 
 type aiStudyContext struct {
@@ -91,7 +91,7 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, aiRequestTimeout)
 	defer cancel()
-	answer, model, err := runDeepSeekChat(requestCtx, apiKey, modelName, aiSystemPrompt(studyContext.prompt), normalizeAIHistory(request.History), message)
+	answer, model, incomplete, err := runDeepSeekChat(requestCtx, apiKey, modelName, aiSystemPrompt(studyContext.prompt), normalizeAIHistory(request.History), message)
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
@@ -99,7 +99,7 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	if answer == "" {
 		return models.AIChatResponse{}, fmt.Errorf("DeepSeek 没有返回可显示的内容，请重试")
 	}
-	return models.AIChatResponse{Answer: answer, Model: model, Sources: studyContext.sources}, nil
+	return models.AIChatResponse{Answer: answer, Model: model, Sources: studyContext.sources, Incomplete: incomplete}, nil
 }
 
 func newAILibraryScope(request models.AIChatRequest) (aiLibraryScope, error) {

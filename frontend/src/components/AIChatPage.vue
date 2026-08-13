@@ -1,7 +1,7 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { Bot, BookOpenText, CornerDownLeft, FileText, Folder, Lightbulb, LoaderCircle, RefreshCw, Settings2, Sparkles, X } from "lucide-vue-next"
+import { Bot, BookOpenText, ChevronDown, CornerDownLeft, FileText, Folder, Lightbulb, LoaderCircle, RefreshCw, Settings2, Sparkles, X } from "lucide-vue-next"
 import { api } from "../api/index.js"
 import { useToast } from "../store/toast.js"
 import MarkdownRenderer from "./MarkdownRenderer.vue"
@@ -15,11 +15,13 @@ const composer = ref("")
 const messages = ref([])
 const sending = ref(false)
 const configured = ref(null)
+const conversationReady = ref(false)
 const messageList = ref(null)
 const folderOptions = ref([])
 const folderOptionsLoading = ref(false)
 const selectedFolderID = ref(readPositiveID(route.query.folder))
 const folderSelection = ref(selectedFolderID.value)
+const folderMenuOpen = ref(false)
 const selectedItemIDs = ref(readPositiveIDs(route.query.items))
 const selectedItems = ref([])
 
@@ -28,8 +30,11 @@ const quickPrompts = [
   "根据我的错题和笔记，列出 3 个薄弱知识点与行动建议。",
   "帮我根据当前资料和每日目标，制定一个 30 分钟学习计划。",
 ]
-const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && configured.value === true)
+const continueInstruction = "请从你上一条回答结束的位置直接继续。不要重复任何已经输出的内容，保持原有格式，并完成剩余内容。"
+const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && configured.value === true && conversationReady.value)
 const selectedFolder = computed(() => folderOptions.value.find((folder) => folder.id === selectedFolderID.value) || null)
+const selectedFolderOption = computed(() => folderOptions.value.find((folder) => folder.id === readPositiveID(folderSelection.value)) || null)
+const selectedFolderLabel = computed(() => selectedFolderOption.value?.path || "整个资料库")
 const hasScopedContext = computed(() => selectedFolderID.value !== null || selectedItemIDs.value.length > 0)
 const scopeSummary = computed(() => {
   const parts = []
@@ -55,13 +60,37 @@ function scrollToLatest() {
   })
 }
 
-function resetConversation() {
-  messages.value = []
-  composer.value = ""
+async function resetConversation() {
+  if (sending.value || !messages.value.length) {
+    composer.value = ""
+    return
+  }
+  try {
+    await api.clearAIConversation()
+    messages.value = []
+    composer.value = ""
+    toast.success("已开始新的对话")
+  } catch (error) {
+    toast.error(error.message || "对话清除失败，请重试")
+  }
 }
 
 function setQuickPrompt(value) {
   composer.value = value
+}
+
+function chooseFolder(folderID) {
+  folderSelection.value = folderID
+  folderMenuOpen.value = false
+}
+
+function closeFolderMenu(event) {
+  const target = event.target instanceof Element ? event.target : null
+  if (!target?.closest(".ai-path-combobox")) folderMenuOpen.value = false
+}
+
+function closeFolderMenuOnEscape(event) {
+  if (event.key === "Escape") folderMenuOpen.value = false
 }
 
 async function syncScopeQuery() {
@@ -120,6 +149,7 @@ async function loadSelectedItems() {
 
 async function applyFolderScope() {
   selectedFolderID.value = readPositiveID(folderSelection.value)
+  folderMenuOpen.value = false
   await syncScopeQuery()
   toast.success(selectedFolderID.value ? `已索引路径：${selectedFolder.value?.path || "所选文件夹"}` : "已恢复为整个资料库")
 }
@@ -146,6 +176,42 @@ function historyForRequest() {
     .map((message) => ({ role: message.role, content: message.content }))
 }
 
+function persistableMessages() {
+  return messages.value
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+      scope: message.scope || "",
+      model: message.model || "",
+      sources: message.sources || [],
+      incomplete: Boolean(message.incomplete),
+    }))
+}
+
+async function saveConversation() {
+  try {
+    await api.saveAIConversation(persistableMessages())
+  } catch (error) {
+    toast.warning(error.message || "本次对话暂未保存")
+  }
+}
+
+async function loadConversation() {
+  try {
+    const result = await api.getAIConversation()
+    const restored = (result.messages || [])
+      .filter((message) => message?.role === "user" || message?.role === "assistant")
+      .map((message, index) => ({ ...message, id: `saved-${Date.now()}-${index}` }))
+    messages.value = restored
+    if (restored.length) scrollToLatest()
+  } catch (error) {
+    toast.warning(error.message || "无法恢复已保存的对话")
+  } finally {
+    conversationReady.value = true
+  }
+}
+
 async function send() {
   const content = composer.value.trim()
   if (!content || sending.value) return
@@ -156,13 +222,37 @@ async function send() {
   composer.value = ""
   sending.value = true
   scrollToLatest()
+  let shouldSaveConversation = false
   try {
     const result = await api.aiChat({ message: content, history, folder_id: selectedFolderID.value, item_ids: selectedItemIDs.value })
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [] })
+    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
+    shouldSaveConversation = true
   } catch (error) {
     const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
     if (needsSetup) configured.value = false
     messages.value.push({ id: `error-${Date.now()}`, role: "error", content: error.message || "AI 暂时无法回答，请稍后重试。", setup: needsSetup })
+  } finally {
+    sending.value = false
+    if (shouldSaveConversation) await saveConversation()
+    scrollToLatest()
+  }
+}
+
+async function continueGeneration(message) {
+  if (!message?.incomplete || sending.value || configured.value !== true) return
+  const history = historyForRequest()
+  sending.value = true
+  scrollToLatest()
+  try {
+    const result = await api.aiChat({ message: continueInstruction, history, folder_id: selectedFolderID.value, item_ids: selectedItemIDs.value })
+    const messageIndex = messages.value.findIndex((item) => item.id === message.id)
+    if (messageIndex >= 0) messages.value[messageIndex] = { ...messages.value[messageIndex], incomplete: false }
+    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
+    await saveConversation()
+  } catch (error) {
+    const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
+    if (needsSetup) configured.value = false
+    toast.error(error.message || "继续生成失败，请重试")
   } finally {
     sending.value = false
     scrollToLatest()
@@ -189,12 +279,19 @@ function openSource(source) {
 }
 
 onMounted(async () => {
+  document.addEventListener("pointerdown", closeFolderMenu)
+  document.addEventListener("keydown", closeFolderMenuOnEscape)
   try {
     configured.value = Boolean((await api.getDeepSeekToken()).configured)
   } catch {
     configured.value = false
   }
-  await Promise.all([loadFolderOptions(), loadSelectedItems()])
+  await Promise.all([loadConversation(), loadFolderOptions(), loadSelectedItems()])
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", closeFolderMenu)
+  document.removeEventListener("keydown", closeFolderMenuOnEscape)
 })
 
 watch(() => route.query, async () => {
@@ -210,8 +307,8 @@ watch(() => route.query, async () => {
 
 <template>
   <div class="ai-chat-page page-stage">
-    <PageHeader eyebrow="资料库智能分析" title="AI 学习助手" description="让 DeepSeek 基于可读笔记、Office 文本、错题与学习进度给出建议。">
-      <template #actions><BaseButton @click="resetConversation"><template #icon><RefreshCw :size="16" /></template>新对话</BaseButton></template>
+    <PageHeader eyebrow="资料库智能分析" title="AI 学习助手" description="让 DeepSeek 基于可读笔记、Office 文本、错题与学习进度给出建议；对话会自动保存。">
+      <template #actions><BaseButton :disabled="sending || !conversationReady" @click="resetConversation"><template #icon><RefreshCw :size="16" /></template>新对话</BaseButton></template>
     </PageHeader>
 
     <section v-if="configured === false" class="ai-setup-callout">
@@ -221,7 +318,11 @@ watch(() => route.query, async () => {
 
     <section class="ai-context-picker paper-panel" aria-label="AI 资料范围">
       <div class="ai-context-picker__head"><div><Folder :size="20" /><div><strong>索引资料库路径</strong><p>选择路径后，AI 只会阅读该目录及其下的可读文件；也可叠加从资料库转发的文件。</p></div></div><button v-if="hasScopedContext" type="button" class="ai-context-picker__clear" @click="clearScopedContext"><X :size="15" />清除范围</button></div>
-      <div class="ai-context-picker__controls"><label><span>资料路径</span><select v-model="folderSelection" :disabled="folderOptionsLoading"><option :value="null">整个资料库</option><option v-for="folder in folderOptions" :key="folder.id" :value="folder.id">{{ folder.path }}</option></select></label><BaseButton :disabled="folderOptionsLoading" @click="applyFolderScope"><template #icon><Folder :size="16" /></template>{{ selectedFolderID === readPositiveID(folderSelection) ? (selectedFolderID ? '已索引' : '使用整个库') : '索引路径' }}</BaseButton><span class="ai-context-picker__status">当前：{{ scopeSummary }}</span></div>
+      <div class="ai-context-picker__controls">
+        <div class="ai-context-picker__field"><span id="ai-path-label">资料路径</span><div class="ai-path-combobox"><button type="button" class="ai-path-combobox__trigger" aria-labelledby="ai-path-label" aria-haspopup="listbox" :aria-expanded="folderMenuOpen" :disabled="folderOptionsLoading" @click="folderMenuOpen = !folderMenuOpen"><span>{{ selectedFolderLabel }}</span><ChevronDown :size="18" :class="{ 'is-open': folderMenuOpen }" /></button><div v-if="folderMenuOpen" class="ai-path-combobox__menu" role="listbox" aria-labelledby="ai-path-label"><button type="button" role="option" :aria-selected="folderSelection === null" @click="chooseFolder(null)"><span>整个资料库</span><small>不限定路径</small></button><button v-for="folder in folderOptions" :key="folder.id" type="button" role="option" :aria-selected="readPositiveID(folderSelection) === folder.id" @click="chooseFolder(folder.id)"><span>{{ folder.path }}</span></button></div></div></div>
+        <BaseButton class="ai-context-picker__apply" :disabled="folderOptionsLoading" @click="applyFolderScope"><template #icon><Folder :size="16" /></template>{{ selectedFolderID === readPositiveID(folderSelection) ? (selectedFolderID ? '已索引' : '使用整个库') : '索引路径' }}</BaseButton>
+        <span class="ai-context-picker__status">当前：{{ scopeSummary }}</span>
+      </div>
       <div v-if="selectedItems.length" class="ai-context-picker__items"><span>已从资料库转发</span><button v-for="item in selectedItems" :key="item.id" type="button" @click="removeSelectedItem(item.id)"><FileText :size="14" />{{ item.name }}<X :size="13" /></button></div>
     </section>
 
@@ -245,6 +346,7 @@ watch(() => route.query, async () => {
               <p v-else>{{ message.content }}</p>
               <small v-if="message.scope" class="ai-message__scope">{{ message.scope }}</small>
               <div v-if="message.sources?.length" class="ai-message__sources"><span>本次参考</span><button v-for="source in message.sources" :key="`${source.source_type}-${source.id}`" type="button" @click="openSource(source)">{{ source.source_type === 'error' ? '错题' : '资料' }} · {{ source.title }}</button></div>
+              <div v-if="message.incomplete" class="ai-message__continuation"><span>回答达到长度上限，可能尚未完成。</span><button type="button" :disabled="sending || configured !== true" @click="continueGeneration(message)">继续生成</button></div>
               <button v-if="message.setup" type="button" class="ai-message__setup" @click="openSettings">去配置 DeepSeek</button>
               <small v-if="message.model">{{ message.model }}</small>
             </div>
