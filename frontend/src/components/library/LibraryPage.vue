@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { ArchiveRestore, ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tag, Trash2, Upload } from "lucide-vue-next"
+import { ArchiveRestore, ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, File, FileText, Folder, Forward, Grid2X2, List, MoreVertical, Plus, Search, Tag, Trash2, Upload } from "lucide-vue-next"
 import { api } from "../../api/index.js"
 import { useToast } from "../../store/toast.js"
 import { rememberLibraryPath } from "../../utils/libraryPath.js"
@@ -16,6 +16,7 @@ const globalResults = ref([]); const globalSearching = ref(false)
 const currentFolder = ref(null); const breadcrumbs = ref([]); const selected = ref(new Set()); const menuId = ref(null); const fileInput = ref(null)
 const dialog = ref(""); const formName = ref(""); const formTags = ref(""); const formReview = ref(false); const editing = ref(null); const busy = ref(false); const deleting = ref(false)
 const batchPurgeOpen = ref(false)
+const forwardMenuOpen = ref(false); const forwardFolderOptions = ref([]); const forwardFoldersLoading = ref(false); const forwarding = ref(false)
 const notePreviews = ref({}); const previewLoading = ref(new Set()); const previewErrors = ref(new Set())
 const activeFilter = ref("")
 const ctrlHeld = ref(false)
@@ -178,8 +179,19 @@ async function upload(event) {
 
 // dropOnFolder 协调当前组件的状态和交互。
 async function dropOnFolder(event, target) {
-  const id = Number(event.dataTransfer.getData("text/library-item")); if (!id || target.kind !== "folder") return
-  try { await api.updateLibraryItem(id,{ parent_id:target.id, conflict:"keep_both" }); toast.success(`已移动到 ${target.name}`); await load() } catch(e){ toast.error(e.message) }
+  if (target.kind !== "folder") return
+  let ids = []
+  try { ids = JSON.parse(event.dataTransfer.getData("application/x-library-item-ids") || "[]") } catch { ids = [] }
+  if (!Array.isArray(ids) || !ids.length) {
+    const id = Number(event.dataTransfer.getData("text/library-item")); if (id) ids = [id]
+  }
+  await forwardSelectedToFolder(target.id, ids)
+}
+function startDrag(event, item) {
+  const ids = selected.value.has(item.id) ? [...selected.value] : [item.id]
+  event.dataTransfer.effectAllowed = "move"
+  event.dataTransfer.setData("application/x-library-item-ids", JSON.stringify(ids))
+  event.dataTransfer.setData("text/library-item", String(item.id))
 }
 // toggleSelected 协调当前组件的状态和交互。
 function toggleSelected(id) { const next=new Set(selected.value); next.has(id)?next.delete(id):next.add(id); selected.value=next }
@@ -197,6 +209,63 @@ function sendSelectedToAI() {
   if (!ids.length) return
   router.push({ name: "ai", query: { items: ids.join(",") } })
 }
+async function loadForwardFolderOptions() {
+  if (forwardFoldersLoading.value || forwardFolderOptions.value.length) return
+  forwardFoldersLoading.value = true
+  const folders = []; const seen = new Set()
+  try {
+    async function visit(parentID, parentPath) {
+      const result = await api.getLibraryItems({ parentId: parentID, kind: "folder" })
+      const children = [...(result.items || [])].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "zh-CN"))
+      for (const folder of children) {
+        if (!folder?.id || seen.has(folder.id)) continue
+        seen.add(folder.id)
+        const path = parentPath ? `${parentPath} / ${folder.name}` : folder.name
+        folders.push({ id: folder.id, path })
+        await visit(folder.id, path)
+      }
+    }
+    await visit(null, "")
+    forwardFolderOptions.value = folders
+  } catch (error) { toast.error(error.message || "目标路径读取失败") }
+  finally { forwardFoldersLoading.value = false }
+}
+async function toggleForwardMenu() {
+  forwardMenuOpen.value = !forwardMenuOpen.value
+  if (forwardMenuOpen.value && !props.trash) await loadForwardFolderOptions()
+}
+async function forwardSelectedToFolder(parentID, providedIDs) {
+  const ids = Array.isArray(providedIDs) ? providedIDs : [...selected.value]
+  if (!ids.length || forwarding.value) return
+  forwarding.value = true
+  try {
+    await api.batchLibraryItems("move", ids, parentID)
+    const destination = forwardFolderOptions.value.find((folder) => folder.id === parentID)?.path || "所选文件夹"
+    selected.value = new Set()
+    forwardMenuOpen.value = false
+    toast.success(`已转发 ${ids.length} 项到 ${destination}`)
+    await load()
+  } catch (error) { toast.error(error.message || "移动资料失败") }
+  finally { forwarding.value = false }
+}
+async function forwardSelectedToAI() {
+  if (!selected.value.size || forwarding.value) return
+  forwardMenuOpen.value = false
+  sendSelectedToAI()
+}
+async function forwardSelectedToTrash() {
+  if (!selected.value.size || forwarding.value) return
+  forwarding.value = true
+  try {
+    await api.batchLibraryItems("trash", [...selected.value])
+    const count = selected.value.size
+    selected.value = new Set()
+    forwardMenuOpen.value = false
+    toast.success(`已转发 ${count} 项到回收站`)
+    await load()
+  } catch (error) { toast.error(error.message || "移入回收站失败") }
+  finally { forwarding.value = false }
+}
 // setView 协调当前组件的状态和交互。
 function setView(next) { view.value=next; localStorage.setItem("libraryView",next) }
 // toggleFilter 协调当前组件的状态和交互。
@@ -209,12 +278,12 @@ function selectSortOption(field) { const direction = sortField.value === field ?
 // filterByTag 将卡片标签转换为当前资料库范围内的可分享筛选条件。
 function filterByTag(value) { const next = String(value || ""); tag.value = next; const nextQuery = { ...route.query }; if (next) nextQuery.tag = next; else delete nextQuery.tag; void router.push({ name: props.trash ? "trash" : "library", params: folderId.value ? { folderId: folderId.value } : {}, query: nextQuery }) }
 // closeOverlays 点击筛选器或操作菜单之外时，统一收起浮层。
-function closeOverlays(event) { const target = event.target instanceof Element ? event.target : null; if (!target?.closest(".library-filter")) activeFilter.value = ""; if (!target?.closest(".library-menu, .library-more")) menuId.value = null }
+function closeOverlays(event) { const target = event.target instanceof Element ? event.target : null; if (!target?.closest(".library-filter")) activeFilter.value = ""; if (!target?.closest(".library-menu, .library-more")) menuId.value = null; if (!target?.closest(".library-forward-control")) forwardMenuOpen.value = false }
 function syncCtrlHeld(event) { ctrlHeld.value = event.ctrlKey }
 function clearCtrlHeld() { ctrlHeld.value = false }
 let searchTimer
 watch(()=>route.query.tag,(value)=>{tag.value=String(value||"")})
-watch([query,kind,tag,folderId,()=>props.trash],()=>{selected.value=new Set();batchPurgeOpen.value=false;clearTimeout(searchTimer);searchTimer=setTimeout(load,250)})
+watch([query,kind,tag,folderId,()=>props.trash],()=>{selected.value=new Set();batchPurgeOpen.value=false;forwardMenuOpen.value=false;clearTimeout(searchTimer);searchTimer=setTimeout(load,250)})
 watch([folderId,()=>props.trash],([nextFolderId,isTrash])=>{if(!isTrash)rememberLibraryPath(nextFolderId)},{immediate:true})
 onMounted(() => { load(); document.addEventListener("pointerdown", closeOverlays); document.addEventListener("keydown", syncCtrlHeld); document.addEventListener("keyup", syncCtrlHeld); window.addEventListener("blur", clearCtrlHeld) })
 onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOverlays); document.removeEventListener("keydown", syncCtrlHeld); document.removeEventListener("keyup", syncCtrlHeld); window.removeEventListener("blur", clearCtrlHeld) })
@@ -244,11 +313,11 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOverlay
       <button v-for="result in globalResults.slice(0, 8)" :key="`${result.source_type}-${result.id}`" type="button" @click="openGlobalResult(result)"><span class="learning-search-results__kind">{{ result.source_type === 'error' ? '错题' : '资料' }}</span><span><strong>{{ result.title }}</strong><small>{{ result.subtitle || result.match_field }}{{ result.snippet ? ` · ${result.snippet}` : '' }}</small></span></button>
     </section>
 
-    <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="!props.trash" class="lib-btn lib-btn--primary" :disabled="deleting" @click="sendSelectedToAI"><Bot :size="16"/>发送给 AI 助手</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="requestBatch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>
+    <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting || forwarding"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting || forwarding" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><div v-if="!props.trash" class="library-forward-control"><button type="button" class="lib-btn lib-btn--primary" :disabled="deleting || forwarding" :aria-expanded="forwardMenuOpen" aria-haspopup="menu" @click="toggleForwardMenu"><Forward :size="16"/>转发给<ChevronDown :size="15"/></button><section v-if="forwardMenuOpen" class="library-forward-menu" role="menu" aria-label="转发给"><header><strong>转发 {{ selected.size }} 项到</strong><small>移动可拖到文件夹，或在此选择目标</small></header><button type="button" role="menuitem" :disabled="forwarding" @click="forwardSelectedToAI"><Bot :size="16"/><span>AI 助手</span><small>带入新对话</small></button><button type="button" role="menuitem" class="is-danger" :disabled="forwarding" @click="forwardSelectedToTrash"><Trash2 :size="16"/><span>回收站</span><small>30 天内可恢复</small></button><div class="library-forward-menu__folders"><span><Folder :size="15"/>资料库路径</span><button type="button" role="menuitem" :disabled="forwarding" @click="forwardSelectedToFolder(null)"><span>资料库根目录</span></button><p v-if="forwardFoldersLoading">正在读取路径…</p><button v-for="folder in forwardFolderOptions" :key="folder.id" type="button" role="menuitem" :disabled="forwarding" @click="forwardSelectedToFolder(folder.id)"><span>{{ folder.path }}</span></button></div></section></div><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('purge')"><Trash2 :size="16"/>{{deleting?'删除中…':'永久删除'}}</button><button class="lib-btn" :disabled="deleting || forwarding" @click="selected=new Set()">取消选择</button></section>
     <div v-if="loading" class="library-loading" role="status" aria-live="polite">加载中</div>
     <section v-else-if="items.length" class="library-items" :class="`library-items--${view}`" aria-label="资料列表">
       <article v-for="(item, index) in sortedItems" :key="item.id" class="library-card" :class="{selected:selected.has(item.id),'is-previewable':item.kind==='note','has-menu':menuId===item.id,'is-flip-locked':ctrlHeld}" :style="{'--library-card-enter-delay': `${Math.min(index, 5) * 20}ms`}" draggable="true" tabindex="0" @contextmenu.prevent="menuId=item.id" @mouseenter="loadNotePreview(item)"
-        @click="openOrSelect(item)" @dragstart="$event.dataTransfer.setData('text/library-item',String(item.id))" @dragover.prevent @drop="dropOnFolder($event,item)" @keydown.enter="openOrSelect(item)">
+        @click="openOrSelect(item)" @dragstart="startDrag($event,item)" @dragover.prevent @drop="dropOnFolder($event,item)" @keydown.enter="openOrSelect(item)">
         <div class="library-card__flip">
           <div class="library-card__face library-card__front">
             <div class="library-card__utility"><input type="checkbox" :checked="selected.has(item.id)" :aria-label="`选择 ${item.name}`" @click.stop="toggleSelected(item.id)"/>

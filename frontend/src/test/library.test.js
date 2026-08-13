@@ -177,7 +177,7 @@ describe("personal library", () => {
     expect(wrapper.find(".library-selection-bar").exists()).toBe(false)
   })
 
-  it("forwards checked library items to the AI assistant", async () => {
+  it("forwards checked library items through the unified destination control", async () => {
     vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[
       {id:31,kind:"note",name:"导数笔记",updated_at:"2026-08-02"},
       {id:32,kind:"file",name:"极限讲义.pdf",updated_at:"2026-08-02"},
@@ -186,10 +186,33 @@ describe("personal library", () => {
     await router.push("/library");await router.isReady()
     const wrapper=mount(LibraryPage,{global:{plugins:[router],stubs:{BaseDialog:true}}});await flushPromises()
     await wrapper.findAll('input[type="checkbox"]')[0].trigger("click")
-    await wrapper.get(".library-selection-bar .lib-btn--primary").trigger("click")
+    await wrapper.get(".library-forward-control .lib-btn--primary").trigger("click")
+    await flushPromises()
+    const aiTarget=wrapper.findAll('[role="menuitem"]').find((button)=>button.text().includes("AI 助手"))
+    await aiTarget.trigger("click")
     await flushPromises()
     expect(router.currentRoute.value.name).toBe("ai")
     expect(router.currentRoute.value.query.items).toBe("31")
+  })
+
+  it("moves every selected item through a single destination choice", async () => {
+    vi.spyOn(api,"getLibraryItems").mockImplementation(({kind,parentId})=>Promise.resolve({items:kind==="folder"?(parentId==null?[{id:77,kind:"folder",name:"归档",updated_at:"2026-08-02"}]:[]):[
+      {id:41,kind:"note",name:"笔记一.md",updated_at:"2026-08-02"},
+      {id:42,kind:"file",name:"讲义.pdf",updated_at:"2026-08-02"},
+      {id:77,kind:"folder",name:"归档",updated_at:"2026-08-02"},
+    ]}))
+    const move=vi.spyOn(api,"batchLibraryItems").mockResolvedValue({})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/:folderId?",name:"library",component:LibraryPage},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
+    await router.push("/library");await router.isReady()
+    const wrapper=mount(LibraryPage,{global:{plugins:[router],stubs:{BaseDialog:true}}});await flushPromises()
+    await wrapper.get('[aria-label="选择 笔记一.md"]').trigger("click")
+    await wrapper.get('[aria-label="选择 讲义.pdf"]').trigger("click")
+    await wrapper.get(".library-forward-control .lib-btn--primary").trigger("click")
+    await flushPromises()
+    const folderTarget=wrapper.findAll('[role="menuitem"]').find((button)=>button.text().includes("归档"))
+    await folderTarget.trigger("click")
+    await flushPromises()
+    expect(move).toHaveBeenCalledWith("move",[41,42],77)
   })
 
   it("syntax-highlights fenced code without exposing raw HTML", () => {
