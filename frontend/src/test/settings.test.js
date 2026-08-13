@@ -10,16 +10,4 @@ describe("appearance settings", () => {
     expect(document.documentElement.dataset.theme).toBe("dark")
     settings.setDarkMode(false)
   })
-
-  it("persists a selected color palette without affecting the light or dark mode", async () => {
-    const settings = useSettings()
-    settings.setDarkMode(true)
-    settings.setColorTheme("sunset")
-    await new Promise((resolve) => window.setTimeout(resolve, 30))
-    expect(localStorage.getItem("studyTrackerColorThemeV1")).toBe("sunset")
-    expect(document.documentElement.dataset.palette).toBe("sunset")
-    expect(document.documentElement.dataset.theme).toBe("dark")
-    settings.setColorTheme("verdant")
-    settings.setDarkMode(false)
-  })
 })

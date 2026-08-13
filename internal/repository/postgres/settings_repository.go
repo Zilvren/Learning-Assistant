@@ -35,10 +35,12 @@ func (r *SettingsRepository) Load(ctx context.Context) (models.Config, error) {
 		var extra struct {
 			DailyGoal     models.DailyGoalSettings `json:"daily_goal"`
 			DeepSeekToken string                   `json:"deepseek_token"`
+			DeepSeekModel string                   `json:"deepseek_model"`
 		}
 		if json.Unmarshal(settings, &extra) == nil {
 			config.DailyGoal = extra.DailyGoal
 			config.DeepSeekToken, err = base.OpenSecret(extra.DeepSeekToken)
+			config.DeepSeekModel = extra.DeepSeekModel
 		}
 	}
 	return config, err
@@ -57,7 +59,8 @@ func (r *SettingsRepository) Save(ctx context.Context, config models.Config) err
 	settings, err := json.Marshal(struct {
 		DailyGoal     models.DailyGoalSettings `json:"daily_goal"`
 		DeepSeekToken string                   `json:"deepseek_token"`
-	}{DailyGoal: config.DailyGoal, DeepSeekToken: sealedDeepSeekToken})
+		DeepSeekModel string                   `json:"deepseek_model"`
+	}{DailyGoal: config.DailyGoal, DeepSeekToken: sealedDeepSeekToken, DeepSeekModel: config.DeepSeekModel})
 	if err != nil {
 		return err
 	}

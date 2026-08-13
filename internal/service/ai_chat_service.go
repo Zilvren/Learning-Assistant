@@ -21,18 +21,21 @@ const (
 	aiMaxContextRunes    = 24_000
 	aiMaxSourceRunes     = 3_200
 	aiRequestTimeout     = 75 * time.Second
-	deepSeekDefaultModel = "deepseek-chat"
+	deepSeekFlashModel   = "deepseek-v4-flash"
+	deepSeekProModel     = "deepseek-v4-pro"
+	deepSeekDefaultModel = deepSeekFlashModel
 )
 
 var (
 	ErrDeepSeekClientUnavailable = errors.New("DeepSeek 客户端尚未安装")
 	ErrDeepSeekNotConfigured     = errors.New("请先在设置中心配置 DeepSeek API Key")
+	ErrUnsupportedDeepSeekModel  = errors.New("不支持的 DeepSeek 默认模型")
 )
 
 // runDeepSeekChat is deliberately provider-agnostic at this layer. The
 // production implementation is registered by the OpenAI SDK adapter, keeping
 // DeepSeek's OpenAI-compatible request and response types out of our models.
-var runDeepSeekChat = func(context.Context, string, string, []models.AIChatMessage, string) (string, string, error) {
+var runDeepSeekChat = func(context.Context, string, string, string, []models.AIChatMessage, string) (string, string, error) {
 	return "", "", ErrDeepSeekClientUnavailable
 }
 
@@ -63,13 +66,17 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
+	modelName, err := deepSeekModel(ctx)
+	if err != nil {
+		return models.AIChatResponse{}, err
+	}
 	studyContext, err := buildAIStudyContext(ctx, message)
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, aiRequestTimeout)
 	defer cancel()
-	answer, model, err := runDeepSeekChat(requestCtx, apiKey, aiSystemPrompt(studyContext.prompt), normalizeAIHistory(request.History), message)
+	answer, model, err := runDeepSeekChat(requestCtx, apiKey, modelName, aiSystemPrompt(studyContext.prompt), normalizeAIHistory(request.History), message)
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
@@ -94,11 +101,29 @@ func deepSeekAPIKey(ctx context.Context) (string, error) {
 	return "", ErrDeepSeekNotConfigured
 }
 
-func deepSeekModel() string {
-	if model := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL")); model != "" {
-		return model
+func deepSeekModel(ctx context.Context) (string, error) {
+	config, err := loadConfig(ctx)
+	if err != nil {
+		return "", err
 	}
-	return deepSeekDefaultModel
+	if model := strings.TrimSpace(config.DeepSeekModel); model != "" {
+		return normalizeDeepSeekModel(model)
+	}
+	if model := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL")); model != "" {
+		return model, nil
+	}
+	return deepSeekDefaultModel, nil
+}
+
+func normalizeDeepSeekModel(model string) (string, error) {
+	switch strings.TrimSpace(model) {
+	case deepSeekFlashModel:
+		return deepSeekFlashModel, nil
+	case deepSeekProModel:
+		return deepSeekProModel, nil
+	default:
+		return "", fmt.Errorf("%w：仅支持 %s 或 %s", ErrUnsupportedDeepSeekModel, deepSeekFlashModel, deepSeekProModel)
+	}
 }
 
 func aiSystemPrompt(studyContext string) string {

@@ -119,6 +119,7 @@ type ErrorProblem struct {
 type Config struct {
 	MineruToken   string            `json:"mineru_token"` // OCR 服务的 token
 	DeepSeekToken string            `json:"deepseek_token"`
+	DeepSeekModel string            `json:"deepseek_model"`
 	Username      string            `json:"username"` // 用户名
 	DailyGoal     DailyGoalSettings `json:"daily_goal"`
 }

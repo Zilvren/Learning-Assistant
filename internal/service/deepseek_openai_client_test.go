@@ -22,7 +22,7 @@ func TestChatWithDeepSeekOpenAIUsesCompatibleChatCompletions(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
-		if got := payload["model"]; got != deepSeekDefaultModel {
+		if got := payload["model"]; got != deepSeekProModel {
 			t.Fatalf("unexpected model: %#v", got)
 		}
 		if got := payload["max_tokens"]; got != float64(deepSeekMaxCompletionTokens) {
@@ -44,7 +44,7 @@ func TestChatWithDeepSeekOpenAIUsesCompatibleChatCompletions(t *testing.T) {
 	previousBaseURL := deepSeekBaseURL
 	deepSeekBaseURL = server.URL
 	t.Cleanup(func() { deepSeekBaseURL = previousBaseURL })
-	answer, model, err := chatWithDeepSeekOpenAI(context.Background(), "sk-local-test", "系统约束", []models.AIChatMessage{
+	answer, model, err := chatWithDeepSeekOpenAI(context.Background(), "sk-local-test", deepSeekProModel, "系统约束", []models.AIChatMessage{
 		{Role: "user", Content: "上一轮问题"},
 		{Role: "assistant", Content: "上一轮回答"},
 	}, "新的学习问题")

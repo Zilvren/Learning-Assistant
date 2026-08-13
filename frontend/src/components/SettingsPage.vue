@@ -18,7 +18,7 @@ const router = useRouter()
 const auth = useAuth()
 const settings = useSettings()
 const toast = useToast()
-const { username, darkMode, colorTheme, colorThemes } = settings
+const { username, darkMode } = settings
 const usernameBusy = ref(false)
 const token = ref("")
 const tokenConfigured = ref(false)
@@ -30,6 +30,8 @@ const deepSeekConfigured = ref(false)
 const deepSeekMasked = ref("")
 const deepSeekVisible = ref(false)
 const deepSeekBusy = ref(false)
+const deepSeekModel = ref("deepseek-v4-flash")
+const deepSeekModelBusy = ref(false)
 const ocrTasks = ref([])
 const ocrTasksBusy = ref(false)
 const backupInput = ref(null)
@@ -98,6 +100,7 @@ async function loadDeepSeekToken() {
     const result = await api.getDeepSeekToken()
     deepSeekConfigured.value = result.configured
     deepSeekMasked.value = result.configured ? result.token : ""
+    deepSeekModel.value = result.model || "deepseek-v4-flash"
   } catch (error) { toast.error(error.message || "DeepSeek 配置读取失败") }
 }
 
@@ -122,6 +125,16 @@ async function clearDeepSeekToken() {
     toast.success("DeepSeek API Key 已清除")
   } catch (error) { toast.error(error.message || "API Key 清除失败") }
   finally { deepSeekBusy.value = false }
+}
+
+async function saveDeepSeekModel() {
+  deepSeekModelBusy.value = true
+  try {
+    const result = await api.saveDeepSeekModel(deepSeekModel.value)
+    deepSeekModel.value = result.model || deepSeekModel.value
+    toast.success("默认 DeepSeek 模型已保存")
+  } catch (error) { toast.error(error.message || "模型保存失败") }
+  finally { deepSeekModelBusy.value = false }
 }
 
 function formatTaskTime(value) {
@@ -304,24 +317,6 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
             <button type="button" :class="{ active: !darkMode }" @click="settings.setDarkMode(false)"><Sun :size="22" /><strong>明亮模式</strong><span>清爽浅色学习空间</span></button>
             <button type="button" :class="{ active: darkMode }" @click="settings.setDarkMode(true)"><Moon :size="22" /><strong>深色模式</strong><span>低干扰夜间学习</span></button>
           </div>
-          <div class="appearance-palette">
-            <div class="appearance-palette__heading"><strong>配色方案</strong><span>不改变页面模板，只替换全局颜色。</span></div>
-            <div class="palette-choice" role="radiogroup" aria-label="配色方案">
-              <button
-                v-for="palette in colorThemes"
-                :key="palette.id"
-                type="button"
-                role="radio"
-                :aria-checked="colorTheme === palette.id"
-                :class="{ active: colorTheme === palette.id }"
-                @click="settings.setColorTheme(palette.id)"
-              >
-                <span class="palette-choice__swatch" :class="`palette-choice__swatch--${palette.id}`" aria-hidden="true" />
-                <strong>{{ palette.emoji }} {{ palette.name }}</strong>
-                <small>{{ palette.description }}</small>
-              </button>
-            </div>
-          </div>
         </section>
 
         <section id="backup" class="settings-section paper-panel">
@@ -351,7 +346,8 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
           <header><span>05</span><div><h2>AI 学习助手</h2><p>使用 DeepSeek 的 OpenAI 兼容接口分析资料库中的可读内容；密钥只保存在后端。</p></div><Bot :size="21" /></header>
           <div v-if="deepSeekConfigured" class="token-status"><span class="status-chip status-chip--success">已配置</span><code>{{ deepSeekVisible ? deepSeekMasked : '••••••••••••' }}</code><button type="button" :aria-label="deepSeekVisible ? '隐藏 API Key 掩码' : '显示 API Key 掩码'" @click="deepSeekVisible = !deepSeekVisible"><component :is="deepSeekVisible ? EyeOff : Eye" :size="16" /></button></div>
           <div class="setting-control-row"><label><span class="field-label">{{ deepSeekConfigured ? '替换 DeepSeek API Key' : 'DeepSeek API Key' }}</span><input v-model="deepSeekToken" class="field-control" type="password" :placeholder="deepSeekConfigured ? '粘贴新 API Key' : '粘贴 API Key 后保存'" autocomplete="off" /></label><BaseButton :busy="deepSeekBusy" @click="saveDeepSeekToken">保存连接</BaseButton><BaseButton v-if="deepSeekConfigured" variant="quiet-danger" :busy="deepSeekBusy" @click="clearDeepSeekToken">清除</BaseButton></div>
-          <p class="settings-ai-note">聊天只会发送与当前问题相关的笔记正文、可预览 Office 文本、错题摘要和学习统计；图片、PDF 原文件不会直接上传。</p>
+          <div class="setting-control-row"><label><span class="field-label">默认 DeepSeek 模型</span><select v-model="deepSeekModel" class="field-control" :disabled="deepSeekModelBusy"><option value="deepseek-v4-flash">deepseek-v4-flash（更快）</option><option value="deepseek-v4-pro">deepseek-v4-pro（更强）</option></select></label><BaseButton :busy="deepSeekModelBusy" @click="saveDeepSeekModel">保存模型</BaseButton></div>
+          <p class="settings-ai-note">聊天只会发送与当前问题相关的笔记正文、可预览 Office 文本、错题摘要和学习统计；图片、PDF 原文件不会直接上传。模型设置优先于部署时的 <code>DEEPSEEK_MODEL</code>。</p>
         </section>
 
         <section v-if="updateEnabled" id="updates" class="settings-section paper-panel">

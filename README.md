@@ -126,7 +126,7 @@ go run .
 2. 打开应用“设置” → “AI 学习助手”，粘贴并保存 Key。
 3. 从侧栏进入“AI 助手”即可开始聊天。
 
-Key 会加密存储，页面只显示是否已配置。也可以通过环境变量 `DEEPSEEK_API_KEY` 提供 Key；可选 `DEEPSEEK_MODEL` 指定模型，默认是 `deepseek-chat`。
+Key 会加密存储，页面只显示是否已配置。设置页可选择 `deepseek-v4-flash`（默认、更快）或 `deepseek-v4-pro`（更强）；已保存的选择优先于环境变量 `DEEPSEEK_MODEL`。也可以通过环境变量 `DEEPSEEK_API_KEY` 提供 Key。
 
 ## OCR 配置
 

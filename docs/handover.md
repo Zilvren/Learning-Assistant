@@ -237,7 +237,7 @@ docker compose -f deploy/docker-compose.yml ps
 | `TRACKER_PUBLIC_URL` | 邮件验证链接使用的 HTTPS 公网地址 |
 | `TRACKER_SMTP_*` | SMTP 主机、端口、账号、授权码、发件人和 TLS 模式 |
 | `DEEPSEEK_API_KEY` | AI 学习助手的可选环境变量 Key；设置页保存的加密 Key 优先 |
-| `DEEPSEEK_MODEL` | 可选模型名，默认 `deepseek-chat` |
+| `DEEPSEEK_MODEL` | 可选模型名；设置页未保存选择时生效，默认 `deepseek-v4-flash` |
 | `GIN_MODE` | 生产使用 `release` |
 
 安全要求：

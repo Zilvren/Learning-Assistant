@@ -11,6 +11,7 @@ type TokenInfo struct {
 	Token      string `json:"token"`
 	Configured bool   `json:"configured"`
 	Username   string `json:"username"`
+	Model      string `json:"model,omitempty"`
 }
 
 // GetTokenInfo 在业务层中读取并整理所需数据。
@@ -66,7 +67,11 @@ func GetDeepSeekTokenInfo(ctx context.Context) (*TokenInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TokenInfo{Token: maskToken(config.DeepSeekToken), Configured: strings.TrimSpace(config.DeepSeekToken) != ""}, nil
+	modelName, err := deepSeekModel(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenInfo{Token: maskToken(config.DeepSeekToken), Configured: strings.TrimSpace(config.DeepSeekToken) != "", Model: modelName}, nil
 }
 
 func SetDeepSeekToken(ctx context.Context, token string) error {
@@ -89,6 +94,22 @@ func ClearDeepSeekToken(ctx context.Context) error {
 	}
 	config.DeepSeekToken = ""
 	return saveConfig(ctx, config)
+}
+
+func SetDeepSeekModel(ctx context.Context, modelName string) (string, error) {
+	modelName, err := normalizeDeepSeekModel(modelName)
+	if err != nil {
+		return "", err
+	}
+	config, err := loadConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	config.DeepSeekModel = modelName
+	if err := saveConfig(ctx, config); err != nil {
+		return "", err
+	}
+	return modelName, nil
 }
 
 func maskToken(value string) string {

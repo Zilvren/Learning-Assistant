@@ -28,7 +28,7 @@ func init() {
 // chatWithDeepSeekOpenAI calls DeepSeek through its OpenAI-compatible Chat
 // Completions endpoint. Request and response shapes are owned by openai-go rather
 // than being duplicated as provider-specific application structs.
-func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, systemPrompt string, history []models.AIChatMessage, message string) (string, string, error) {
+func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, modelName, systemPrompt string, history []models.AIChatMessage, message string) (string, string, error) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(history)+2)
 	messages = append(messages, openai.SystemMessage(systemPrompt))
 	for _, item := range history {
@@ -49,7 +49,7 @@ func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, systemPrompt string, hi
 		option.WithMaxRetries(0),
 	)
 	completion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model:     deepSeekModel(),
+		Model:     modelName,
 		Messages:  messages,
 		MaxTokens: openai.Int(deepSeekMaxCompletionTokens),
 	})
@@ -65,7 +65,7 @@ func chatWithDeepSeekOpenAI(ctx context.Context, apiKey, systemPrompt string, hi
 	}
 	model := strings.TrimSpace(completion.Model)
 	if model == "" {
-		model = deepSeekModel()
+		model = modelName
 	}
 	return answer, model, nil
 }

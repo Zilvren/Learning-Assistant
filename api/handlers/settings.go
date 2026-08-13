@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -73,6 +74,26 @@ func DeleteDeepSeekToken(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "DeepSeek API Key cleared"})
+}
+
+func SetDeepSeekModel(c *gin.Context) {
+	var body struct {
+		Model string `json:"model"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
+		return
+	}
+	modelName, err := service.SetDeepSeekModel(c.Request.Context(), body.Model)
+	if err != nil {
+		if errors.Is(err, service.ErrUnsupportedDeepSeekModel) {
+			respondProblem(c, http.StatusBadRequest, "invalid_model", err.Error())
+		} else {
+			respondError(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "DeepSeek model saved", "model": modelName})
 }
 
 // SetUsername 在HTTP 处理层中完成本文件定义的局部处理。

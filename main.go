@@ -200,6 +200,7 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		api.GET("/settings/deepseek", handlers.GetDeepSeekToken)
 		api.PUT("/settings/deepseek", handlers.SetDeepSeekToken)
 		api.DELETE("/settings/deepseek", handlers.DeleteDeepSeekToken)
+		api.PUT("/settings/deepseek/model", handlers.SetDeepSeekModel)
 		api.PUT("/settings/username", handlers.SetUsername)
 
 		// AI 学习助手：DeepSeek Key 保持在服务端，资料上下文按请求即时生成。

@@ -187,6 +187,7 @@ export const api = {
 	getDeepSeekToken: () => request('GET', '/settings/deepseek'),
 	saveDeepSeekToken: (token) => request('PUT', '/settings/deepseek', { token }),
 	clearDeepSeekToken: () => request('DELETE', '/settings/deepseek'),
+	saveDeepSeekModel: (model) => request('PUT', '/settings/deepseek/model', { model }),
 	aiChat: (data) => request('POST', '/ai/chat', data),
   saveUsername: (name) => request('PUT', '/settings/username', { name }),
   exportBackup: () => requestBackupExport(),
