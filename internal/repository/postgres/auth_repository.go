@@ -175,6 +175,23 @@ func (r *AuthRepository) FindRefreshToken(ctx context.Context, tokenHash string)
 	return userID, expiresAt, revokedAt.Valid, nil
 }
 
+// ConsumeRefreshToken revokes a valid token and returns its owner in one SQL
+// statement. This makes refresh-token rotation single-use even when multiple
+// browser tabs make a refresh request at the same time.
+func (r *AuthRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (int64, time.Time, error) {
+	var userID int64
+	var expiresAt time.Time
+	err := r.pool.QueryRow(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1
+		  AND revoked_at IS NULL
+		  AND expires_at > now()
+		RETURNING user_id, expires_at
+	`, tokenHash).Scan(&userID, &expiresAt)
+	return userID, expiresAt, err
+}
+
 // RevokeRefreshToken 在存储层中删除、清理或撤销相应状态。
 func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	_, err := r.pool.Exec(ctx, `

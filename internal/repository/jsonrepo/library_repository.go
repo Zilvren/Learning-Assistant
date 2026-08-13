@@ -721,6 +721,10 @@ func (r *LibraryRepository) DueReviews(ctx context.Context, day time.Time) ([]mo
 
 // Review 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error) {
+	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
+}
+
+func (r *LibraryRepository) ReviewWithRating(ctx context.Context, id int64, reviewedAt time.Time, rating string) (models.LibraryItem, error) {
 	var out models.LibraryItem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
 		s, err := loadLibrary(tx)
@@ -732,20 +736,8 @@ func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt tim
 			return fmt.Errorf("复习笔记不存在")
 		}
 		item := &s.Items[i]
-		item.ReviewCount++
-		item.ReviewStage = item.ReviewCount
-		if len(intervals) == 0 {
-			intervals = []int{0}
-		}
-		index := item.ReviewCount
-		if index >= len(intervals) {
-			index = len(intervals) - 1
-		}
-		if index < 0 {
-			index = 0
-		}
+		item.ReviewStage, item.ReviewCount, item.NextReview = models.NextReview(item.ReviewStage, item.ReviewCount, rating, reviewedAt)
 		item.LastReview = &reviewedAt
-		item.NextReview = reviewedAt.AddDate(0, 0, intervals[index]).Format("2006-01-02")
 		item.UpdatedAt = reviewedAt.UTC()
 		out = *item
 		return saveLibrary(tx, s)

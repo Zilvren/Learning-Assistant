@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,30 +17,36 @@ import (
 
 // TestListenWithFallback 在当前模块中验证对应场景的行为与边界条件。
 func TestListenWithFallback(t *testing.T) {
-	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	previousListen := listenTCP
+	t.Cleanup(func() { listenTCP = previousListen })
+	const occupiedPort = 52730
+	attempts := []string{}
+	listener := &testListener{address: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: occupiedPort + 1}}
+	listenTCP = func(network, address string) (net.Listener, error) {
+		attempts = append(attempts, network+":"+address)
+		if len(attempts) == 1 {
+			return nil, errors.New("address already in use")
+		}
+		return listener, nil
+	}
+
+	gotListener, port, err := listenWithFallback("127.0.0.1", occupiedPort)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer occupied.Close()
-
-	occupiedPort := occupied.Addr().(*net.TCPAddr).Port
-	if occupiedPort > 65515 {
-		t.Skipf("occupied port %d leaves too little room for fallback range", occupiedPort)
+	if gotListener != listener {
+		t.Fatal("expected listener returned by the second bind attempt")
 	}
-
-	listener, port, err := listenWithFallback("127.0.0.1", occupiedPort)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-
-	if port == occupiedPort {
-		t.Fatalf("expected fallback port, got occupied port %d", port)
-	}
-	if port < occupiedPort || port >= occupiedPort+20 {
+	if port != occupiedPort+1 || len(attempts) != 2 {
 		t.Fatalf("fallback port %d is outside expected range", port)
 	}
 }
+
+type testListener struct{ address net.Addr }
+
+func (listener *testListener) Accept() (net.Conn, error) { return nil, errors.New("not implemented") }
+func (listener *testListener) Close() error              { return nil }
+func (listener *testListener) Addr() net.Addr            { return listener.address }
 
 // TestBusinessRoutesAuthPolicy 在当前模块中验证对应场景的行为与边界条件。
 func TestBusinessRoutesAuthPolicy(t *testing.T) {

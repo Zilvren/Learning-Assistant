@@ -19,6 +19,9 @@ func (r *SettingsRepository) Load(ctx context.Context) (models.Config, error) {
 	})
 	if err == nil {
 		config.MineruToken, err = base.OpenSecret(config.MineruToken)
+		if err == nil {
+			config.DeepSeekToken, err = base.OpenSecret(config.DeepSeekToken)
+		}
 	}
 	return config, err
 }
@@ -29,7 +32,12 @@ func (r *SettingsRepository) Save(ctx context.Context, config models.Config) err
 	if err != nil {
 		return err
 	}
+	sealedDeepSeekToken, err := base.SealSecret(config.DeepSeekToken)
+	if err != nil {
+		return err
+	}
 	config.MineruToken = sealedToken
+	config.DeepSeekToken = sealedDeepSeekToken
 	return r.store.Write(ctx, func(tx *base.JSONTx) error {
 		return tx.Save("config.json", config)
 	})

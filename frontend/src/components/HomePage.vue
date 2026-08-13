@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 import { RouterLink } from "vue-router"
-import { BookOpenCheck, CalendarCheck2, CalendarClock, FileText, Flame, Tags } from "lucide-vue-next"
+import { BarChart3, BookOpenCheck, CalendarCheck2, CalendarClock, FileText, Flame, Play, Save, Tags, Target, Timer, X } from "lucide-vue-next"
 import { api } from "../api/index.js"
 import LearningHeatmap from "./dashboard/LearningHeatmap.vue"
 import { useSettings } from "../store/settings.js"
@@ -15,6 +15,15 @@ const tags = ref([])
 const activity = ref({ days: [], total: 0, active_days: 0 })
 const selectedActivityYear = ref(new Date().getFullYear())
 const currentYearActivity = ref({ days: [], total: 0, active_days: 0 })
+const plan = ref({ goal: { review_target: 0, focus_target_minutes: 0, note_target: 0 }, reviews_completed: 0, focus_minutes: 0, notes_created: 0 })
+const weeklyReport = ref({ total_activity: 0, active_days: 0, focus_minutes: 0, reviews: 0, notes_created: 0, weak_subjects: [] })
+const goalDraft = ref({ review_target: 0, focus_target_minutes: 0, note_target: 0 })
+const goalBusy = ref(false)
+const focusMinutes = ref(25)
+const focusRemaining = ref(0)
+const focusRunning = ref(false)
+const focusBusy = ref(false)
+let focusTimer = 0
 const loading = ref(true)
 const hour = new Date().getHours()
 const greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好"
@@ -85,6 +94,15 @@ const reviewContext = computed(() => {
   if (due.value.length) return "均计划于今天完成"
   return "今天没有到期内容"
 })
+const goalRows = computed(() => [
+  { label: "复习", current: Number(plan.value.reviews_completed || 0), target: Number(plan.value.goal?.review_target || 0), unit: "项" },
+  { label: "专注", current: Number(plan.value.focus_minutes || 0), target: Number(plan.value.goal?.focus_target_minutes || 0), unit: "分钟" },
+  { label: "整理", current: Number(plan.value.notes_created || 0), target: Number(plan.value.goal?.note_target || 0), unit: "篇" },
+])
+const focusLabel = computed(() => {
+  const seconds = focusRemaining.value || Math.max(1, Number(focusMinutes.value || 25)) * 60
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`
+})
 const learningStreak = computed(() => streakStats(currentYearActivity.value.days))
 const recentNotes = computed(() => [...notes.value].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 3))
 const tagStats = computed(() => {
@@ -114,6 +132,47 @@ function dueLabel(item) {
   return difference > 0 ? `逾期 ${difference} 天` : "今天"
 }
 
+async function saveGoal() {
+  goalBusy.value = true
+  try {
+    const saved = await api.saveDailyGoal(goalDraft.value)
+    plan.value = { ...plan.value, goal: saved }
+    goalDraft.value = { ...saved }
+    toast.success("每日目标已保存")
+  } catch (error) { toast.error(error.message || "目标保存失败") }
+  finally { goalBusy.value = false }
+}
+
+async function recordFocus() {
+  const minutes = Math.max(1, Math.min(240, Number(focusMinutes.value || 25)))
+  focusBusy.value = true
+  try {
+    plan.value = await api.recordFocusSession(minutes, String(Date.now()))
+    focusRemaining.value = 0
+    focusRunning.value = false
+    window.clearInterval(focusTimer)
+    toast.success(`已记录 ${minutes} 分钟专注`)
+  } catch (error) { toast.error(error.message || "专注记录保存失败") }
+  finally { focusBusy.value = false }
+}
+
+function toggleFocus() {
+  if (focusBusy.value) return
+  if (!focusRunning.value) {
+    if (!focusRemaining.value) focusRemaining.value = Math.max(1, Math.min(240, Number(focusMinutes.value || 25))) * 60
+    focusRunning.value = true
+    focusTimer = window.setInterval(() => {
+      focusRemaining.value -= 1
+      if (focusRemaining.value <= 0) void recordFocus()
+    }, 1000)
+    return
+  }
+  focusRunning.value = false
+  window.clearInterval(focusTimer)
+}
+
+function cancelFocus() { focusRunning.value = false; focusRemaining.value = 0; window.clearInterval(focusTimer) }
+
 // loadActivity 协调当前组件的状态和交互。
 async function loadActivity(year = selectedActivityYear.value) {
   try {
@@ -131,20 +190,27 @@ function selectActivityYear(year) {
 onMounted(async () => {
   try {
     await settings.load()
-    const [all, reviews, tagResult, activityResult] = await Promise.all([
+    const [all, reviews, tagResult, activityResult, dailyPlan, report] = await Promise.all([
       api.getLibraryItems({ kind: "note", query: " " }),
       api.getLibraryReviews(),
       api.getLibraryTags(),
       api.getLearningActivity(selectedActivityYear.value),
+      api.getDailyPlan(),
+      api.getWeeklyReport(),
     ])
     notes.value = all.items || []
     due.value = reviews.items || []
     tags.value = tagResult.tags || []
     activity.value = activityResult
     currentYearActivity.value = activityResult
+    plan.value = dailyPlan
+    goalDraft.value = { ...(dailyPlan.goal || goalDraft.value) }
+    weeklyReport.value = report
   } catch (error) { toast.error(error.message || "概览加载失败") }
   finally { loading.value = false }
 })
+
+onBeforeUnmount(() => window.clearInterval(focusTimer))
 </script>
 
 <template>
@@ -198,6 +264,13 @@ onMounted(async () => {
             <header><Tags :size="16"/><strong id="home-index-title">知识索引</strong><small>{{ tags.length }} 个标签</small></header>
             <div v-if="tagStats.length" class="home-index__tags"><RouterLink v-for="tag in tagStats" :key="tag.name" :to="{name:'library',query:{tag:tag.name}}"><Tags :size="13" aria-hidden="true"/><span>{{ tag.name }}</span><small>{{ tag.count }}</small></RouterLink></div>
             <p v-else>给笔记添加标签后会显示在这里。</p>
+          </section>
+          <section class="home-goals" aria-labelledby="home-goals-title">
+            <header><Target :size="16"/><strong id="home-goals-title">今日目标</strong><small>随时调整</small></header>
+            <div class="home-goals__progress"><div v-for="row in goalRows" :key="row.label"><span>{{ row.label }} {{ row.current }}/{{ row.target || '—' }}{{ row.unit }}</span><i><b :style="{width: `${row.target ? Math.min(100, Math.round(row.current / row.target * 100)) : 0}%`}"/></i></div></div>
+            <div class="home-goals__settings"><label>复习<input v-model.number="goalDraft.review_target" min="0" max="100" type="number"/></label><label>专注<input v-model.number="goalDraft.focus_target_minutes" min="0" max="720" type="number"/></label><label>整理<input v-model.number="goalDraft.note_target" min="0" max="30" type="number"/></label><button class="lib-btn" :disabled="goalBusy" @click="saveGoal"><Save :size="14"/>保存</button></div>
+            <div class="home-focus"><div><Timer :size="16"/><strong>{{ focusLabel }}</strong><small>专注 {{ focusMinutes }} 分钟</small></div><label><span class="sr-only">专注分钟数</span><input v-model.number="focusMinutes" :disabled="focusRunning" min="1" max="240" type="number"/></label><button class="lib-btn lib-btn--primary" :disabled="focusBusy" @click="toggleFocus"><component :is="focusRunning ? Timer : Play" :size="14"/>{{ focusRunning ? '暂停' : '开始' }}</button><button v-if="focusRunning || focusRemaining" class="lib-btn" :disabled="focusBusy" @click="cancelFocus"><X :size="14"/></button></div>
+            <div class="home-weekly"><BarChart3 :size="15"/><span>近 7 天 {{ weeklyReport.active_days }} 天学习 · {{ weeklyReport.reviews }} 次复习 · {{ weeklyReport.focus_minutes }} 分钟专注</span><small v-if="weeklyReport.weak_subjects?.length">优先：{{ weeklyReport.weak_subjects.slice(0,2).join('、') }}</small></div>
           </section>
         </aside>
       </section>

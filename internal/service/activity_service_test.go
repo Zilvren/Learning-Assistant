@@ -3,12 +3,16 @@ package service
 import (
 	"testing"
 
+	base "study-tracker-go/internal/repository"
 	jsonrepo "study-tracker-go/internal/repository/jsonrepo"
 	"study-tracker-go/pkg/config"
 )
 
 // TestGetLearningActivityReturnsEmptyCalendarInJSONMode 在业务层中验证对应场景的行为与边界条件。
 func TestGetLearningActivityReturnsEmptyCalendarInJSONMode(t *testing.T) {
+	previousDir, previousApp := base.DataDir(), DefaultApp()
+	base.SetDataDir(t.TempDir())
+	t.Cleanup(func() { base.SetDataDir(previousDir); legacyApp.Store(previousApp) })
 	if err := InitApp(config.Config{StorageDriver: "json", AuthEnabled: false}, jsonrepo.NewRepositories(), nil); err != nil {
 		t.Fatal(err)
 	}

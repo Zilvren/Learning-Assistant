@@ -243,16 +243,13 @@ func RefreshLogin(ctx context.Context, refreshToken string, userAgent string, ip
 		return TokenPair{}, err
 	}
 	tokenHash := hashRefreshToken(refreshToken)
-	userID, expiresAt, revoked, err := repo.FindRefreshToken(ctx, tokenHash)
-	if err != nil || revoked || time.Now().After(expiresAt) {
+	userID, _, err := repo.ConsumeRefreshToken(ctx, tokenHash)
+	if err != nil {
 		return TokenPair{}, fmt.Errorf("登录已过期")
 	}
 	user, err := repo.FindUserByID(ctx, userID)
 	if err != nil || user.Status != "active" || (cfg.EmailVerificationEnabled && user.Email != "" && !user.EmailVerified) {
 		return TokenPair{}, fmt.Errorf("登录已过期")
-	}
-	if err := repo.RevokeRefreshToken(ctx, tokenHash); err != nil {
-		return TokenPair{}, err
 	}
 	return issueTokens(ctx, repo, cfg, user, userAgent, ipAddress)
 }

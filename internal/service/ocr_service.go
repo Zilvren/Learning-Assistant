@@ -40,78 +40,130 @@ func OCRImageBytes(ctx context.Context, imageBytes []byte, fileName string) (str
 // a PNG makes MinerU reject otherwise valid documents.
 // OCRFileBytes 对上传的图片字节执行 OCR，并返回可写入笔记的识别文本。
 func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType string) (string, error) {
-	if len(imageBytes) == 0 || len(imageBytes) > OCRMaxUploadSize {
-		return "", fmt.Errorf("OCR 文件必须在 1B 到 50MB 之间")
-	}
-	fileName, _, err := normalizeOCRSource(fileName, mimeType)
+	task, err := createOCRTask(ctx, imageBytes, fileName, mimeType)
 	if err != nil {
 		return "", err
+	}
+	if err := processOCRTask(ctx, task.ID); err != nil {
+		return "", err
+	}
+	completed, err := GetOCRTask(ctx, task.ID)
+	if err != nil {
+		return "", err
+	}
+	return completed.ResultMarkdown, nil
+}
+
+// StartOCRTask persists the upload before returning 202 to the client. The
+// actual MinerU polling then runs outside the request lifetime and can be
+// observed or retried from the OCR task center.
+func StartOCRTask(ctx context.Context, imageBytes []byte, fileName, mimeType string) (repository.OCRTask, error) {
+	task, err := createOCRTask(ctx, imageBytes, fileName, mimeType)
+	if err != nil {
+		return task, err
+	}
+	asyncCtx := asyncOCRContext(ctx)
+	go func(id int64) { _ = processOCRTask(asyncCtx, id) }(task.ID)
+	return task, nil
+}
+
+func createOCRTask(ctx context.Context, imageBytes []byte, fileName, mimeType string) (repository.OCRTask, error) {
+	if len(imageBytes) == 0 || len(imageBytes) > OCRMaxUploadSize {
+		return repository.OCRTask{}, fmt.Errorf("OCR 文件必须在 1B 到 50MB 之间")
+	}
+	fileName, normalizedMimeType, err := normalizeOCRSource(fileName, mimeType)
+	if err != nil {
+		return repository.OCRTask{}, err
 	}
 	repos, err := repositories(ctx)
 	if err != nil {
-		return "", err
+		return repository.OCRTask{}, err
 	}
-	taskID, err := repos.OCRTasks.Create(ctx, repository.OCRTask{
-		Provider:       "mineru",
-		Status:         "pending",
-		SourceFilename: fileName,
-		MimeType:       mimeType,
-		FileSize:       int64(len(imageBytes)),
-	})
+	inputHash, _, err := repository.StoreBlob(bytes.NewReader(imageBytes))
 	if err != nil {
-		return "", err
+		return repository.OCRTask{}, err
+	}
+	task := repository.OCRTask{
+		Provider:       "mineru",
+		Status:         "queued",
+		SourceFilename: fileName,
+		MimeType:       normalizedMimeType,
+		FileSize:       int64(len(imageBytes)),
+		InputBlobHash:  inputHash,
+	}
+	taskID, err := repos.OCRTasks.Create(ctx, task)
+	if err != nil {
+		return repository.OCRTask{}, err
+	}
+	task.ID = taskID
+	return task, nil
+}
+
+func processOCRTask(ctx context.Context, taskID int64) error {
+	repos, err := repositories(ctx)
+	if err != nil {
+		return err
+	}
+	task, err := repos.OCRTasks.Get(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	imageBytes, err := repository.ReadBlob(task.InputBlobHash)
+	if err != nil {
+		markOCRFailed(ctx, repos, taskID, err)
+		return err
 	}
 
 	token, err := getMinerUToken(ctx)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
-		return "", err
+		return err
 	}
 
-	batchID, uploadURL, err := createMinerUBatch(ctx, token, fileName)
+	batchID, uploadURL, err := createMinerUBatch(ctx, token, task.SourceFilename)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
-		return "", err
+		return err
 	}
 	if err := repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
 		Status:  "uploading",
 		BatchID: batchID,
 	}); err != nil {
-		return "", err
+		return err
 	}
 
 	// 上传图片到 MinerU 返回的预签名 URL
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, bytes.NewReader(imageBytes))
 	if err != nil {
-		return "", err
+		return err
 	}
 	resp, err := ocrHTTPClient.Do(req)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
-		return "", err
+		return err
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		err := fmt.Errorf("上传图片失败：HTTP %d", resp.StatusCode)
 		markOCRFailed(ctx, repos, taskID, err)
-		return "", err
+		return err
 	}
 
 	if err := repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{Status: "processing"}); err != nil {
-		return "", err
+		return err
 	}
 
 	// 轮询等待识别完成
 	zipURL, err := pollMinerUResult(ctx, token, batchID)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
-		return "", err
+		return err
 	}
 
 	markdown, err := downloadAndExtractMarkdown(ctx, zipURL)
 	if err != nil {
 		markOCRFailed(ctx, repos, taskID, err)
-		return "", err
+		return err
 	}
 	now := time.Now()
 	if err := repos.OCRTasks.Update(ctx, taskID, repository.OCRTask{
@@ -119,9 +171,60 @@ func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType str
 		ResultMarkdown: markdown,
 		FinishedAt:     &now,
 	}); err != nil {
-		return "", err
+		return err
 	}
-	return markdown, nil
+	return nil
+}
+
+func asyncOCRContext(ctx context.Context) context.Context {
+	result := context.Background()
+	if app, err := appFor(ctx); err == nil {
+		result = ContextWithApp(result, app)
+	}
+	if userID, ok := UserIDFromContext(ctx); ok {
+		result = ContextWithUserID(result, userID)
+	}
+	return result
+}
+
+func GetOCRTask(ctx context.Context, id int64) (repository.OCRTask, error) {
+	repos, err := repositories(ctx)
+	if err != nil {
+		return repository.OCRTask{}, err
+	}
+	return repos.OCRTasks.Get(ctx, id)
+}
+
+func ListOCRTasks(ctx context.Context) ([]repository.OCRTask, error) {
+	repos, err := repositories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return repos.OCRTasks.List(ctx, 30)
+}
+
+func RetryOCRTask(ctx context.Context, id int64) (repository.OCRTask, error) {
+	repos, err := repositories(ctx)
+	if err != nil {
+		return repository.OCRTask{}, err
+	}
+	task, err := repos.OCRTasks.Get(ctx, id)
+	if err != nil {
+		return task, err
+	}
+	if task.Status != "failed" {
+		return task, fmt.Errorf("只有失败的 OCR 任务可以重试")
+	}
+	if task.InputBlobHash == "" {
+		return task, fmt.Errorf("原始 OCR 文件已不可用")
+	}
+	if err := repos.OCRTasks.Update(ctx, id, repository.OCRTask{Status: "queued"}); err != nil {
+		return task, err
+	}
+	task.Status = "queued"
+	asyncCtx := asyncOCRContext(ctx)
+	go func() { _ = processOCRTask(asyncCtx, id) }()
+	return task, nil
 }
 
 // normalizeOCRSource 在业务层中构造、编码或标准化数据。

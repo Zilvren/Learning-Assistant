@@ -55,6 +55,10 @@ func (r *AuthRepository) FindRefreshToken(ctx context.Context, tokenHash string)
 	return 0, time.Time{}, true, fmt.Errorf("JSON 模式不支持登录注册")
 }
 
+func (r *AuthRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (int64, time.Time, error) {
+	return 0, time.Time{}, fmt.Errorf("JSON 模式不支持登录注册")
+}
+
 // RevokeRefreshToken 在存储层中删除、清理或撤销相应状态。
 func (r *AuthRepository) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	return nil

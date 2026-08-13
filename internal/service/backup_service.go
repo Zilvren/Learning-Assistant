@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	models "study-tracker-go/internal/model"
@@ -24,7 +25,9 @@ const BackupMaxUncompressedSize = 512 * 1024 * 1024
 const BackupMaxArchiveEntries = 1000
 const BackupMaxCompressionRatio = 100
 
-var backupFileNames = []string{"config.json", "errors.json", "knowledge.json", "subjects.json", "library.json"}
+var backupFileNames = []string{"config.json", "errors.json", "knowledge.json", "subjects.json", "library.json", "activity.json", "relations.json"}
+var requiredBackupFileNames = []string{"config.json", "errors.json", "knowledge.json", "subjects.json", "library.json"}
+var backupSnapshotMu sync.Mutex
 
 type ImportBackupResult struct {
 	Files        []string `json:"files"`
@@ -34,19 +37,30 @@ type ImportBackupResult struct {
 
 // ExportBackupZip 在业务层中完成本文件定义的局部处理。
 func ExportBackupZip(ctx context.Context) ([]byte, string, error) {
+	var content bytes.Buffer
+	if err := WriteBackupZip(ctx, &content); err != nil {
+		return nil, "", err
+	}
+	return content.Bytes(), BackupFilename(), nil
+}
+
+// BackupFilename returns a portable, timestamped archive name for browser
+// downloads. Streaming callers can set this before the first ZIP byte is sent.
+func BackupFilename() string {
+	return fmt.Sprintf("study-tracker-backup-%s.zip", time.Now().Format("20060102-150405"))
+}
+
+// WriteBackupZip streams the portable backup to writer. Unlike ExportBackupZip
+// it does not retain a second full ZIP buffer in process memory.
+func WriteBackupZip(ctx context.Context, writer io.Writer) error {
 	data, err := loadBackupData(ctx)
 	if err != nil {
-		return nil, "", err
+		return err
 	}
 	// Credentials are deliberately not portable. Restoring a backup should
 	// never leak or overwrite the OCR token; users can reconnect it in settings.
 	redactBackupCredentials(&data)
-	content, err := encodeBackupZip(data)
-	if err != nil {
-		return nil, "", err
-	}
-	filename := fmt.Sprintf("study-tracker-backup-%s.zip", time.Now().Format("20060102-150405"))
-	return content, filename, nil
+	return writeBackupZip(writer, data)
 }
 
 // ImportBackupZip 在业务层中完成本文件定义的局部处理。
@@ -102,6 +116,20 @@ func restoreBackupData(ctx context.Context, data store.BackupData, files []strin
 	if err != nil {
 		return ImportBackupResult{}, err
 	}
+	if data.Config != nil {
+		current, configErr := loadConfig(ctx)
+		if configErr != nil {
+			return ImportBackupResult{}, configErr
+		}
+		portable := *data.Config
+		if portable.MineruToken == "" {
+			portable.MineruToken = current.MineruToken
+		}
+		if portable.DeepSeekToken == "" {
+			portable.DeepSeekToken = current.DeepSeekToken
+		}
+		data.Config = &portable
+	}
 	// Blob files live outside PostgreSQL. Store and verify them before creating
 	// database rows that reference their hashes, so a failed blob never leaves
 	// an imported note or file unreadable.
@@ -117,17 +145,6 @@ func restoreBackupData(ctx context.Context, data store.BackupData, files []strin
 	if err := repos.Backup.Import(ctx, data); err != nil {
 		return ImportBackupResult{}, err
 	}
-	// JSON mode keeps its library index in library.json. PostgreSQL mode
-	// restores it through BackupRepository.Import into library_items instead.
-	appConfig, configErr := currentConfig(ctx)
-	if configErr != nil {
-		return ImportBackupResult{}, configErr
-	}
-	if data.Library != nil && appConfig.StorageDriver != "postgres" {
-		if err := store.SaveJSON("library.json", data.Library); err != nil {
-			return ImportBackupResult{}, err
-		}
-	}
 	sort.Strings(files)
 	libraryItems := 0
 	if data.Library != nil {
@@ -142,16 +159,102 @@ func restoreBackupData(ctx context.Context, data store.BackupData, files []strin
 
 // SaveCurrentBackupSnapshot 在业务层中创建或更新相应状态。
 func SaveCurrentBackupSnapshot(ctx context.Context, prefix string) (string, error) {
-	content, _, err := ExportBackupZip(ctx)
-	if err != nil {
-		return "", err
-	}
 	backupDir := filepath.Join(store.DataDir(), "backups")
 	if err := os.MkdirAll(backupDir, 0700); err != nil {
 		return "", err
 	}
 	snapshot := filepath.Join(backupDir, fmt.Sprintf("%s-%s.zip", prefix, time.Now().Format("20060102-150405")))
-	return snapshot, os.WriteFile(snapshot, content, 0600)
+	if err := writeBackupArchive(ctx, snapshot); err != nil {
+		return "", err
+	}
+	return snapshot, nil
+}
+
+// SaveAutomaticBackupSnapshot makes at most one scheduled snapshot per day
+// and keeps only the requested number of automatic restore points.
+func SaveAutomaticBackupSnapshot(ctx context.Context, keep int) (string, error) {
+	backupSnapshotMu.Lock()
+	defer backupSnapshotMu.Unlock()
+	if keep < 1 {
+		keep = 1
+	}
+	backupDir := filepath.Join(store.DataDir(), "backups")
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
+		return "", err
+	}
+	prefix := "auto-" + time.Now().Format("20060102") + "-"
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) && strings.HasSuffix(entry.Name(), ".zip") {
+			return filepath.Join(backupDir, entry.Name()), nil
+		}
+	}
+	snapshot := filepath.Join(backupDir, fmt.Sprintf("%s%s.zip", prefix, time.Now().Format("150405")))
+	if err := writeBackupArchive(ctx, snapshot); err != nil {
+		return "", err
+	}
+	if err := pruneAutomaticBackupSnapshots(backupDir, keep); err != nil {
+		return "", err
+	}
+	return snapshot, nil
+}
+
+func writeBackupArchive(ctx context.Context, target string) (err error) {
+	temp, err := os.CreateTemp(filepath.Dir(target), ".backup-*.zip")
+	if err != nil {
+		return err
+	}
+	tempName := temp.Name()
+	defer func() {
+		_ = temp.Close()
+		_ = os.Remove(tempName)
+	}()
+	if err = temp.Chmod(0600); err != nil {
+		return err
+	}
+	if err = WriteBackupZip(ctx, temp); err != nil {
+		return err
+	}
+	if err = temp.Sync(); err != nil {
+		return err
+	}
+	if err = temp.Close(); err != nil {
+		return err
+	}
+	return replaceBackupFile(tempName, target)
+}
+
+func replaceBackupFile(source, target string) error {
+	if err := os.Rename(source, target); err == nil {
+		return nil
+	}
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.Rename(source, target)
+}
+
+func pruneAutomaticBackupSnapshots(backupDir string, keep int) error {
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return err
+	}
+	files := make([]string, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "auto-") && strings.HasSuffix(entry.Name(), ".zip") {
+			files = append(files, entry.Name())
+		}
+	}
+	sort.Strings(files)
+	for _, name := range files[:max(0, len(files)-keep)] {
+		if err := os.Remove(filepath.Join(backupDir, name)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // loadBackupData 在业务层中读取并整理所需数据。
@@ -196,52 +299,71 @@ func libraryBlobHashes(library store.LibraryBackup) map[string]struct{} {
 // encodeBackupZip 在业务层中构造、编码或标准化数据。
 func encodeBackupZip(data store.BackupData) ([]byte, error) {
 	var buffer bytes.Buffer
-	zw := zip.NewWriter(&buffer)
+	if err := writeBackupZip(&buffer, data); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
+func writeBackupZip(writer io.Writer, data store.BackupData) error {
+	zw := zip.NewWriter(writer)
 	if data.Config != nil {
 		if err := writeBackupJSON(zw, "config.json", data.Config); err != nil {
 			zw.Close()
-			return nil, err
+			return err
 		}
 	}
 	if data.Errors != nil {
 		if err := writeBackupJSON(zw, "errors.json", data.Errors); err != nil {
 			zw.Close()
-			return nil, err
+			return err
 		}
 	}
 	if data.Knowledge != nil {
 		if err := writeBackupJSON(zw, "knowledge.json", data.Knowledge); err != nil {
 			zw.Close()
-			return nil, err
+			return err
 		}
 	}
 	if data.Subjects != nil {
 		if err := writeBackupJSON(zw, "subjects.json", data.Subjects); err != nil {
 			zw.Close()
-			return nil, err
+			return err
 		}
 	}
 	if data.Library != nil {
 		if err := writeBackupJSON(zw, "library.json", data.Library); err != nil {
 			zw.Close()
-			return nil, err
+			return err
+		}
+	}
+	if data.Activity != nil {
+		if err := writeBackupJSON(zw, "activity.json", data.Activity); err != nil {
+			zw.Close()
+			return err
+		}
+	}
+	if data.Relations != nil {
+		if err := writeBackupJSON(zw, "relations.json", data.Relations); err != nil {
+			zw.Close()
+			return err
 		}
 	}
 	for hash, body := range data.Blobs {
 		w, err := zw.Create("blobs/" + hash)
 		if err != nil {
 			zw.Close()
-			return nil, err
+			return err
 		}
 		if _, err = w.Write(body); err != nil {
 			zw.Close()
-			return nil, err
+			return err
 		}
 	}
 	if err := zw.Close(); err != nil {
-		return nil, err
+		return err
 	}
-	return buffer.Bytes(), nil
+	return nil
 }
 
 // writeBackupJSON 在业务层中创建或更新相应状态。
@@ -336,7 +458,7 @@ func decodeBackupZipReader(reader *zip.Reader) (store.BackupData, []string, erro
 	if len(files) == 0 {
 		return store.BackupData{}, nil, fmt.Errorf("备份包中没有可恢复的数据文件")
 	}
-	for _, required := range backupFileNames {
+	for _, required := range requiredBackupFileNames {
 		if _, exists := seen[required]; !exists {
 			return store.BackupData{}, nil, fmt.Errorf("备份不完整，缺少 %s", required)
 		}
@@ -354,6 +476,7 @@ func redactBackupCredentials(data *store.BackupData) {
 	}
 	config := *data.Config
 	config.MineruToken = ""
+	config.DeepSeekToken = ""
 	data.Config = &config
 }
 
@@ -413,6 +536,24 @@ func decodeBackupJSON(name string, raw []byte, data *store.BackupData) error {
 			library.Versions = []models.LibraryVersion{}
 		}
 		data.Library = &library
+	case "activity.json":
+		var activity store.ActivityBackup
+		if err := json.Unmarshal(raw, &activity); err != nil {
+			return fmt.Errorf("activity.json 不是有效 JSON 文件")
+		}
+		if activity.Events == nil {
+			activity.Events = []models.ActivityEvent{}
+		}
+		data.Activity = &activity
+	case "relations.json":
+		var relations store.RelationBackup
+		if err := json.Unmarshal(raw, &relations); err != nil {
+			return fmt.Errorf("relations.json 不是有效 JSON 文件")
+		}
+		if relations.Relations == nil {
+			relations.Relations = []models.LearningRelation{}
+		}
+		data.Relations = &relations
 	}
 	return nil
 }

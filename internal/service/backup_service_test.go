@@ -20,6 +20,8 @@ func TestBackupZipRoundTripPreservesLibraryData(t *testing.T) {
 	errors := []models.ErrorProblem{}
 	subjects := []string{}
 	knowledge := map[string][]string{}
+	activity := store.ActivityBackup{NextID: 3, Events: []models.ActivityEvent{{ID: 2, Date: "2026-08-13", EventType: "focus", SourceKey: "focus:demo", Value: 25}}}
+	relations := store.RelationBackup{NextID: 2, Relations: []models.LearningRelation{{ID: 1, FromType: "library", FromID: noteID, ToType: "error", ToID: 8}}}
 	input := store.BackupData{Config: &config, Errors: &errors, Subjects: &subjects, Knowledge: &knowledge, Library: &store.LibraryBackup{
 		SchemaVersion: 2,
 		NextID:        7,
@@ -29,7 +31,7 @@ func TestBackupZipRoundTripPreservesLibraryData(t *testing.T) {
 			{ID: noteID, ParentID: &folderID, Kind: "note", Name: "力学", CurrentVersion: 1, BlobHash: hash},
 		},
 		Versions: []models.LibraryVersion{{ID: 3, ItemID: noteID, Version: 1, BlobHash: hash}},
-	}, Blobs: map[string][]byte{hash: []byte("content")}}
+	}, Activity: &activity, Relations: &relations, Blobs: map[string][]byte{hash: []byte("content")}}
 
 	archive, err := encodeBackupZip(input)
 	if err != nil {
@@ -48,7 +50,13 @@ func TestBackupZipRoundTripPreservesLibraryData(t *testing.T) {
 	if string(actual.Blobs[hash]) != "content" {
 		t.Fatalf("library blob was not restored: %#v", actual.Blobs)
 	}
-	if len(files) != 6 {
+	if actual.Activity == nil || len(actual.Activity.Events) != 1 || actual.Activity.Events[0].Value != 25 {
+		t.Fatalf("activity data was not restored: %#v", actual.Activity)
+	}
+	if actual.Relations == nil || len(actual.Relations.Relations) != 1 || actual.Relations.Relations[0].ToID != 8 {
+		t.Fatalf("relation data was not restored: %#v", actual.Relations)
+	}
+	if len(files) != 8 {
 		t.Fatalf("unexpected archive files: %#v", files)
 	}
 }

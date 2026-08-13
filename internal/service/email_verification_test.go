@@ -10,7 +10,7 @@ import (
 	"time"
 
 	models "study-tracker-go/internal/model"
-	"study-tracker-go/internal/repository"
+	repository "study-tracker-go/internal/repository"
 	jsonrepo "study-tracker-go/internal/repository/jsonrepo"
 	"study-tracker-go/pkg/config"
 )
@@ -69,6 +69,10 @@ func (r *verificationAuthRepository) FindRefreshToken(_ context.Context, _ strin
 	return 0, time.Time{}, true, errors.New("not implemented")
 }
 
+func (r *verificationAuthRepository) ConsumeRefreshToken(_ context.Context, _ string) (int64, time.Time, error) {
+	return 0, time.Time{}, errors.New("not implemented")
+}
+
 // RevokeRefreshToken 在业务层中删除、清理或撤销相应状态。
 func (r *verificationAuthRepository) RevokeRefreshToken(_ context.Context, _ string) error {
 	return nil
@@ -78,6 +82,9 @@ var _ repository.AuthRepository = (*verificationAuthRepository)(nil)
 
 // TestRegistrationRequiresEmailVerificationBeforeIssuingTokens 在业务层中验证对应场景的行为与边界条件。
 func TestRegistrationRequiresEmailVerificationBeforeIssuingTokens(t *testing.T) {
+	previousDir, previousApp := repository.DataDir(), DefaultApp()
+	repository.SetDataDir(t.TempDir())
+	t.Cleanup(func() { repository.SetDataDir(previousDir); legacyApp.Store(previousApp) })
 	repos := jsonrepo.NewRepositories()
 	authRepo := &verificationAuthRepository{}
 	repos.Auth = authRepo

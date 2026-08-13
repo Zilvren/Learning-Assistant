@@ -118,6 +118,18 @@ async function ocrImage(file, retry = true) {
   return resp.json()
 }
 
+const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+
+async function waitForOCRTask(id, { attempts = 150, interval = 2000 } = {}) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const task = await request('GET', `/ocr/tasks/${id}`)
+    if (task.status === 'succeeded') return task
+    if (task.status === 'failed') throw new ApiError(task.error_message || 'OCR 识别失败', 422, task)
+    await pause(interval)
+  }
+  throw new ApiError('OCR 识别仍在处理中，请稍后在设置中心的任务列表查看结果', 408)
+}
+
 // api 集中声明页面可调用的后端接口；简单的一行包装函数直接映射到 request。
 export const api = {
 	getLibraryItems: ({ parentId = null, kind = '', query = '', tag = '', review = false, due = false, trashed = false } = {}) => {
@@ -139,6 +151,7 @@ export const api = {
 	purgeLibraryItem: (id) => request('DELETE', `/library/items/${id}/purge`),
 	duplicateLibraryItem: (id, parentId = null) => request('POST', `/library/items/${id}/duplicate`, { parent_id: parentId }),
 	getLibraryContent: requestLibraryContent,
+	getLibraryPreview: (id) => request('GET', `/library/items/${id}/preview`),
 	saveLibraryContent: (id, data) => request('PUT', `/library/items/${id}/content`, data),
 	uploadLibraryFile,
 	batchLibraryItems: (action, ids, parentId = null) => request('POST', '/library/batch', { action, ids, parent_id: parentId }),
@@ -146,7 +159,12 @@ export const api = {
 	restoreLibraryVersion: (id, versionId) => request('POST', `/library/items/${id}/versions/${versionId}/restore`),
 	getLibraryTags: () => request('GET', '/library/tags'),
 	getLibraryReviews: () => request('GET', '/library/reviews'),
-	reviewLibraryNote: (id) => request('POST', `/library/items/${id}/review`),
+	reviewLibraryNote: (id, rating = 'good') => request('POST', `/library/items/${id}/review`, { rating }),
+	getReviewInbox: () => request('GET', '/review/inbox'),
+	searchLearning: (query) => request('GET', `/search?q=${encodeURIComponent(query)}`),
+	getLearningRelations: (sourceType, sourceId) => request('GET', `/relations?source_type=${encodeURIComponent(sourceType)}&source_id=${encodeURIComponent(sourceId)}`),
+	createLearningRelation: (data) => request('POST', '/relations', data),
+	deleteLearningRelation: (id) => request('DELETE', `/relations/${id}`),
   getSubjects: () => request('GET', '/subjects'),
   authStatus: () => request('GET', '/auth/status', null, false),
   me: () => request('GET', '/auth/me', null, false),
@@ -159,31 +177,44 @@ export const api = {
   addSubject: (name) => request('POST', '/subjects', { name }),
   deleteSubject: (name) => request('DELETE', '/subjects/' + encodeURIComponent(name)),
   ocrImage,
+	getOCRTasks: () => request('GET', '/ocr/tasks'),
+	getOCRTask: (id) => request('GET', `/ocr/tasks/${id}`),
+	retryOCRTask: (id) => request('POST', `/ocr/tasks/${id}/retry`),
+	waitForOCRTask,
   saveToken: (token) => request('PUT', '/settings/token', { token }),
   clearToken: () => request('DELETE', '/settings/token'),
   getToken: () => request('GET', '/settings/token'),
+	getDeepSeekToken: () => request('GET', '/settings/deepseek'),
+	saveDeepSeekToken: (token) => request('PUT', '/settings/deepseek', { token }),
+	clearDeepSeekToken: () => request('DELETE', '/settings/deepseek'),
+	aiChat: (data) => request('POST', '/ai/chat', data),
   saveUsername: (name) => request('PUT', '/settings/username', { name }),
   exportBackup: () => requestBackupExport(),
   importBackup: (file) => requestBackupImport(file),
   getVersion: () => request('GET', '/version'),
   checkUpdate: (force = false) => request('GET', `/update/check?force=${force ? 'true' : 'false'}`),
   applyUpdate: () => request('POST', '/update/apply'),
-  getErrors: (subject, keyword, tag, reason_tag) => {
+	getErrors: (subject, keyword, tag, reason_tag) => {
     const p = new URLSearchParams()
     if (subject && subject !== '全部') p.set('subject', subject)
     if (keyword) p.set('keyword', keyword)
     if (tag) p.set('tag', tag)
     if (reason_tag) p.set('reason_tag', reason_tag)
     return request('GET', '/errors?' + p.toString())
-  },
+	},
+	getError: (id) => request('GET', `/errors/${id}`),
   // getTags 发起并处理后端 API 请求。
   getTags: () => request('GET', '/tags'),
   // addError 发起并处理后端 API 请求。
   addError: (data) => request('POST', '/errors', data),
   // reviewError 发起并处理后端 API 请求。
-  reviewError: (id) => request('PUT', `/errors/${id}/review`),
+	reviewError: (id, rating = 'good') => request('PUT', `/errors/${id}/review`, { rating }),
   deleteError: (id) => request('DELETE', `/errors/${id}`),
   updateError: (id, data) => request('PUT', `/errors/${id}`, data),
   getDailyPush: () => request('GET', '/daily-push'),
-  getLearningActivity: (year = null) => request('GET', `/dashboard/activity${year ? `?year=${encodeURIComponent(year)}` : ''}`),
+	getLearningActivity: (year = null) => request('GET', `/dashboard/activity${year ? `?year=${encodeURIComponent(year)}` : ''}`),
+	getDailyPlan: () => request('GET', '/dashboard/plan'),
+	saveDailyGoal: (goal) => request('PUT', '/dashboard/plan', goal),
+	recordFocusSession: (minutes, clientKey) => request('POST', '/dashboard/focus-sessions', { minutes, client_key: clientKey }),
+	getWeeklyReport: () => request('GET', '/dashboard/weekly-report'),
 }

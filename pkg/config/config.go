@@ -18,10 +18,14 @@ type Config struct {
 	NoBrowser   bool
 	GinMode     string
 	FrontendDir string
+	DataDir     string
 
-	StorageDriver   string
-	DatabaseURL     string
-	RequirePostgres bool
+	StorageDriver      string
+	DatabaseURL        string
+	RequirePostgres    bool
+	AutoBackup         bool
+	AutoBackupInterval time.Duration
+	AutoBackupKeep     int
 
 	AuthEnabled         bool
 	RegistrationEnabled bool
@@ -49,10 +53,14 @@ func Load(args []string) Config {
 		NoBrowser:   envBool("TRACKER_NO_BROWSER", false),
 		GinMode:     envString("GIN_MODE", ""),
 		FrontendDir: envString("TRACKER_FRONTEND_DIR", "frontend/dist"),
+		DataDir:     envString("TRACKER_DATA_DIR", "data"),
 
-		StorageDriver:   strings.ToLower(envString("TRACKER_STORAGE", "json")),
-		DatabaseURL:     envString("TRACKER_DATABASE_URL", ""),
-		RequirePostgres: envBool("TRACKER_REQUIRE_POSTGRES", false),
+		StorageDriver:      strings.ToLower(envString("TRACKER_STORAGE", "json")),
+		DatabaseURL:        envString("TRACKER_DATABASE_URL", ""),
+		RequirePostgres:    envBool("TRACKER_REQUIRE_POSTGRES", false),
+		AutoBackup:         envBool("TRACKER_AUTO_BACKUP", true),
+		AutoBackupInterval: envDuration("TRACKER_AUTO_BACKUP_INTERVAL", 24*time.Hour),
+		AutoBackupKeep:     envInt("TRACKER_AUTO_BACKUP_KEEP", 14),
 
 		JWTSecret:           envString("TRACKER_JWT_SECRET", ""),
 		RegistrationEnabled: envBool("TRACKER_REGISTRATION_ENABLED", true),
@@ -138,6 +146,14 @@ func (c Config) Validate() error {
 	if c.RequirePostgres && c.StorageDriver != "postgres" {
 		return fmt.Errorf("TRACKER_REQUIRE_POSTGRES=true 时 TRACKER_STORAGE 必须为 postgres")
 	}
+	if c.AutoBackup {
+		if c.AutoBackupInterval < time.Hour {
+			return fmt.Errorf("TRACKER_AUTO_BACKUP_INTERVAL 至少为 1h")
+		}
+		if c.AutoBackupKeep < 1 || c.AutoBackupKeep > 365 {
+			return fmt.Errorf("TRACKER_AUTO_BACKUP_KEEP 必须在 1 到 365 之间")
+		}
+	}
 	if c.StorageDriver == "postgres" {
 		if err := validatePostgresURL(c.DatabaseURL); err != nil {
 			return err
@@ -212,6 +228,14 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return duration
+}
+
+func envInt(key string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 // parsePort 在配置层中解析外部输入为内部数据。

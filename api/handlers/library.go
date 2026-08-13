@@ -108,7 +108,14 @@ func ReviewLibraryNote(c *gin.Context) {
 	if !ok {
 		return
 	}
-	item, err := service.ReviewLibraryNote(c.Request.Context(), id)
+	var request models.ReviewRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&request); err != nil {
+			respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
+			return
+		}
+	}
+	item, err := service.ReviewLibraryNote(c.Request.Context(), id, request.Rating)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, err)
 		return
@@ -253,6 +260,14 @@ func GetLibraryContent(c *gin.Context) {
 		c.Header("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": item.Name}))
 	}
 	c.Data(http.StatusOK, ct, body)
+}
+
+func GetLibraryPreview(c *gin.Context) {
+	id, ok := parseLibraryID(c)
+	if !ok { return }
+	preview, err := service.GetDocumentPreview(c.Request.Context(), id)
+	if err != nil { respondError(c, http.StatusBadRequest, err); return }
+	c.JSON(http.StatusOK, preview)
 }
 
 // SaveLibraryContent 在HTTP 处理层中创建或更新相应状态。

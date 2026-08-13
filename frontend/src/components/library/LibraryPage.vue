@@ -12,6 +12,7 @@ import ConfirmDialog from "../ui/ConfirmDialog.vue"
 const props = defineProps({ folderId: [String, Number], trash: Boolean })
 const route = useRoute(); const router = useRouter(); const toast = useToast()
 const items = ref([]); const loading = ref(false); const query = ref(""); const kind = ref("all"); const tag = ref(String(route.query.tag || "")); const view = ref(localStorage.getItem("libraryView") || "grid"); const sort = ref(localStorage.getItem("librarySort") || "updated_desc")
+const globalResults = ref([]); const globalSearching = ref(false)
 const currentFolder = ref(null); const breadcrumbs = ref([]); const selected = ref(new Set()); const menuId = ref(null); const fileInput = ref(null)
 const dialog = ref(""); const formName = ref(""); const formTags = ref(""); const formReview = ref(false); const editing = ref(null); const busy = ref(false); const deleting = ref(false)
 const batchPurgeOpen = ref(false)
@@ -88,6 +89,21 @@ async function load() {
     const result = await api.getLibraryItems({ parentId: folderId.value, kind: kind.value, query: query.value, tag: tag.value, trashed: props.trash })
     if (requestVersion !== loadVersion) return
     items.value = result.items || []
+    const globalQuery = query.value.trim()
+    if (!folderId.value && !props.trash && globalQuery.length >= 2) {
+      globalSearching.value = true
+      try {
+        const search = await api.searchLearning(globalQuery)
+        if (requestVersion === loadVersion) globalResults.value = search.items || search.results || []
+      } catch {
+        if (requestVersion === loadVersion) globalResults.value = []
+      } finally {
+        if (requestVersion === loadVersion) globalSearching.value = false
+      }
+    } else {
+      globalResults.value = []
+      globalSearching.value = false
+    }
     const visibleIds = new Set(items.value.map((item) => item.id))
     selected.value = new Set([...selected.value].filter((id) => visibleIds.has(id)))
     currentFolder.value = folder
@@ -114,6 +130,11 @@ function openItem(item) {
   menuId.value = null
   if (item.kind === "folder") return router.push({ name: props.trash ? "trash" : "library", params:{ folderId:item.id } })
   return router.push({ name:"library-item", params:{ itemId:item.id } })
+}
+
+function openGlobalResult(result) {
+  if (result.source_type === "error") return router.push({ name: "errors", params: { id: result.id } })
+  return router.push({ name: "library-item", params: { itemId: result.id } })
 }
 
 // openCreate 协调当前组件的状态和交互。
@@ -207,10 +228,15 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOverlay
     </header>
 
     <section class="library-toolbar" aria-label="资料筛选">
-      <label class="library-search"><Search :size="18"/><input v-model="query" placeholder="搜索名称、标签和笔记正文" aria-label="搜索资料"/></label>
+      <label class="library-search"><Search :size="18"/><input v-model="query" placeholder="搜索笔记、错题和正文" aria-label="搜索资料"/></label>
       <div class="library-filter" :class="{open:activeFilter==='kind'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='kind'" @click="toggleFilter('kind')"><span>类型</span><strong>{{ kindLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='kind'" class="library-filter__menu" role="listbox" aria-label="资料类型"><button v-for="option in kindOptions" :key="option.value" type="button" role="option" :aria-selected="kind===option.value" :class="{active:kind===option.value}" @click="selectFilter('kind',option.value)">{{ option.label }}</button></div></div>
       <div class="library-filter library-filter--sort" :class="{open:activeFilter==='sort'}"><button type="button" class="library-filter__trigger" aria-haspopup="listbox" :aria-expanded="activeFilter==='sort'" @click="toggleFilter('sort')"><span>排序</span><strong>{{ sortLabel }}</strong><ChevronDown :size="15"/></button><div v-if="activeFilter==='sort'" class="library-filter__menu" role="listbox" aria-label="资料排序"><button v-for="option in sortOptions" :key="option.value" type="button" role="option" :aria-selected="sortField===option.value" :class="{active:sortField===option.value,'is-asc':sortField===option.value&&sortDirection==='asc','is-desc':sortField===option.value&&sortDirection==='desc'}" @click="selectSortOption(option.value)"><span>{{ option.label }}</span><ArrowUp v-if="sortField===option.value&&sortDirection==='asc'" :size="15" aria-label="升序"/><ArrowDown v-else-if="sortField===option.value" :size="15" aria-label="降序"/></button></div></div>
       <div class="library-view-toggle"><button :class="{active:view==='grid'}" aria-label="网格视图" @click="setView('grid')"><Grid2X2 :size="17"/></button><button :class="{active:view==='list'}" aria-label="列表视图" @click="setView('list')"><List :size="18"/></button></div>
+    </section>
+
+    <section v-if="globalSearching || globalResults.length" class="learning-search-results" aria-live="polite">
+      <div><strong>跨资料库搜索</strong><span>{{ globalSearching ? '正在检索…' : `找到 ${globalResults.length} 条相关内容` }}</span></div>
+      <button v-for="result in globalResults.slice(0, 8)" :key="`${result.source_type}-${result.id}`" type="button" @click="openGlobalResult(result)"><span class="learning-search-results__kind">{{ result.source_type === 'error' ? '错题' : '资料' }}</span><span><strong>{{ result.title }}</strong><small>{{ result.subtitle || result.match_field }}{{ result.snippet ? ` · ${result.snippet}` : '' }}</small></span></button>
     </section>
 
     <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="requestBatch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>

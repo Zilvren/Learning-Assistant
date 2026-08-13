@@ -56,7 +56,11 @@ func CreateLibraryItem(ctx context.Context, req models.CreateLibraryItemRequest,
 	if e != nil {
 		return models.LibraryItem{}, e
 	}
-	return r.Create(ctx, req, content)
+	item, err := r.Create(ctx, req, content)
+	if err == nil && req.Kind != "folder" {
+		_ = recordAutomaticActivity(ctx, "library_create", fmt.Sprintf("library:create:%d:%s", item.ID, time.Now().Format(time.DateOnly)), 1)
+	}
+	return item, err
 }
 
 // UpdateLibraryItem 在业务层中创建或更新相应状态。
@@ -65,7 +69,11 @@ func UpdateLibraryItem(ctx context.Context, id int64, req models.UpdateLibraryIt
 	if e != nil {
 		return models.LibraryItem{}, e
 	}
-	return r.Update(ctx, id, req)
+	item, err := r.Update(ctx, id, req)
+	if err == nil {
+		_ = recordAutomaticActivity(ctx, "library_update", fmt.Sprintf("library:update:%d:%s", id, time.Now().Format(time.DateOnly)), 1)
+	}
+	return item, err
 }
 
 // SaveLibraryContent 在业务层中创建或更新相应状态。
@@ -74,7 +82,11 @@ func SaveLibraryContent(ctx context.Context, id int64, req models.SaveLibraryCon
 	if e != nil {
 		return models.LibraryItem{}, e
 	}
-	return r.SaveContent(ctx, id, []byte(req.Content), req.BaseVersion, req.Checkpoint, req.Force)
+	item, err := r.SaveContent(ctx, id, []byte(req.Content), req.BaseVersion, req.Checkpoint, req.Force)
+	if err == nil {
+		_ = recordAutomaticActivity(ctx, "library_update", fmt.Sprintf("library:update:%d:%s", id, time.Now().Format(time.DateOnly)), 1)
+	}
+	return item, err
 }
 
 // ReadLibraryContent 在业务层中读取并整理所需数据。
@@ -171,10 +183,18 @@ func DueLibraryReviews(ctx context.Context) ([]models.LibraryItem, error) {
 }
 
 // ReviewLibraryNote 在业务层中完成本文件定义的局部处理。
-func ReviewLibraryNote(ctx context.Context, id int64) (models.LibraryItem, error) {
+func ReviewLibraryNote(ctx context.Context, id int64, ratings ...string) (models.LibraryItem, error) {
 	r, err := libraryRepository(ctx)
 	if err != nil {
 		return models.LibraryItem{}, err
 	}
-	return r.Review(ctx, id, time.Now(), reviewIntervals)
+	rating := "good"
+	if len(ratings) > 0 {
+		rating = models.NormalizeReviewRating(ratings[0])
+	}
+	item, err := r.ReviewWithRating(ctx, id, time.Now(), rating)
+	if err == nil {
+		_ = recordAutomaticActivity(ctx, "review", fmt.Sprintf("review:library:%d:%s", id, time.Now().Format(time.DateOnly)), 1)
+	}
+	return item, err
 }

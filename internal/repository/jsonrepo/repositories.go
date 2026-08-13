@@ -9,6 +9,8 @@ type Repositories struct {
 	settings  *SettingsRepository
 	knowledge *KnowledgeRepository
 	ocrTasks  *OCRTaskRepository
+	activity  *ActivityRepository
+	relations *LearningRelationRepository
 	backup    *BackupRepository
 	auth      *AuthRepository
 	library   *LibraryRepository
@@ -22,7 +24,9 @@ func NewRepositories() base.Repositories {
 	repos.errors = &ErrorRepository{store: store}
 	repos.settings = &SettingsRepository{store: store}
 	repos.knowledge = &KnowledgeRepository{store: store}
-	repos.ocrTasks = &OCRTaskRepository{}
+	repos.ocrTasks = &OCRTaskRepository{store: store}
+	repos.activity = &ActivityRepository{store: store}
+	repos.relations = &LearningRelationRepository{store: store}
 	repos.auth = &AuthRepository{}
 	repos.library = &LibraryRepository{store: store}
 	repos.backup = &BackupRepository{
@@ -35,6 +39,8 @@ func NewRepositories() base.Repositories {
 		Settings:  repos.settings,
 		Knowledge: repos.knowledge,
 		OCRTasks:  repos.ocrTasks,
+		Activity:  repos.activity,
+		Relations: repos.relations,
 		Backup:    repos.backup,
 		Library:   repos.library,
 	}

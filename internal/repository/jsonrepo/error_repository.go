@@ -115,6 +115,12 @@ func (r *ErrorRepository) Delete(ctx context.Context, id int) error {
 
 // Review 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Time, intervals []int) (models.ErrorProblem, error) {
+	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
+}
+
+// ReviewWithRating keeps the review interval tied to recall quality instead
+// of advancing every card through one fixed schedule.
+func (r *ErrorRepository) ReviewWithRating(ctx context.Context, id int, reviewedAt time.Time, rating string) (models.ErrorProblem, error) {
 	var result models.ErrorProblem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {
 		errors, err := loadErrors(tx)
@@ -125,22 +131,12 @@ func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Ti
 			if errors[i].ID != id {
 				continue
 			}
-			count := errors[i].ReviewCount + 1
-			index := count
-			if index < 0 {
-				index = 0
-			}
-			if len(intervals) == 0 {
-				intervals = []int{0}
-			}
-			if index >= len(intervals) {
-				index = len(intervals) - 1
-			}
+			stage, count, nextReview := models.NextReview(errors[i].ReviewStage, errors[i].ReviewCount, rating, reviewedAt)
 			reviewed := reviewedAt.Format("2006-01-02 15:04:05")
 			errors[i].ReviewCount = count
-			errors[i].ReviewStage = count
+			errors[i].ReviewStage = stage
 			errors[i].LastReview = &reviewed
-			errors[i].NextReview = reviewedAt.AddDate(0, 0, intervals[index]).Format("2006-01-02")
+			errors[i].NextReview = nextReview
 			if err := tx.Save("errors.json", errors); err != nil {
 				return err
 			}

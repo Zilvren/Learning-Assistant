@@ -14,6 +14,8 @@ type Repositories struct {
 	Settings  SettingsRepository
 	Knowledge KnowledgeRepository
 	OCRTasks  OCRTaskRepository
+	Activity  ActivityRepository
+	Relations LearningRelationRepository
 	Backup    BackupRepository
 	Library   LibraryRepository
 }
@@ -45,6 +47,7 @@ type LibraryRepository interface {
 	ListTags(ctx context.Context) ([]string, error)
 	DueReviews(ctx context.Context, day time.Time) ([]models.LibraryItem, error)
 	Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error)
+	ReviewWithRating(ctx context.Context, id int64, reviewedAt time.Time, rating string) (models.LibraryItem, error)
 	EnsureLegacy(ctx context.Context, errors []models.ErrorProblem, subjects []string) error
 	Cleanup(ctx context.Context, before time.Time) error
 }
@@ -59,6 +62,7 @@ type AuthRepository interface {
 	TouchLastLogin(ctx context.Context, id int64) error
 	CreateRefreshToken(ctx context.Context, userID int64, tokenHash string, userAgent string, ipAddress string, expiresAt time.Time) error
 	FindRefreshToken(ctx context.Context, tokenHash string) (userID int64, expiresAt time.Time, revoked bool, err error)
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (userID int64, expiresAt time.Time, err error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
 }
 
@@ -84,6 +88,7 @@ type ErrorRepository interface {
 	Update(ctx context.Context, id int, req models.UpdateErrorRequest) error
 	Delete(ctx context.Context, id int) error
 	Review(ctx context.Context, id int, reviewedAt time.Time, intervals []int) (models.ErrorProblem, error)
+	ReviewWithRating(ctx context.Context, id int, reviewedAt time.Time, rating string) (models.ErrorProblem, error)
 	ListTags(ctx context.Context) ([]string, error)
 	Replace(ctx context.Context, errors []models.ErrorProblem) error
 	HasAny(ctx context.Context) (bool, error)
@@ -100,6 +105,7 @@ type KnowledgeRepository interface {
 }
 
 type OCRTask struct {
+	ID             int64
 	Provider       string
 	Status         string
 	SourceFilename string
@@ -108,14 +114,30 @@ type OCRTask struct {
 	BatchID        string
 	TaskID         string
 	ResultMarkdown string
+	InputBlobHash  string
 	ErrorMessage   string
 	Metadata       map[string]interface{}
 	FinishedAt     *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type OCRTaskRepository interface {
 	Create(ctx context.Context, task OCRTask) (int64, error)
 	Update(ctx context.Context, id int64, task OCRTask) error
+	Get(ctx context.Context, id int64) (OCRTask, error)
+	List(ctx context.Context, limit int) ([]OCRTask, error)
+}
+
+type ActivityRepository interface {
+	Record(ctx context.Context, event models.ActivityEvent) error
+	List(ctx context.Context, startDate, endDate time.Time) ([]models.ActivityEvent, error)
+}
+
+type LearningRelationRepository interface {
+	List(ctx context.Context, sourceType string, sourceID int64) ([]models.LearningRelation, error)
+	Create(ctx context.Context, relation models.LearningRelation) (models.LearningRelation, error)
+	Delete(ctx context.Context, id int64) error
 }
 
 type BackupData struct {
@@ -124,6 +146,8 @@ type BackupData struct {
 	Config    *models.Config
 	Knowledge *map[string][]string
 	Library   *LibraryBackup
+	Activity  *ActivityBackup
+	Relations *RelationBackup
 	Blobs     map[string][]byte
 }
 
@@ -136,6 +160,18 @@ type LibraryBackup struct {
 	NextVersionID int64                   `json:"next_version_id"`
 	Items         []models.LibraryItem    `json:"items"`
 	Versions      []models.LibraryVersion `json:"versions"`
+}
+
+// ActivityBackup and RelationBackup keep supplemental learning data portable
+// while preserving the JSON store's next-id state.
+type ActivityBackup struct {
+	NextID int64                  `json:"next_id"`
+	Events []models.ActivityEvent `json:"events"`
+}
+
+type RelationBackup struct {
+	NextID    int64                     `json:"next_id"`
+	Relations []models.LearningRelation `json:"relations"`
 }
 
 type BackupRepository interface {

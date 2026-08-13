@@ -218,38 +218,36 @@ func (r *ErrorRepository) Delete(ctx context.Context, id int) error {
 
 // Review 在存储层中完成本文件定义的局部处理。
 func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Time, intervals []int) (models.ErrorProblem, error) {
+	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
+}
+
+func (r *ErrorRepository) ReviewWithRating(ctx context.Context, id int, reviewedAt time.Time, rating string) (models.ErrorProblem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
 		return models.ErrorProblem{}, err
 	}
 	defer tx.Rollback(ctx)
 
-	var currentCount int
+	var currentCount, currentStage int
 	if err := tx.QueryRow(ctx, `
-		SELECT review_count
+		SELECT review_count, review_stage
 		FROM error_problems
 		WHERE user_id = $1
 		  AND id = $2
 		  AND deleted_at IS NULL
 		FOR UPDATE
-	`, r.store.userID, id).Scan(&currentCount); err != nil {
+	`, r.store.userID, id).Scan(&currentCount, &currentStage); err != nil {
 		if err == pgx.ErrNoRows {
 			return models.ErrorProblem{}, notFound("错题", id)
 		}
 		return models.ErrorProblem{}, err
 	}
-	reviewCount := currentCount + 1
-	index := reviewCount
-	if index < 0 {
-		index = 0
+	reviewStage, reviewCount, nextReviewText := models.NextReview(currentStage, currentCount, rating, reviewedAt)
+	nextReview, err := time.Parse(time.DateOnly, nextReviewText)
+	if err != nil {
+		return models.ErrorProblem{}, err
 	}
-	if len(intervals) == 0 {
-		intervals = []int{0}
-	}
-	if index >= len(intervals) {
-		index = len(intervals) - 1
-	}
-	nextReview := reviewedAt.AddDate(0, 0, intervals[index])
+	rating = models.NormalizeReviewRating(rating)
 
 	tag, err := tx.Exec(ctx, `
 		UPDATE error_problems
@@ -260,7 +258,7 @@ func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Ti
 		WHERE user_id = $1
 		  AND id = $2
 		  AND deleted_at IS NULL
-	`, r.store.userID, id, reviewCount, reviewCount, reviewedAt, nextReview)
+	`, r.store.userID, id, reviewCount, reviewStage, reviewedAt, nextReview)
 	if err != nil {
 		return models.ErrorProblem{}, err
 	}
@@ -269,8 +267,8 @@ func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Ti
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO review_records (user_id, error_problem_id, review_no, result, reviewed_at, next_review_at)
-		VALUES ($1, $2, $3, 'remembered', $4, $5)
-	`, r.store.userID, id, reviewCount, reviewedAt, nextReview); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, r.store.userID, id, reviewCount, rating, reviewedAt, nextReview); err != nil {
 		return models.ErrorProblem{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

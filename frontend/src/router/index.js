@@ -13,6 +13,8 @@ const HomePage = () => import("../components/HomePage.vue")
 const ReviewPage = () => import("../components/review/ReviewPage.vue")
 // SettingsPage 配置页面跳转或认证守卫。
 const SettingsPage = () => import("../components/SettingsPage.vue")
+// AIChatPage 配置页面跳转或认证守卫。
+const AIChatPage = () => import("../components/AIChatPage.vue")
 // LibraryPage 配置页面跳转或认证守卫。
 const LibraryPage = () => import("../components/library/LibraryPage.vue")
 // LibraryItemPage 配置页面跳转或认证守卫。
@@ -30,6 +32,7 @@ export const routes = [
       { path: "library/:folderId?", name: "library", component: LibraryPage, props: true },
       { path: "trash/:folderId?", name: "trash", component: LibraryPage, props: (route) => ({ trash: true, folderId: route.params.folderId }) },
       { path: "review", name: "review", component: ReviewPage },
+      { path: "ai", name: "ai", component: AIChatPage },
       { path: "errors/:id?", redirect: { name: "library" } },
       { path: "settings", name: "settings", component: SettingsPage },
     ],

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"study-tracker-go/internal/service"
@@ -38,13 +39,50 @@ func OCRImage(c *gin.Context) {
 	if fileName == "" || fileName == "." {
 		fileName = ocrFallbackFilename(c.ContentType())
 	}
-	markdown, err := service.OCRFileBytes(c.Request.Context(), body, fileName, c.ContentType())
+	task, err := service.StartOCRTask(c.Request.Context(), body, fileName, c.ContentType())
 	if err != nil {
 		respondError(c, http.StatusBadRequest, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"markdown": markdown})
+	c.JSON(http.StatusAccepted, gin.H{"task": task})
+}
+
+func ListOCRTasks(c *gin.Context) {
+	tasks, err := service.ListOCRTasks(c.Request.Context())
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
+}
+
+func GetOCRTask(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_ocr_task_id", "OCR 任务 ID 无效")
+		return
+	}
+	task, err := service.GetOCRTask(c.Request.Context(), id)
+	if err != nil {
+		respondError(c, http.StatusNotFound, err)
+		return
+	}
+	c.JSON(http.StatusOK, task)
+}
+
+func RetryOCRTask(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_ocr_task_id", "OCR 任务 ID 无效")
+		return
+	}
+	task, err := service.RetryOCRTask(c.Request.Context(), id)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, task)
 }
 
 // ocrFallbackFilename 在HTTP 处理层中完成本文件定义的局部处理。

@@ -89,6 +89,7 @@ func CreateError(ctx context.Context, req models.AddErrorRequest) (models.ErrorP
 			return models.ErrorProblem{}, err
 		}
 	}
+	_ = recordAutomaticActivity(ctx, "error_create", fmt.Sprintf("error:create:%d:%s", created.ID, now.Format(time.DateOnly)), 1)
 	return created, nil
 }
 
@@ -113,6 +114,14 @@ func GetAllErrors(ctx context.Context, subject, keyword, tag, reasonTag string) 
 		Tag:       tag,
 		ReasonTag: reasonTag,
 	})
+}
+
+func GetError(ctx context.Context, id int) (models.ErrorProblem, error) {
+	repos, err := repositories(ctx)
+	if err != nil {
+		return models.ErrorProblem{}, err
+	}
+	return repos.Errors.Get(ctx, id)
 }
 
 // UpdateError 在业务层中创建或更新相应状态。
@@ -143,7 +152,10 @@ func UpdateError(ctx context.Context, id int, req models.UpdateErrorRequest) err
 	}
 	all, _ := repos.Errors.List(ctx, repository.ErrorFilter{})
 	subjects, _ := repos.Subjects.List(ctx)
-	return repos.Library.EnsureLegacy(ctx, all, subjects)
+	if err := repos.Library.EnsureLegacy(ctx, all, subjects); err != nil {
+		return err
+	}
+	return recordAutomaticActivity(ctx, "error_update", fmt.Sprintf("error:update:%d:%s", id, time.Now().Format(time.DateOnly)), 1)
 }
 
 // DeleteError 在业务层中删除、清理或撤销相应状态。
@@ -155,15 +167,21 @@ func DeleteError(ctx context.Context, id int) error {
 	return repos.Errors.Delete(ctx, id)
 }
 
-var reviewIntervals = []int{0, 1, 2, 4, 7, 15}
-
 // ReviewError 在业务层中完成本文件定义的局部处理。
-func ReviewError(ctx context.Context, id int) (models.ErrorProblem, error) {
+func ReviewError(ctx context.Context, id int, ratings ...string) (models.ErrorProblem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
 		return models.ErrorProblem{}, err
 	}
-	return repos.Errors.Review(ctx, id, time.Now(), reviewIntervals)
+	rating := "good"
+	if len(ratings) > 0 {
+		rating = models.NormalizeReviewRating(ratings[0])
+	}
+	item, err := repos.Errors.ReviewWithRating(ctx, id, time.Now(), rating)
+	if err == nil {
+		_ = recordAutomaticActivity(ctx, "review", fmt.Sprintf("review:error:%d:%s", id, time.Now().Format(time.DateOnly)), 1)
+	}
+	return item, err
 }
 
 // GetAllTags 在业务层中读取并整理所需数据。

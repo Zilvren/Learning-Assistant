@@ -37,6 +37,8 @@ const exportOpen = ref(false)
 const exportStyle = ref(localStorage.getItem("pdfExportStyle") || "detailed")
 const exportBusy = ref(false)
 const reviewBusy = ref(false)
+const relations = ref([])
+const relationLibraryId = ref("")
 const today = new Date().toISOString().slice(0, 10)
 
 const hasRequestedId = computed(() => route.params.id !== undefined && route.params.id !== "")
@@ -75,9 +77,38 @@ async function refresh() {
   try {
     await library.refresh({ subject: currentSubject.value, keyword: keyword.value, mode: searchMode.value })
     syncSelected()
+		await loadRelations()
   } catch (error) {
     toast.error(error.message || "错题加载失败")
   }
+}
+
+async function loadRelations() {
+  relations.value = []
+  if (!selectedId.value) return
+  try {
+    const result = await api.getLearningRelations("error", selectedId.value)
+    if (selectedId.value) relations.value = result.items || []
+  } catch { /* missing relations must never block an error record */ }
+}
+
+async function linkLibrary() {
+  const libraryID = Number(relationLibraryId.value)
+  if (!Number.isInteger(libraryID) || libraryID <= 0) return toast.warning("请输入要关联的笔记 ID")
+  try {
+    await api.createLearningRelation({ from_type: "error", from_id: selectedId.value, to_type: "library", to_id: libraryID })
+    relationLibraryId.value = ""
+    await loadRelations()
+    toast.success("已关联笔记")
+  } catch (error) { toast.error(error.message || "关联失败") }
+}
+
+async function removeRelation(id) {
+  try {
+    await api.deleteLearningRelation(id)
+    relations.value = relations.value.filter((relation) => relation.id !== id)
+    toast.success("已移除关联")
+  } catch (error) { toast.error(error.message || "移除失败") }
 }
 
 // selectError 协调当前组件的状态和交互。
@@ -217,7 +248,7 @@ function onBeforeUnload(event) {
   event.returnValue = ""
 }
 
-watch(() => route.params.id, syncSelected)
+watch(() => route.params.id, () => { syncSelected(); void loadRelations() })
 onBeforeRouteLeave((to) => {
   if (!editorOpen.value || !editorDirty.value) return true
   pendingRoute.value = to.fullPath
@@ -258,11 +289,17 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
         :reviewing="reviewBusy"
         :not-found="detailNotFound"
         :requested-id="requestedId"
+		:relations="relations"
+		:relation-library-id="relationLibraryId"
         @back="router.push({ name: 'errors' })"
         @edit="openEdit"
         @delete="deleteOpen = true"
         @review="markReviewed"
         @tag="setTagSearch"
+		@link-library="linkLibrary"
+		@unlink-relation="removeRelation"
+		@open-library="(id) => router.push({ name: 'library-item', params: { itemId: id } })"
+		@update:relation-library-id="relationLibraryId = $event"
       />
     </section>
 

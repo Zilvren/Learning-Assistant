@@ -59,6 +59,49 @@ func ClearToken(ctx context.Context) error {
 	return saveConfig(ctx, config)
 }
 
+// GetDeepSeekTokenInfo returns only a masked status; the API key is never
+// returned to the browser in full.
+func GetDeepSeekTokenInfo(ctx context.Context) (*TokenInfo, error) {
+	config, err := loadConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenInfo{Token: maskToken(config.DeepSeekToken), Configured: strings.TrimSpace(config.DeepSeekToken) != ""}, nil
+}
+
+func SetDeepSeekToken(ctx context.Context, token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil
+	}
+	config, err := loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	config.DeepSeekToken = token
+	return saveConfig(ctx, config)
+}
+
+func ClearDeepSeekToken(ctx context.Context) error {
+	config, err := loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	config.DeepSeekToken = ""
+	return saveConfig(ctx, config)
+}
+
+func maskToken(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 12 {
+		return value[:8] + "***" + value[len(value)-4:]
+	}
+	if value != "" {
+		return "***"
+	}
+	return ""
+}
+
 // SetUsername 在业务层中完成本文件定义的局部处理。
 func SetUsername(ctx context.Context, name string) error {
 	config, err := loadConfig(ctx)

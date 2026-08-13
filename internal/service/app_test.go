@@ -4,13 +4,16 @@ import (
 	"context"
 	"testing"
 
-	"study-tracker-go/internal/repository"
+	base "study-tracker-go/internal/repository"
 	jsonrepo "study-tracker-go/internal/repository/jsonrepo"
 	"study-tracker-go/pkg/config"
 )
 
 // TestRequestAppTakesPriorityOverLegacyApp 在业务层中验证对应场景的行为与边界条件。
 func TestRequestAppTakesPriorityOverLegacyApp(t *testing.T) {
+	previousDir := base.DataDir()
+	base.SetDataDir(t.TempDir())
+	t.Cleanup(func() { base.SetDataDir(previousDir) })
 	legacy, err := NewApp(config.Config{StorageDriver: "json"}, jsonrepo.NewRepositories(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +37,7 @@ func TestRequestAppTakesPriorityOverLegacyApp(t *testing.T) {
 
 // TestNewAppRejectsIncompleteDependencies 在业务层中验证对应场景的行为与边界条件。
 func TestNewAppRejectsIncompleteDependencies(t *testing.T) {
-	if _, err := NewApp(config.Config{StorageDriver: "json"}, repository.Repositories{}, nil); err == nil {
+	if _, err := NewApp(config.Config{StorageDriver: "json"}, base.Repositories{}, nil); err == nil {
 		t.Fatal("expected incomplete dependencies to be rejected")
 	}
 }

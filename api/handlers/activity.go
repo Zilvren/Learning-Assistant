@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	models "study-tracker-go/internal/model"
 	"study-tracker-go/internal/service"
 )
 
@@ -27,6 +28,55 @@ func GetLearningActivity(c *gin.Context) {
 		return
 	}
 	result, err := service.GetLearningActivity(c.Request.Context(), year)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func GetDailyPlan(c *gin.Context) {
+	result, err := service.GetDailyPlan(c.Request.Context())
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func SetDailyGoal(c *gin.Context) {
+	var goal models.DailyGoalSettings
+	if err := c.ShouldBindJSON(&goal); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_goal", "目标格式错误")
+		return
+	}
+	result, err := service.SetDailyGoal(c.Request.Context(), goal)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func RecordFocusSession(c *gin.Context) {
+	var body struct {
+		Minutes   int    `json:"minutes"`
+		ClientKey string `json:"client_key"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_focus_session", "专注记录格式错误")
+		return
+	}
+	result, err := service.RecordFocusSession(c.Request.Context(), body.Minutes, body.ClientKey)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusCreated, result)
+}
+
+func GetWeeklyReport(c *gin.Context) {
+	result, err := service.GetWeeklyReport(c.Request.Context())
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err)
 		return

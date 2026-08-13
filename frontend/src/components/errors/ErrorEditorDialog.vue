@@ -89,7 +89,9 @@ async function runOcr(blob) {
   ocrLoading.value = true
   try {
     const file = blob instanceof File ? blob : new File([blob], "clipboard.png", { type: blob.type || "image/png" })
-    const result = await api.ocrImage(file)
+    const queued = await api.ocrImage(file)
+    toast.info("OCR 已加入任务队列，识别完成后会自动插入")
+    const result = await api.waitForOCRTask(queued.task?.id || queued.id)
     const text = (result.markdown || "").replace(/\$\$([^$]+)\$\$/g, (_, content) => `$${content.replace(/\n\s*/g, " ")}$`)
     const key = activeField.value
     form.value[key] += (form.value[key] ? "\n\n" : "") + text

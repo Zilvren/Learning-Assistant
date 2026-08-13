@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -256,6 +257,59 @@ func (tx *JSONTx) Save(filename string, value interface{}) error {
 		return err
 	}
 	return writeFileAtomic(path, data, 0600)
+}
+
+// SaveAll marshals all values before replacing any file, then rolls back files
+// already replaced if a later filesystem write fails. It gives JSON backup
+// imports all-or-nothing behavior for normal I/O failures.
+func (tx *JSONTx) SaveAll(values map[string]interface{}) error {
+	if !tx.writable {
+		return errors.New("JSON read transaction cannot write")
+	}
+	type preparedFile struct {
+		name   string
+		path   string
+		data   []byte
+		exists bool
+		before []byte
+	}
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	prepared := make([]preparedFile, 0, len(names))
+	for _, name := range names {
+		path, err := tx.path(name)
+		if err != nil {
+			return err
+		}
+		data, err := json.MarshalIndent(values[name], "", "  ")
+		if err != nil {
+			return err
+		}
+		before, readErr := os.ReadFile(path)
+		if readErr != nil && !os.IsNotExist(readErr) {
+			return readErr
+		}
+		prepared = append(prepared, preparedFile{name: name, path: path, data: data, exists: readErr == nil, before: before})
+	}
+	committed := make([]preparedFile, 0, len(prepared))
+	for _, item := range prepared {
+		if err := writeFileAtomic(item.path, item.data, 0600); err != nil {
+			for index := len(committed) - 1; index >= 0; index-- {
+				prior := committed[index]
+				if prior.exists {
+					_ = writeFileAtomic(prior.path, prior.before, 0600)
+				} else {
+					_ = os.Remove(prior.path)
+				}
+			}
+			return err
+		}
+		committed = append(committed, item)
+	}
+	return nil
 }
 
 // path 在存储层中完成本文件定义的局部处理。

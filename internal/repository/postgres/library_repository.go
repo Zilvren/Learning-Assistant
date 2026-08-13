@@ -69,6 +69,18 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	if f.DueOnly {
 		where = append(where, "review_enabled=TRUE AND (next_review='' OR next_review<=CURRENT_DATE::text)")
 	}
+	if query != "" {
+		args = append(args, query)
+		parameter := len(args)
+		where = append(where, fmt.Sprintf(`(
+			lower(name) LIKE '%%' || $%d || '%%'
+			OR EXISTS(SELECT 1 FROM unnest(tags) tag WHERE lower(tag) LIKE '%%' || $%d || '%%')
+			OR (kind = 'note' AND (
+				to_tsvector('simple', coalesce(search_text, '')) @@ plainto_tsquery('simple', $%d)
+				OR lower(search_text) LIKE '%%' || $%d || '%%'
+			))
+		)`, parameter, parameter, parameter, parameter))
+	}
 	rows, err := r.store.pool.Query(ctx, "SELECT "+libraryColumns+" FROM library_items WHERE "+strings.Join(where, " AND ")+" ORDER BY pinned DESC,updated_at DESC", args...)
 	if err != nil {
 		return nil, err
@@ -80,19 +92,17 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 		if e != nil {
 			return nil, e
 		}
-		if query != "" && !postgresLibraryMatchesQuery(x, query) {
-			continue
-		}
 		out = append(out, x)
 	}
 	return out, rows.Err()
 }
 
-// postgresLibraryMatchesQuery matches metadata first, then reads Markdown text
-// only when needed so a library query can also find note body content.
-// postgresLibraryMatchesQuery 先匹配元数据，未命中时再读取 Markdown 正文。
+// postgresLibraryMatchesQuery remains a small compatibility helper for
+// callers that only have a LibraryItem. List now performs this matching in
+// PostgreSQL through search_text, avoiding per-note blob reads.
 func postgresLibraryMatchesQuery(item models.LibraryItem, query string) bool {
-	if strings.Contains(strings.ToLower(item.Name+" "+strings.Join(item.Tags, " ")), query) {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" || strings.Contains(strings.ToLower(item.Name+" "+strings.Join(item.Tags, " ")), query) {
 		return true
 	}
 	if item.Kind != "note" || item.BlobHash == "" {
@@ -141,7 +151,11 @@ func (r *LibraryRepository) Create(ctx context.Context, req models.CreateLibrary
 		nextReview = time.Now().Format("2006-01-02")
 	}
 	tags := normalizeLibraryTags(req.Tags)
-	out, err = scanLibrary(tx.QueryRow(ctx, "INSERT INTO library_items(user_id,parent_id,kind,name,mime_type,file_size,tags,current_version,blob_hash,review_enabled,next_review,error_problem_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING "+libraryColumns, r.store.userID, req.ParentID, req.Kind, name, req.MimeType, size, tags, boolInt(req.Kind != "folder"), hash, req.ReviewEnabled, nextReview, req.ErrorProblemID))
+	searchText := ""
+	if req.Kind == "note" {
+		searchText = string(content)
+	}
+	out, err = scanLibrary(tx.QueryRow(ctx, "INSERT INTO library_items(user_id,parent_id,kind,name,mime_type,file_size,tags,current_version,blob_hash,review_enabled,next_review,error_problem_id,search_text) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING "+libraryColumns, r.store.userID, req.ParentID, req.Kind, name, req.MimeType, size, tags, boolInt(req.Kind != "folder"), hash, req.ReviewEnabled, nextReview, req.ErrorProblemID, searchText))
 	if err != nil {
 		return out, err
 	}
@@ -252,7 +266,11 @@ func (r *LibraryRepository) SaveContent(ctx context.Context, id int64, content [
 		}
 		return item, nil
 	}
-	item, err = scanLibrary(tx.QueryRow(ctx, "UPDATE library_items SET blob_hash=$3,file_size=$4,current_version=current_version+1,updated_at=now() WHERE user_id=$1 AND id=$2 RETURNING "+libraryColumns, r.store.userID, id, hash, size))
+	searchText := ""
+	if item.Kind == "note" {
+		searchText = string(content)
+	}
+	item, err = scanLibrary(tx.QueryRow(ctx, "UPDATE library_items SET blob_hash=$3,file_size=$4,current_version=current_version+1,search_text=$5,updated_at=now() WHERE user_id=$1 AND id=$2 RETURNING "+libraryColumns, r.store.userID, id, hash, size, searchText))
 	if err != nil {
 		return item, err
 	}
@@ -590,6 +608,10 @@ func (r *LibraryRepository) DueReviews(ctx context.Context, day time.Time) ([]mo
 
 // Review 在存储层中完成本文件定义的局部处理。
 func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt time.Time, intervals []int) (models.LibraryItem, error) {
+	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
+}
+
+func (r *LibraryRepository) ReviewWithRating(ctx context.Context, id int64, reviewedAt time.Time, rating string) (models.LibraryItem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {
 		return models.LibraryItem{}, err
@@ -602,19 +624,8 @@ func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt tim
 		}
 		return item, err
 	}
-	item.ReviewCount++
-	item.ReviewStage = item.ReviewCount
-	if len(intervals) == 0 {
-		intervals = []int{0}
-	}
-	index := item.ReviewCount
-	if index >= len(intervals) {
-		index = len(intervals) - 1
-	}
-	if index < 0 {
-		index = 0
-	}
-	item, err = scanLibrary(tx.QueryRow(ctx, "UPDATE library_items SET review_count=$3,review_stage=$4,last_review=$5,next_review=$6,updated_at=$5 WHERE user_id=$1 AND id=$2 RETURNING "+libraryColumns, r.store.userID, id, item.ReviewCount, item.ReviewStage, reviewedAt, reviewedAt.AddDate(0, 0, intervals[index]).Format("2006-01-02")))
+	item.ReviewStage, item.ReviewCount, item.NextReview = models.NextReview(item.ReviewStage, item.ReviewCount, rating, reviewedAt)
+	item, err = scanLibrary(tx.QueryRow(ctx, "UPDATE library_items SET review_count=$3,review_stage=$4,last_review=$5,next_review=$6,updated_at=$5 WHERE user_id=$1 AND id=$2 RETURNING "+libraryColumns, r.store.userID, id, item.ReviewCount, item.ReviewStage, reviewedAt, item.NextReview))
 	if err != nil {
 		return item, err
 	}

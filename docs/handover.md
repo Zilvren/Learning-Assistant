@@ -38,7 +38,7 @@ go vet ./...
 
 ## 2. 项目定位与运行模式
 
-Learning Assistant 是一个 Go + Vue 的学习资料库，核心能力包括资料库、Markdown 笔记、复习计划、学习记录、OCR、备份恢复和多用户认证。
+Learning Assistant 是一个 Go + Vue 的学习资料库，核心能力包括资料库、Markdown 笔记、复习计划、学习记录、OCR、AI 学习助手、备份恢复和多用户认证。
 
 项目支持两种存储模式：
 
@@ -88,7 +88,7 @@ main.go
 | --- | --- |
 | `main.go` | 程序启动、依赖组装、中间件与路由注册 |
 | `api/handlers/` | HTTP Handler |
-| `internal/service/` | 认证、资料库、备份、OCR、复习等业务逻辑 |
+| `internal/service/` | 认证、资料库、备份、OCR、复习、AI 学习助手等业务逻辑 |
 | `internal/repository/interfaces.go` | Repository 接口集合 |
 | `internal/repository/jsonrepo/` | JSON 存储实现 |
 | `internal/repository/postgres/` | PostgreSQL 存储实现 |
@@ -115,6 +115,7 @@ main.go
 | `/library/items/:itemId` | 文件或 Markdown 笔记阅读/编辑 |
 | `/trash/:folderId?` | 回收站 |
 | `/review` | 今日复习 |
+| `/ai` | AI 学习助手（DeepSeek） |
 | `/settings` | 设置 |
 
 旧的 `/errors/:id?` 现在重定向到资料库；视觉预览和 `design-preview` 测试路由已经删除，不应重新加入生产路由。
@@ -226,12 +227,17 @@ docker compose -f deploy/docker-compose.yml ps
 | `TRACKER_COOKIE_SECURE` | HTTPS 后设为 `true`；HTTPS 公网 URL 也会自动启用 |
 | `TRACKER_ENCRYPTION_KEY` | 可选的独立敏感数据加密密钥 |
 | `TRACKER_DATA_DIR` | 自定义数据目录 |
+| `TRACKER_AUTO_BACKUP` | JSON 本地模式自动备份开关，默认 `true` |
+| `TRACKER_AUTO_BACKUP_INTERVAL` | 自动备份检查周期，默认 `24h`，不得小于 `1h` |
+| `TRACKER_AUTO_BACKUP_KEEP` | 自动恢复点保留数量，默认 `14`，范围 `1-365` |
 | `TRACKER_FRONTEND_DIR` | 默认 `frontend/dist`，主要用于源码运行 |
 | `TRACKER_HOST` / `TRACKER_PORT` | 默认 `127.0.0.1:8000` |
 | `TRACKER_NO_BROWSER` | 容器中为 `true` |
 | `TRACKER_EMAIL_VERIFICATION_ENABLED` | 是否启用邮箱验证 |
 | `TRACKER_PUBLIC_URL` | 邮件验证链接使用的 HTTPS 公网地址 |
 | `TRACKER_SMTP_*` | SMTP 主机、端口、账号、授权码、发件人和 TLS 模式 |
+| `DEEPSEEK_API_KEY` | AI 学习助手的可选环境变量 Key；设置页保存的加密 Key 优先 |
+| `DEEPSEEK_MODEL` | 可选模型名，默认 `deepseek-chat` |
 | `GIN_MODE` | 生产使用 `release` |
 
 安全要求：
@@ -441,4 +447,3 @@ gh auth login
 - 数据库设计：`docs/database.md`
 - PostgreSQL 教程：`docs/postgresql-tutorial.md`
 - PostgreSQL 接入说明：`docs/postgresql-integration-tutorial.md`
-

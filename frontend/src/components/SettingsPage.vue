@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import {
-  ArchiveRestore, Brush, Check, CloudDownload, DatabaseBackup, Eye, EyeOff,
+  ArchiveRestore, Bot, Brush, Check, CloudDownload, DatabaseBackup, Eye, EyeOff,
   KeyRound, LogOut, Moon, PackageCheck, RefreshCw, Sun, UserRound,
 } from "lucide-vue-next"
 import { api } from "../api/index.js"
@@ -18,13 +18,20 @@ const router = useRouter()
 const auth = useAuth()
 const settings = useSettings()
 const toast = useToast()
-const { username, darkMode } = settings
+const { username, darkMode, colorTheme, colorThemes } = settings
 const usernameBusy = ref(false)
 const token = ref("")
 const tokenConfigured = ref(false)
 const tokenMasked = ref("")
 const tokenVisible = ref(false)
 const tokenBusy = ref(false)
+const deepSeekToken = ref("")
+const deepSeekConfigured = ref(false)
+const deepSeekMasked = ref("")
+const deepSeekVisible = ref(false)
+const deepSeekBusy = ref(false)
+const ocrTasks = ref([])
+const ocrTasksBusy = ref(false)
 const backupInput = ref(null)
 const backupBusy = ref(false)
 const pendingBackup = ref(null)
@@ -84,6 +91,60 @@ async function clearToken() {
     toast.success("OCR Token 已清除")
   } catch (error) { toast.error(error.message || "Token 清除失败") }
   finally { tokenBusy.value = false }
+}
+
+async function loadDeepSeekToken() {
+  try {
+    const result = await api.getDeepSeekToken()
+    deepSeekConfigured.value = result.configured
+    deepSeekMasked.value = result.configured ? result.token : ""
+  } catch (error) { toast.error(error.message || "DeepSeek 配置读取失败") }
+}
+
+async function saveDeepSeekToken() {
+  if (!deepSeekToken.value.trim()) return toast.warning(deepSeekConfigured.value ? "粘贴新 API Key 后再保存" : "请输入 DeepSeek API Key")
+  deepSeekBusy.value = true
+  try {
+    await api.saveDeepSeekToken(deepSeekToken.value.trim())
+    deepSeekToken.value = ""
+    await loadDeepSeekToken()
+    toast.success("DeepSeek API Key 已安全保存")
+  } catch (error) { toast.error(error.message || "API Key 保存失败") }
+  finally { deepSeekBusy.value = false }
+}
+
+async function clearDeepSeekToken() {
+  deepSeekBusy.value = true
+  try {
+    await api.clearDeepSeekToken()
+    deepSeekToken.value = ""
+    await loadDeepSeekToken()
+    toast.success("DeepSeek API Key 已清除")
+  } catch (error) { toast.error(error.message || "API Key 清除失败") }
+  finally { deepSeekBusy.value = false }
+}
+
+function formatTaskTime(value) {
+  if (!value) return "刚刚"
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value))
+}
+
+async function loadOCRTasks(silent = false) {
+  ocrTasksBusy.value = true
+  try {
+    const result = await api.getOCRTasks()
+    ocrTasks.value = result.tasks || []
+  } catch (error) {
+    if (!silent) toast.error(error.message || "OCR 任务读取失败")
+  } finally { ocrTasksBusy.value = false }
+}
+
+async function retryOCRTask(task) {
+  try {
+    await api.retryOCRTask(task.id)
+    toast.info("OCR 任务已重新排队")
+    await loadOCRTasks(true)
+  } catch (error) { toast.error(error.message || "重试失败") }
 }
 
 // backupStamp 协调当前组件的状态和交互。
@@ -204,7 +265,7 @@ async function logout() {
 }
 
 onMounted(async () => {
-  const tasks = [settings.load(), loadToken()]
+  const tasks = [settings.load(), loadToken(), loadDeepSeekToken(), loadOCRTasks(true)]
   if (updateEnabled.value) tasks.push(loadVersion())
   await Promise.all(tasks)
   if (route.query.section) await nextTick(() => document.getElementById(String(route.query.section))?.scrollIntoView({ behavior: "smooth" }))
@@ -221,7 +282,8 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
         <a href="#account"><UserRound :size="16" />账户与会话</a>
         <a href="#appearance"><Brush :size="16" />外观</a>
         <a href="#backup"><DatabaseBackup :size="16" />备份恢复</a>
-        <a href="#ocr"><KeyRound :size="16" />OCR Token</a>
+        <a href="#ocr"><KeyRound :size="16" />OCR 与任务</a>
+        <a href="#ai"><Bot :size="16" />AI 学习助手</a>
         <a v-if="updateEnabled" href="#updates"><PackageCheck :size="16" />版本更新</a>
       </nav>
 
@@ -242,21 +304,58 @@ onBeforeUnmount(() => window.clearInterval(restartPollTimer))
             <button type="button" :class="{ active: !darkMode }" @click="settings.setDarkMode(false)"><Sun :size="22" /><strong>明亮模式</strong><span>清爽浅色学习空间</span></button>
             <button type="button" :class="{ active: darkMode }" @click="settings.setDarkMode(true)"><Moon :size="22" /><strong>深色模式</strong><span>低干扰夜间学习</span></button>
           </div>
+          <div class="appearance-palette">
+            <div class="appearance-palette__heading"><strong>配色方案</strong><span>不改变页面模板，只替换全局颜色。</span></div>
+            <div class="palette-choice" role="radiogroup" aria-label="配色方案">
+              <button
+                v-for="palette in colorThemes"
+                :key="palette.id"
+                type="button"
+                role="radio"
+                :aria-checked="colorTheme === palette.id"
+                :class="{ active: colorTheme === palette.id }"
+                @click="settings.setColorTheme(palette.id)"
+              >
+                <span class="palette-choice__swatch" :class="`palette-choice__swatch--${palette.id}`" aria-hidden="true" />
+                <strong>{{ palette.emoji }} {{ palette.name }}</strong>
+                <small>{{ palette.description }}</small>
+              </button>
+            </div>
+          </div>
         </section>
 
         <section id="backup" class="settings-section paper-panel">
-          <header><span>03</span><div><h2>备份与恢复</h2><p>备份包含资料库、笔记版本、附件、标签、设置和每日知识札记。</p></div><DatabaseBackup :size="21" /></header>
+          <header><span>03</span><div><h2>备份与恢复</h2><p>备份包含资料库、笔记版本、附件、标签、设置和每日知识札记；本地模式每天会自动保留恢复点。</p></div><DatabaseBackup :size="21" /></header>
           <div class="setting-action-grid"><article><CloudDownload :size="22" /><div><strong>导出完整备份</strong><p>下载带日期的 ZIP 文件，建议在重要整理后执行。</p></div><BaseButton :busy="backupBusy" @click="exportBackup">导出备份</BaseButton></article><article><ArchiveRestore :size="22" /><div><strong>从 ZIP 备份恢复</strong><p>选择已导出的 ZIP 包。恢复成功后会直接打开资料库。</p></div><BaseButton :disabled="backupBusy" @click="backupInput?.click()">选择 ZIP</BaseButton><input ref="backupInput" type="file" accept=".zip,application/zip" hidden @change="chooseBackup" /></article></div>
         </section>
 
         <section id="ocr" class="settings-section paper-panel">
-          <header><span>04</span><div><h2>OCR 工具连接</h2><p>MinerU Token 只由后端保存；页面仅展示掩码。</p></div><KeyRound :size="21" /></header>
+          <header><span>04</span><div><h2>OCR 工具与任务</h2><p>MinerU Token 只由后端保存；识别任务可在后台继续完成。</p></div><KeyRound :size="21" /></header>
           <div v-if="tokenConfigured" class="token-status"><span class="status-chip status-chip--success">已配置</span><code>{{ tokenVisible ? tokenMasked : '••••••••••••' }}</code><button type="button" :aria-label="tokenVisible ? '隐藏 Token 掩码' : '显示 Token 掩码'" @click="tokenVisible = !tokenVisible"><component :is="tokenVisible ? EyeOff : Eye" :size="16" /></button></div>
           <div class="setting-control-row"><label><span class="field-label">{{ tokenConfigured ? '替换 Token' : 'MinerU Token' }}</span><input v-model="token" class="field-control" type="password" :placeholder="tokenConfigured ? '粘贴新 Token' : '粘贴 Token 后保存'" autocomplete="off" /></label><BaseButton :busy="tokenBusy" @click="saveToken">保存连接</BaseButton><BaseButton v-if="tokenConfigured" variant="quiet-danger" :busy="tokenBusy" @click="clearToken">清除</BaseButton></div>
+          <div class="ocr-task-center">
+            <div class="ocr-task-center__heading"><div><strong>最近识别任务</strong><p>页面关闭后任务仍会继续执行；失败任务可直接重试。</p></div><button type="button" :disabled="ocrTasksBusy" @click="loadOCRTasks()"><RefreshCw :size="15" :class="{ 'is-spinning': ocrTasksBusy }" />刷新</button></div>
+            <p v-if="!ocrTasks.length" class="ocr-task-empty">尚无 OCR 任务。上传截图或 PDF 后，进度会显示在这里。</p>
+            <div v-else class="ocr-task-list">
+              <article v-for="task in ocrTasks" :key="task.id" class="ocr-task-item">
+                <div><strong>{{ task.source_filename || '未命名文件' }}</strong><small>{{ formatTaskTime(task.created_at) }}</small></div>
+                <span class="status-chip" :class="`status-chip--ocr-${task.status}`">{{ { queued: '排队中', uploading: '上传中', processing: '识别中', succeeded: '已完成', failed: '失败' }[task.status] || task.status }}</span>
+                <button v-if="task.status === 'failed'" type="button" class="ocr-task-retry" @click="retryOCRTask(task)">重试</button>
+                <p v-if="task.status === 'failed' && task.error_message">{{ task.error_message }}</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="ai" class="settings-section paper-panel">
+          <header><span>05</span><div><h2>AI 学习助手</h2><p>使用 DeepSeek 的 OpenAI 兼容接口分析资料库中的可读内容；密钥只保存在后端。</p></div><Bot :size="21" /></header>
+          <div v-if="deepSeekConfigured" class="token-status"><span class="status-chip status-chip--success">已配置</span><code>{{ deepSeekVisible ? deepSeekMasked : '••••••••••••' }}</code><button type="button" :aria-label="deepSeekVisible ? '隐藏 API Key 掩码' : '显示 API Key 掩码'" @click="deepSeekVisible = !deepSeekVisible"><component :is="deepSeekVisible ? EyeOff : Eye" :size="16" /></button></div>
+          <div class="setting-control-row"><label><span class="field-label">{{ deepSeekConfigured ? '替换 DeepSeek API Key' : 'DeepSeek API Key' }}</span><input v-model="deepSeekToken" class="field-control" type="password" :placeholder="deepSeekConfigured ? '粘贴新 API Key' : '粘贴 API Key 后保存'" autocomplete="off" /></label><BaseButton :busy="deepSeekBusy" @click="saveDeepSeekToken">保存连接</BaseButton><BaseButton v-if="deepSeekConfigured" variant="quiet-danger" :busy="deepSeekBusy" @click="clearDeepSeekToken">清除</BaseButton></div>
+          <p class="settings-ai-note">聊天只会发送与当前问题相关的笔记正文、可预览 Office 文本、错题摘要和学习统计；图片、PDF 原文件不会直接上传。</p>
         </section>
 
         <section v-if="updateEnabled" id="updates" class="settings-section paper-panel">
-          <header><span>05</span><div><h2>版本更新</h2><p>当前版本 {{ versionInfo.version || '读取中' }} · {{ updateStatus }}</p></div><PackageCheck :size="21" /></header>
+          <header><span>06</span><div><h2>版本更新</h2><p>当前版本 {{ versionInfo.version || '读取中' }} · {{ updateStatus }}</p></div><PackageCheck :size="21" /></header>
           <div class="setting-subrow"><div><strong>{{ updateInfo?.has_update ? `可更新至 v${updateInfo.latest_version}` : '检查发行版本' }}</strong><p v-if="updateInfo?.published_at">发布于 {{ updateInfo.published_at.slice(0, 10) }}</p><p v-if="updateInfo?.has_update && !versionInfo.can_auto_update">源码模式需要手动拉取新版本。</p></div><div class="button-row"><BaseButton :busy="updateBusy" :disabled="updateApplying" @click="checkUpdate(true, false)"><template #icon><RefreshCw :size="16" /></template>检查更新</BaseButton><BaseButton v-if="canApplyUpdate" variant="primary" :busy="updateApplying" @click="confirmUpdate = true">立即更新</BaseButton></div></div>
         </section>
       </div>

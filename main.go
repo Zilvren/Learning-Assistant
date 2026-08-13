@@ -39,6 +39,7 @@ func main() {
 	if cfg.GinMode != "" {
 		gin.SetMode(cfg.GinMode)
 	}
+	repository.SetDataDir(cfg.DataDir)
 	repos, pool, cleanup, err := setupRepositories(cfg)
 	if err != nil {
 		log.Errorf("failed to initialize storage: %v", err)
@@ -50,6 +51,8 @@ func main() {
 		log.Errorf("failed to initialize services: %v", err)
 		os.Exit(1)
 	}
+	stopAutomaticBackup := service.StartAutomaticBackup(app)
+	defer stopAutomaticBackup()
 	if cfg.AuthEnabled && os.Getenv("TRACKER_JWT_SECRET") == "" {
 		log.Infof("TRACKER_JWT_SECRET is empty; a stable local secret is stored in the data directory for this installation.")
 	}
@@ -102,6 +105,8 @@ func setupRepositories(cfg config.Config) (repository.Repositories, *pgxpool.Poo
 }
 
 // listenWithFallback 从首选端口开始尝试监听，开发环境中端口被占用时自动寻找后续可用端口。
+var listenTCP = net.Listen
+
 func listenWithFallback(host string, preferredPort int) (net.Listener, int, error) {
 	const attempts = 20
 	for offset := 0; offset < attempts; offset++ {
@@ -110,7 +115,7 @@ func listenWithFallback(host string, preferredPort int) (net.Listener, int, erro
 			break
 		}
 		address := fmt.Sprintf("%s:%d", host, port)
-		listener, err := net.Listen("tcp", address)
+		listener, err := listenTCP("tcp", address)
 		if err == nil {
 			return listener, port, nil
 		}
@@ -173,6 +178,7 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		//错题接口
 		api.GET("/errors", handlers.GetErrors)
 		api.POST("/errors", handlers.CreateError)
+		api.GET("/errors/:id", handlers.GetError)
 		api.PUT("/errors/:id", handlers.UpdateError)
 		api.DELETE("/errors/:id", handlers.DeleteError)
 
@@ -182,12 +188,22 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		//每日推送接口
 		api.GET("/daily-push", handlers.GetDailyPush)
 		api.GET("/dashboard/activity", handlers.GetLearningActivity)
+		api.GET("/dashboard/plan", handlers.GetDailyPlan)
+		api.PUT("/dashboard/plan", handlers.SetDailyGoal)
+		api.POST("/dashboard/focus-sessions", handlers.RecordFocusSession)
+		api.GET("/dashboard/weekly-report", handlers.GetWeeklyReport)
 
 		//设置接口
 		api.GET("/settings/token", handlers.GetToken)
 		api.PUT("/settings/token", handlers.SetToken)
 		api.DELETE("/settings/token", handlers.DeleteToken)
+		api.GET("/settings/deepseek", handlers.GetDeepSeekToken)
+		api.PUT("/settings/deepseek", handlers.SetDeepSeekToken)
+		api.DELETE("/settings/deepseek", handlers.DeleteDeepSeekToken)
 		api.PUT("/settings/username", handlers.SetUsername)
+
+		// AI 学习助手：DeepSeek Key 保持在服务端，资料上下文按请求即时生成。
+		api.POST("/ai/chat", middleware.RateLimit(20, time.Minute), handlers.AIChat)
 
 		//备份接口
 		api.GET("/backup/export", handlers.ExportBackup)
@@ -195,6 +211,9 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 
 		//OCR接口
 		api.POST("/ocr", handlers.OCRImage)
+		api.GET("/ocr/tasks", handlers.ListOCRTasks)
+		api.GET("/ocr/tasks/:id", handlers.GetOCRTask)
+		api.POST("/ocr/tasks/:id/retry", handlers.RetryOCRTask)
 
 		// 个人学习资料库
 		api.GET("/library/items", handlers.ListLibraryItems)
@@ -202,12 +221,18 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		api.GET("/library/search", handlers.SearchLibrary)
 		api.GET("/library/tags", handlers.ListLibraryTags)
 		api.GET("/library/reviews", handlers.ListLibraryReviews)
+		api.GET("/review/inbox", handlers.GetReviewInbox)
+		api.GET("/search", handlers.SearchLearning)
+		api.GET("/relations", handlers.ListLearningRelations)
+		api.POST("/relations", handlers.CreateLearningRelation)
+		api.DELETE("/relations/:id", handlers.DeleteLearningRelation)
 		api.POST("/library/uploads", handlers.UploadLibraryFile)
 		api.POST("/library/batch", handlers.BatchLibraryItems)
 		api.GET("/library/items/:id", handlers.GetLibraryItem)
 		api.PATCH("/library/items/:id", handlers.UpdateLibraryItem)
 		api.DELETE("/library/items/:id", handlers.DeleteLibraryItem)
 		api.GET("/library/items/:id/content", handlers.GetLibraryContent)
+		api.GET("/library/items/:id/preview", handlers.GetLibraryPreview)
 		api.PUT("/library/items/:id/content", handlers.SaveLibraryContent)
 		api.POST("/library/items/:id/restore", handlers.RestoreLibraryItem)
 		api.DELETE("/library/items/:id/purge", handlers.PurgeLibraryItem)

@@ -74,7 +74,7 @@ func (a *App) authRepository() (repository.AuthRepository, error) {
 // completeRepositories 防止应用在缺少某一业务仓储的半初始化状态下开始处理请求。
 func completeRepositories(repos repository.Repositories) bool {
 	return repos.Auth != nil && repos.Subjects != nil && repos.Errors != nil && repos.Settings != nil &&
-		repos.Knowledge != nil && repos.OCRTasks != nil && repos.Backup != nil && repos.Library != nil
+		repos.Knowledge != nil && repos.OCRTasks != nil && repos.Activity != nil && repos.Relations != nil && repos.Backup != nil && repos.Library != nil
 }
 
 type appContextKey struct{}

@@ -77,6 +77,9 @@ go run .
 - 支持 Markdown、纯文本、图片、PDF 与常见 Office 文档，单文件最大 200MB。
 - Markdown 笔记自动保存，并保留最近 50 个检查点版本。
 - 支持搜索、网格/列表视图、拖拽移动、复制、置顶和回收站恢复。
+- 在资料库首页输入至少两个字，可跨笔记正文、文件信息和错题内容检索，并显示命中片段。
+- DOCX、XLSX、PPTX 支持安全的只读文本预览；原文件仍可下载。
+- 笔记与错题可双向关联，复习时可快速跳回相关知识点。
 - 删除内容进入回收站，默认保留 30 天；移入回收站的文件夹只显示为一个项目，恢复或永久删除会同时作用于其中全部内容。
 
 ### 仪表盘
@@ -86,6 +89,8 @@ go run .
 - 在“今日优先复习”中点击错题即可查看完整题目、错解、正解和错因。
 - 标记复习后会自动计算下一次复习日期。
 - “学习记录”以全年热力图展示学习活动，支持横向滑动浏览、切换年份和查看指定日期；当年默认定位在今天靠右的位置。
+- 可设定每日复习、专注和笔记目标，使用专注计时器，并查看最近 7 天学习汇总。
+- 统一复习收件箱会合并到期笔记与错题；可按“忘了 / 有点难 / 掌握 / 很轻松”调节下一次复习间隔。
 
 ### 错题管理
 
@@ -107,6 +112,21 @@ go run .
 - 支持公式识别和图片内嵌。
 - 可在新增或编辑错题时选择 OCR 插入目标字段。
 - 编辑弹窗中可直接粘贴截图，识别结果会追加到当前字段。
+- 上传后会先加入后台任务队列；即使离开页面也会继续执行，失败任务可在设置中心重试。
+
+### AI 学习助手 🤖
+
+- 在侧栏打开“AI 助手”，可让 DeepSeek 根据你的问题分析关联的笔记、纯文本、Office 文档文本预览、错题和学习进度。
+- 每次请求只发送与问题关联、长度受限的文本上下文；不会发送图片或 PDF 原件、附件二进制内容、密码或 API Key。
+- 回答会列出本次参考的资料或错题，可一键回到对应内容核对。
+
+## AI 配置
+
+1. 在 [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) 创建 API Key。
+2. 打开应用“设置” → “AI 学习助手”，粘贴并保存 Key。
+3. 从侧栏进入“AI 助手”即可开始聊天。
+
+Key 会加密存储，页面只显示是否已配置。也可以通过环境变量 `DEEPSEEK_API_KEY` 提供 Key；可选 `DEEPSEEK_MODEL` 指定模型，默认是 `deepseek-chat`。
 
 ## OCR 配置
 
@@ -129,11 +149,11 @@ data/
 
 - `errors.json`：错题列表。
 - `subjects.json`：科目列表。
-- `config.json`：用户名、MinerU Token 等配置。
+- `config.json`：用户名、MinerU Token、DeepSeek API Key 等配置；敏感 Key 以加密形式保存且不会出现在导出备份中。
 - `knowledge.json`：可选，自定义每日知识点。
 - `library.json`：资料库的文件夹、笔记和文件索引。
 - `blobs/`：资料库上传文件及 Markdown 笔记内容。
-- `backups/`：导入或更新前自动生成的恢复点。
+- `backups/`：导入、更新前以及每日自动生成的恢复点；默认保留最近 14 份每日备份。
 - `updates/`：自动更新下载包和更新日志。
 
 在应用“设置”中可以：
@@ -151,6 +171,14 @@ data/backups/pre-import-*.zip
 
 ```text
 data/backups/pre-update-*.zip
+```
+
+本地 JSON 模式默认开启每日自动备份。可按需调整：
+
+```powershell
+$env:TRACKER_AUTO_BACKUP="true"       # 设为 false 可关闭
+$env:TRACKER_AUTO_BACKUP_INTERVAL="24h"
+$env:TRACKER_AUTO_BACKUP_KEEP="14"
 ```
 
 ## 登录与 PostgreSQL 模式
@@ -174,6 +202,10 @@ $env:TRACKER_JWT_SECRET="请换成一段固定的强随机密钥"
 | `TRACKER_STORAGE` | `json` 或 `postgres`，默认 `json` |
 | `TRACKER_DATABASE_URL` | PostgreSQL 连接字符串，`postgres` 模式必填 |
 | `TRACKER_REQUIRE_POSTGRES` | 为 `true` 时禁止服务意外以 JSON 模式启动；Docker 部署已默认开启 |
+| `TRACKER_DATA_DIR` | JSON 数据与本地 Blob、恢复点的目录，默认 `data` |
+| `TRACKER_AUTO_BACKUP` | JSON 本地模式是否自动创建每日恢复点，默认 `true` |
+| `TRACKER_AUTO_BACKUP_INTERVAL` | 自动备份检查周期，默认 `24h`，最小 `1h` |
+| `TRACKER_AUTO_BACKUP_KEEP` | 保留的每日自动恢复点数量，默认 `14` |
 | `TRACKER_JWT_SECRET` | 登录 Cookie/JWT 签名密钥，PostgreSQL 模式至少 32 个字符；生产环境必须设置固定强密钥 |
 | `TRACKER_EMAIL_VERIFICATION_ENABLED` | 设为 `true` 后，新用户必须先验证邮箱才可登录 |
 | `TRACKER_PUBLIC_URL` | 生产环境对外访问地址，例如 `https://study.example.com`，用于生成验证链接 |

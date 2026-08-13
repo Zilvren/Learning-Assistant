@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router"
 import {
   BookOpenCheck,
+	Bot,
   CalendarCheck2,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,7 @@ const navSections = [
     items: [
       { to: { name: "home" }, label: "概览", icon: Home, match: "home" },
       { to: { name: "review" }, label: "今日复习", icon: CalendarCheck2, match: "review" },
+      { to: "/ai", label: "AI 助手", icon: Bot, match: "ai" },
     ],
   },
   {
@@ -53,6 +55,7 @@ const navSections = [
 const pageMeta = computed(() => {
   if (route.name === "library" || route.name === "library-item") return { title: "资料库", description: "整理笔记、标签与文件", icon: Files }
   if (route.name === "review") return { title: "今日复习", description: "复习今天到期的笔记", icon: CalendarCheck2 }
+	if (route.name === "ai") return { title: "AI 学习助手", description: "分析资料并制定下一步行动", icon: Bot }
   if (route.name === "trash") return { title: "回收站", description: "恢复或永久删除资料", icon: Trash2 }
   if (route.name === "settings") return { title: "设置", description: "账户、外观与数据", icon: Settings }
   return { title: route.hash === "#today-review" ? "今日复习" : "学习概览", description: "查看今天的学习进度", icon: route.hash === "#today-review" ? CalendarCheck2 : Home }

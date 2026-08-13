@@ -38,12 +38,22 @@ func (r *BackupRepository) Export(ctx context.Context) (base.BackupData, error) 
 	if err != nil {
 		return base.BackupData{}, err
 	}
+	activity, err := r.exportActivity(ctx)
+	if err != nil {
+		return base.BackupData{}, err
+	}
+	relations, err := r.exportRelations(ctx)
+	if err != nil {
+		return base.BackupData{}, err
+	}
 	return base.BackupData{
 		Subjects:  &subjects,
 		Errors:    &errors,
 		Config:    &config,
 		Knowledge: &knowledge,
 		Library:   library,
+		Activity:  activity,
+		Relations: relations,
 	}, nil
 }
 
@@ -56,6 +66,16 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 	defer tx.Rollback(ctx)
 
 	errorRepo := &ErrorRepository{store: r.store}
+	if data.Relations != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM learning_relations WHERE user_id = $1`, r.store.userID); err != nil {
+			return err
+		}
+	}
+	if data.Activity != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM user_activity_events WHERE user_id = $1`, r.store.userID); err != nil {
+			return err
+		}
+	}
 	if data.Library != nil {
 		// parent_id uses ON DELETE RESTRICT. Remove leaves in order so importing
 		// a ZIP also works when the current library already has folders.
@@ -161,11 +181,26 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 			}
 		}
 	}
+	libraryIDMap := map[int64]int64{}
 	if data.Library != nil {
-		if err := r.importLibrary(ctx, tx, *data.Library, errorIDMap); err != nil {
+		var importErr error
+		libraryIDMap, importErr = r.importLibrary(ctx, tx, *data.Library, errorIDMap)
+		if importErr != nil {
+			return importErr
+		}
+		if data.Activity == nil {
+			if err := r.recordLibraryImportActivity(ctx, tx, *data.Library); err != nil {
+				return err
+			}
+		}
+	}
+	if data.Relations != nil {
+		if err := r.importRelations(ctx, tx, *data.Relations, libraryIDMap, errorIDMap); err != nil {
 			return err
 		}
-		if err := r.recordLibraryImportActivity(ctx, tx, *data.Library); err != nil {
+	}
+	if data.Activity != nil {
+		if err := r.importActivity(ctx, tx, *data.Activity); err != nil {
 			return err
 		}
 	}
@@ -227,7 +262,7 @@ func (r *BackupRepository) exportLibrary(ctx context.Context) (*base.LibraryBack
 }
 
 // importLibrary 在存储层中完成本文件定义的局部处理。
-func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library base.LibraryBackup, errorIDMap map[int]int64) error {
+func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library base.LibraryBackup, errorIDMap map[int]int64) (map[int64]int64, error) {
 	items := append([]models.LibraryItem(nil), library.Items...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	itemIDMap := make(map[int64]int64, len(items))
@@ -238,13 +273,13 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 		inserted := false
 		for _, item := range remaining {
 			if item.ID <= 0 {
-				return fmt.Errorf("资料库备份包含无效项目 ID")
+				return nil, fmt.Errorf("资料库备份包含无效项目 ID")
 			}
 			if _, exists := itemIDMap[item.ID]; exists {
-				return fmt.Errorf("资料库备份包含重复项目 ID：%d", item.ID)
+				return nil, fmt.Errorf("资料库备份包含重复项目 ID：%d", item.ID)
 			}
 			if !validBackupLibraryKind(item.Kind) {
-				return fmt.Errorf("资料库备份包含无效项目类型：%s", item.Kind)
+				return nil, fmt.Errorf("资料库备份包含无效项目类型：%s", item.Kind)
 			}
 			var parentID any
 			if item.ParentID != nil {
@@ -291,13 +326,13 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 				item.LastReview, item.NextReview, createdAt, updatedAt, item.DeletedAt,
 			).Scan(&newID)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			itemIDMap[item.ID] = newID
 			inserted = true
 		}
 		if !inserted {
-			return fmt.Errorf("资料库备份存在缺失或循环的文件夹层级")
+			return nil, fmt.Errorf("资料库备份存在缺失或循环的文件夹层级")
 		}
 		remaining = next
 	}
@@ -309,7 +344,7 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 		newID := itemIDMap[item.ID]
 		if originalParentID, ok := itemIDMap[*item.OriginalParent]; ok {
 			if _, err := tx.Exec(ctx, `UPDATE library_items SET original_parent_id = $3 WHERE user_id = $1 AND id = $2`, r.store.userID, newID, originalParentID); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -317,10 +352,10 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 	for _, version := range library.Versions {
 		itemID, ok := itemIDMap[version.ItemID]
 		if !ok {
-			return fmt.Errorf("资料库备份版本引用了不存在的项目：%d", version.ItemID)
+			return nil, fmt.Errorf("资料库备份版本引用了不存在的项目：%d", version.ItemID)
 		}
 		if version.Version <= 0 {
-			return fmt.Errorf("资料库备份包含无效版本号")
+			return nil, fmt.Errorf("资料库备份包含无效版本号")
 		}
 		fileSize := version.Size
 		if fileSize < 0 {
@@ -330,6 +365,110 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 			INSERT INTO library_versions (user_id, item_id, version, blob_hash, file_size, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, r.store.userID, itemID, version.Version, version.BlobHash, fileSize, backupLibraryTimestamp(version.CreatedAt)); err != nil {
+			return nil, err
+		}
+	}
+	return itemIDMap, nil
+}
+
+func (r *BackupRepository) exportActivity(ctx context.Context) (*base.ActivityBackup, error) {
+	activity := &base.ActivityBackup{NextID: 1, Events: []models.ActivityEvent{}}
+	rows, err := r.store.pool.Query(ctx, `
+		SELECT id, activity_date::text, event_type, coalesce(source_key, ''), value, created_at
+		FROM user_activity_events WHERE user_id = $1 ORDER BY id
+	`, r.store.userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var event models.ActivityEvent
+		if err := rows.Scan(&event.ID, &event.Date, &event.EventType, &event.SourceKey, &event.Value, &event.CreatedAt); err != nil {
+			return nil, err
+		}
+		activity.Events = append(activity.Events, event)
+		if event.ID >= activity.NextID {
+			activity.NextID = event.ID + 1
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return activity, nil
+}
+
+func (r *BackupRepository) exportRelations(ctx context.Context) (*base.RelationBackup, error) {
+	relations := &base.RelationBackup{NextID: 1, Relations: []models.LearningRelation{}}
+	rows, err := r.store.pool.Query(ctx, `
+		SELECT id, from_type, from_id, to_type, to_id, label, created_at
+		FROM learning_relations WHERE user_id = $1 ORDER BY id
+	`, r.store.userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var relation models.LearningRelation
+		if err := rows.Scan(&relation.ID, &relation.FromType, &relation.FromID, &relation.ToType, &relation.ToID, &relation.Label, &relation.CreatedAt); err != nil {
+			return nil, err
+		}
+		relations.Relations = append(relations.Relations, relation)
+		if relation.ID >= relations.NextID {
+			relations.NextID = relation.ID + 1
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return relations, nil
+}
+
+func (r *BackupRepository) importActivity(ctx context.Context, tx pgx.Tx, activity base.ActivityBackup) error {
+	for _, event := range activity.Events {
+		if event.Date == "" || event.EventType == "" {
+			return fmt.Errorf("活动备份包含无效记录")
+		}
+		value := event.Value
+		if value < 1 {
+			value = 1
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO user_activity_events (user_id, activity_date, event_type, source_key, value, created_at)
+			VALUES ($1, $2::date, $3, nullif($4, ''), $5, $6)
+			ON CONFLICT (source_key) DO NOTHING
+		`, r.store.userID, event.Date, event.EventType, event.SourceKey, value, backupLibraryTimestamp(event.CreatedAt)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *BackupRepository) importRelations(ctx context.Context, tx pgx.Tx, relations base.RelationBackup, libraryIDMap map[int64]int64, errorIDMap map[int]int64) error {
+	mapID := func(kind string, id int64) (int64, bool) {
+		if kind == "library" {
+			result, ok := libraryIDMap[id]
+			return result, ok
+		}
+		if kind == "error" {
+			result, ok := errorIDMap[int(id)]
+			return result, ok
+		}
+		return 0, false
+	}
+	for _, relation := range relations.Relations {
+		fromID, fromOK := mapID(relation.FromType, relation.FromID)
+		toID, toOK := mapID(relation.ToType, relation.ToID)
+		if !fromOK || !toOK {
+			return fmt.Errorf("关联备份引用了不存在的学习内容")
+		}
+		if relation.FromType == relation.ToType && fromID == toID {
+			return fmt.Errorf("关联备份不能指向自身")
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO learning_relations (user_id, from_type, from_id, to_type, to_id, label, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (user_id, from_type, from_id, to_type, to_id) DO NOTHING
+		`, r.store.userID, relation.FromType, fromID, relation.ToType, toID, relation.Label, backupLibraryTimestamp(relation.CreatedAt)); err != nil {
 			return err
 		}
 	}

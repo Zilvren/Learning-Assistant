@@ -43,6 +43,20 @@ func GetErrors(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"errors": errors, "total": len(errors)})
 }
 
+func GetError(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_id", "ID格式错误")
+		return
+	}
+	item, err := service.GetError(c.Request.Context(), id)
+	if err != nil {
+		respondError(c, http.StatusNotFound, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 // UpdateError 在HTTP 处理层中创建或更新相应状态。
 func UpdateError(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -90,7 +104,14 @@ func ReviewError(c *gin.Context) {
 		return
 	}
 
-	item, err := service.ReviewError(c.Request.Context(), id)
+	var request models.ReviewRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&request); err != nil {
+			respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
+			return
+		}
+	}
+	item, err := service.ReviewError(c.Request.Context(), id, request.Rating)
 	if err != nil {
 		respondError(c, http.StatusNotFound, err)
 		return
@@ -100,6 +121,7 @@ func ReviewError(c *gin.Context) {
 		"message":      "错题 #" + strconv.Itoa(id) + " 已标记复习",
 		"next_review":  item.NextReview,
 		"review_count": item.ReviewCount,
+		"review_stage": item.ReviewStage,
 	})
 }
 

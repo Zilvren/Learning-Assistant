@@ -11,13 +11,16 @@ import (
 
 // ExportBackup 在HTTP 处理层中完成本文件定义的局部处理。
 func ExportBackup(c *gin.Context) {
-	content, filename, err := service.ExportBackupZip(c.Request.Context())
+	filename := service.BackupFilename()
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Header("Content-Type", "application/zip")
+	err := service.WriteBackupZip(c.Request.Context(), c.Writer)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, err)
+		if !c.Writer.Written() {
+			respondError(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
-	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
-	c.Data(http.StatusOK, "application/zip", content)
 }
 
 // ImportBackup 在HTTP 处理层中完成本文件定义的局部处理。

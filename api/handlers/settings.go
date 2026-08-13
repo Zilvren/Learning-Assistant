@@ -43,6 +43,38 @@ func DeleteToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Token cleared"})
 }
 
+func GetDeepSeekToken(c *gin.Context) {
+	info, err := service.GetDeepSeekTokenInfo(c.Request.Context())
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}
+
+func SetDeepSeekToken(c *gin.Context) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_request", "请求格式错误")
+		return
+	}
+	if err := service.SetDeepSeekToken(c.Request.Context(), body.Token); err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "DeepSeek API Key saved"})
+}
+
+func DeleteDeepSeekToken(c *gin.Context) {
+	if err := service.ClearDeepSeekToken(c.Request.Context()); err != nil {
+		respondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "DeepSeek API Key cleared"})
+}
+
 // SetUsername 在HTTP 处理层中完成本文件定义的局部处理。
 func SetUsername(c *gin.Context) {
 	var body struct {
