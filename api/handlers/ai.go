@@ -25,6 +25,8 @@ func AIChat(c *gin.Context) {
 			respondProblem(c, http.StatusBadRequest, "deepseek_not_configured", err.Error())
 		case errors.Is(err, service.ErrDeepSeekClientUnavailable):
 			respondProblem(c, http.StatusServiceUnavailable, "deepseek_client_unavailable", err.Error())
+		case errors.Is(err, service.ErrAIInvalidScope):
+			respondProblem(c, http.StatusBadRequest, "invalid_ai_scope", err.Error())
 		default:
 			respondError(c, http.StatusBadGateway, err)
 		}

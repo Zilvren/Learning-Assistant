@@ -258,8 +258,10 @@ type AIChatMessage struct {
 }
 
 type AIChatRequest struct {
-	Message string          `json:"message"`
-	History []AIChatMessage `json:"history"`
+	Message  string          `json:"message"`
+	History  []AIChatMessage `json:"history"`
+	FolderID *int64          `json:"folder_id,omitempty"`
+	ItemIDs  []int64         `json:"item_ids,omitempty"`
 }
 
 type AIChatSource struct {

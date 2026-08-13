@@ -20,6 +20,7 @@ const (
 	aiMaxSources         = 12
 	aiMaxContextRunes    = 24_000
 	aiMaxSourceRunes     = 3_200
+	aiMaxScopedItems     = 60
 	aiRequestTimeout     = 75 * time.Second
 	deepSeekFlashModel   = "deepseek-v4-flash"
 	deepSeekProModel     = "deepseek-v4-pro"
@@ -30,6 +31,7 @@ var (
 	ErrDeepSeekClientUnavailable = errors.New("DeepSeek 客户端尚未安装")
 	ErrDeepSeekNotConfigured     = errors.New("请先在设置中心配置 DeepSeek API Key")
 	ErrUnsupportedDeepSeekModel  = errors.New("不支持的 DeepSeek 默认模型")
+	ErrAIInvalidScope            = errors.New("AI 资料范围无效")
 )
 
 // runDeepSeekChat is deliberately provider-agnostic at this layer. The
@@ -42,6 +44,15 @@ var runDeepSeekChat = func(context.Context, string, string, string, []models.AIC
 type aiStudyContext struct {
 	prompt  string
 	sources []models.AIChatSource
+}
+
+type aiLibraryScope struct {
+	folderID *int64
+	itemIDs  []int64
+}
+
+func (scope aiLibraryScope) active() bool {
+	return scope.folderID != nil || len(scope.itemIDs) > 0
 }
 
 type aiCandidate struct {
@@ -62,6 +73,10 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	if len([]rune(message)) > aiMaxMessageRunes {
 		return models.AIChatResponse{}, fmt.Errorf("单条消息不能超过 %d 个字", aiMaxMessageRunes)
 	}
+	scope, err := newAILibraryScope(request)
+	if err != nil {
+		return models.AIChatResponse{}, err
+	}
 	apiKey, err := deepSeekAPIKey(ctx)
 	if err != nil {
 		return models.AIChatResponse{}, err
@@ -70,7 +85,7 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
-	studyContext, err := buildAIStudyContext(ctx, message)
+	studyContext, err := buildAIStudyContext(ctx, message, scope)
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
@@ -85,6 +100,28 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 		return models.AIChatResponse{}, fmt.Errorf("DeepSeek 没有返回可显示的内容，请重试")
 	}
 	return models.AIChatResponse{Answer: answer, Model: model, Sources: studyContext.sources}, nil
+}
+
+func newAILibraryScope(request models.AIChatRequest) (aiLibraryScope, error) {
+	scope := aiLibraryScope{folderID: request.FolderID}
+	if scope.folderID != nil && *scope.folderID <= 0 {
+		return aiLibraryScope{}, fmt.Errorf("%w：资料路径无效", ErrAIInvalidScope)
+	}
+	seen := make(map[int64]struct{}, len(request.ItemIDs))
+	for _, id := range request.ItemIDs {
+		if id <= 0 {
+			return aiLibraryScope{}, fmt.Errorf("%w：资料 ID 无效", ErrAIInvalidScope)
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		scope.itemIDs = append(scope.itemIDs, id)
+	}
+	if len(scope.itemIDs) > aiMaxScopedItems {
+		return aiLibraryScope{}, fmt.Errorf("%w：一次最多选择 %d 项资料", ErrAIInvalidScope, aiMaxScopedItems)
+	}
+	return scope, nil
 }
 
 func deepSeekAPIKey(ctx context.Context) (string, error) {
@@ -141,7 +178,7 @@ func aiSystemPrompt(studyContext string) string {
 </library_context>`
 }
 
-func buildAIStudyContext(ctx context.Context, question string) (aiStudyContext, error) {
+func buildAIStudyContext(ctx context.Context, question string, scope aiLibraryScope) (aiStudyContext, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
 		return aiStudyContext{}, err
@@ -150,11 +187,13 @@ func buildAIStudyContext(ctx context.Context, question string) (aiStudyContext, 
 	if err != nil {
 		return aiStudyContext{}, err
 	}
-	errors, err := repos.Errors.List(ctx, repository.ErrorFilter{})
-	if err != nil {
-		return aiStudyContext{}, err
+	if scope.active() {
+		items, err = filterAILibraryScope(items, scope)
+		if err != nil {
+			return aiStudyContext{}, err
+		}
 	}
-	candidates := make([]aiCandidate, 0, len(items)+len(errors))
+	candidates := make([]aiCandidate, 0, len(items))
 	for index := range items {
 		item := items[index]
 		if item.Kind == "folder" || !aiReadableLibraryItem(item) {
@@ -163,11 +202,17 @@ func buildAIStudyContext(ctx context.Context, question string) (aiStudyContext, 
 		source := models.AIChatSource{SourceType: "library", ID: item.ID, Title: item.Name}
 		candidates = append(candidates, aiCandidate{source: source, item: &item, score: aiScore(question, item.Name+" "+strings.Join(item.Tags, " ")), updated: item.UpdatedAt})
 	}
-	for index := range errors {
-		problem := errors[index]
-		text := strings.Join([]string{problem.Title, problem.Subject, problem.Question, problem.Wrong, problem.Correct, problem.Reason, strings.Join(problem.Tags, " "), strings.Join(problem.ReasonTags, " ")}, " ")
-		source := models.AIChatSource{SourceType: "error", ID: int64(problem.ID), Title: problem.Title}
-		candidates = append(candidates, aiCandidate{source: source, error: &problem, score: aiScore(question, text), updated: aiErrorTime(problem)})
+	if !scope.active() {
+		errors, err := repos.Errors.List(ctx, repository.ErrorFilter{})
+		if err != nil {
+			return aiStudyContext{}, err
+		}
+		for index := range errors {
+			problem := errors[index]
+			text := strings.Join([]string{problem.Title, problem.Subject, problem.Question, problem.Wrong, problem.Correct, problem.Reason, strings.Join(problem.Tags, " "), strings.Join(problem.ReasonTags, " ")}, " ")
+			source := models.AIChatSource{SourceType: "error", ID: int64(problem.ID), Title: problem.Title}
+			candidates = append(candidates, aiCandidate{source: source, error: &problem, score: aiScore(question, text), updated: aiErrorTime(problem)})
+		}
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		if candidates[i].score != candidates[j].score {
@@ -198,17 +243,83 @@ func buildAIStudyContext(ctx context.Context, question string) (aiStudyContext, 
 		sources = append(sources, candidate.source)
 		usedRunes += len([]rune(text))
 	}
-	if plan, err := GetDailyPlan(ctx); err == nil {
-		parts = append(parts, fmt.Sprintf("[今日计划]\n复习 %d/%d，专注 %d/%d 分钟，笔记 %d/%d 篇。", plan.ReviewsCompleted, plan.Goal.ReviewTarget, plan.FocusMinutes, plan.Goal.FocusTargetMinutes, plan.NotesCreated, plan.Goal.NoteTarget))
-	}
-	if report, err := GetWeeklyReport(ctx); err == nil {
-		weak := "暂无明显薄弱科目"
-		if len(report.WeakSubjects) > 0 {
-			weak = strings.Join(report.WeakSubjects[:min(3, len(report.WeakSubjects))], "、")
+	if scope.active() {
+		parts = append([]string{"[已限定资料范围]\n仅使用当前选择的资料路径和文件内容回答；范围外的资料库、错题与学习统计均未提供。"}, parts...)
+	} else {
+		if plan, err := GetDailyPlan(ctx); err == nil {
+			parts = append(parts, fmt.Sprintf("[今日计划]\n复习 %d/%d，专注 %d/%d 分钟，笔记 %d/%d 篇。", plan.ReviewsCompleted, plan.Goal.ReviewTarget, plan.FocusMinutes, plan.Goal.FocusTargetMinutes, plan.NotesCreated, plan.Goal.NoteTarget))
 		}
-		parts = append(parts, fmt.Sprintf("[近 7 天]\n学习活动 %d，活跃 %d 天，专注 %d 分钟，完成复习 %d 次，新增笔记 %d 篇；待优先复习科目：%s。", report.TotalActivity, report.ActiveDays, report.FocusMinutes, report.Reviews, report.NotesCreated, weak))
+		if report, err := GetWeeklyReport(ctx); err == nil {
+			weak := "暂无明显薄弱科目"
+			if len(report.WeakSubjects) > 0 {
+				weak = strings.Join(report.WeakSubjects[:min(3, len(report.WeakSubjects))], "、")
+			}
+			parts = append(parts, fmt.Sprintf("[近 7 天]\n学习活动 %d，活跃 %d 天，专注 %d 分钟，完成复习 %d 次，新增笔记 %d 篇；待优先复习科目：%s。", report.TotalActivity, report.ActiveDays, report.FocusMinutes, report.Reviews, report.NotesCreated, weak))
+		}
 	}
 	return aiStudyContext{prompt: strings.Join(parts, "\n\n"), sources: sources}, nil
+}
+
+func filterAILibraryScope(items []models.LibraryItem, scope aiLibraryScope) ([]models.LibraryItem, error) {
+	byID := make(map[int64]models.LibraryItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	if scope.folderID != nil {
+		folder, exists := byID[*scope.folderID]
+		if !exists || folder.Kind != "folder" {
+			return nil, fmt.Errorf("%w：资料路径不存在或不可用", ErrAIInvalidScope)
+		}
+	}
+	selected := make(map[int64]struct{}, len(scope.itemIDs))
+	for _, id := range scope.itemIDs {
+		if _, exists := byID[id]; !exists {
+			return nil, fmt.Errorf("%w：所选资料不存在或不可用", ErrAIInvalidScope)
+		}
+		selected[id] = struct{}{}
+	}
+
+	inFolder := func(item models.LibraryItem) bool {
+		if scope.folderID == nil {
+			return false
+		}
+		for cursor := item; ; {
+			if cursor.ID == *scope.folderID {
+				return true
+			}
+			if cursor.ParentID == nil {
+				return false
+			}
+			parent, exists := byID[*cursor.ParentID]
+			if !exists {
+				return false
+			}
+			cursor = parent
+		}
+	}
+
+	result := make([]models.LibraryItem, 0, len(items))
+	for _, item := range items {
+		if inFolder(item) {
+			result = append(result, item)
+			continue
+		}
+		for cursor := item; ; {
+			if _, exists := selected[cursor.ID]; exists {
+				result = append(result, item)
+				break
+			}
+			if cursor.ParentID == nil {
+				break
+			}
+			parent, exists := byID[*cursor.ParentID]
+			if !exists {
+				break
+			}
+			cursor = parent
+		}
+	}
+	return result, nil
 }
 
 func collectAILibraryItems(ctx context.Context, repo repository.LibraryRepository) ([]models.LibraryItem, error) {

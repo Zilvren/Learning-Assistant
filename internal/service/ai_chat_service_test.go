@@ -44,7 +44,7 @@ func TestBuildAIStudyContextUsesRelevantNotesAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	studyContext, err := buildAIStudyContext(ctx, "我在导数和单调性上有什么薄弱点？")
+	studyContext, err := buildAIStudyContext(ctx, "我在导数和单调性上有什么薄弱点？", aiLibraryScope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +53,47 @@ func TestBuildAIStudyContextUsesRelevantNotesAndErrors(t *testing.T) {
 	}
 	if len(studyContext.sources) < 2 {
 		t.Fatalf("expected both sources, got %#v", studyContext.sources)
+	}
+}
+
+func TestBuildAIStudyContextRestrictsFolderAndSelectedItems(t *testing.T) {
+	ctx := setupAIChatServiceTest(t)
+	mathFolder, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{Kind: "folder", Name: "数学"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{ParentID: &mathFolder.ID, Kind: "note", Name: "导数笔记"}, []byte("导数为正时函数递增。"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{Kind: "note", Name: "化学笔记"}, []byte("酸碱中和反应生成盐和水。"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pathContext, err := buildAIStudyContext(ctx, "总结资料", aiLibraryScope{folderID: &mathFolder.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pathContext.prompt, "导数为正") || strings.Contains(pathContext.prompt, "酸碱中和") || strings.Contains(pathContext.prompt, "今日计划") {
+		t.Fatalf("folder scope leaked unrelated context: %q", pathContext.prompt)
+	}
+	if len(pathContext.sources) != 1 || pathContext.sources[0].ID != inside.ID {
+		t.Fatalf("unexpected folder sources: %#v", pathContext.sources)
+	}
+
+	selectedContext, err := buildAIStudyContext(ctx, "总结资料", aiLibraryScope{itemIDs: []int64{other.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(selectedContext.prompt, "酸碱中和") || strings.Contains(selectedContext.prompt, "导数为正") {
+		t.Fatalf("selected item scope leaked unrelated context: %q", selectedContext.prompt)
+	}
+	if len(selectedContext.sources) != 1 || selectedContext.sources[0].ID != other.ID {
+		t.Fatalf("unexpected selected sources: %#v", selectedContext.sources)
+	}
+	if _, err := buildAIStudyContext(ctx, "总结资料", aiLibraryScope{itemIDs: []int64{999999}}); !errors.Is(err, ErrAIInvalidScope) {
+		t.Fatalf("expected invalid scope error, got %v", err)
 	}
 }
 

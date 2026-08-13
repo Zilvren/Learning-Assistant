@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tag, Trash2, Upload } from "lucide-vue-next"
+import { ArchiveRestore, ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, File, FileText, Folder, Grid2X2, List, MoreVertical, Plus, Search, Tag, Trash2, Upload } from "lucide-vue-next"
 import { api } from "../../api/index.js"
 import { useToast } from "../../store/toast.js"
 import { rememberLibraryPath } from "../../utils/libraryPath.js"
@@ -192,6 +192,11 @@ async function batch(action) { const ids=[...selected.value]; if(!ids.length||de
 // requestBatch 对不可撤销的批量操作先展示明确确认，不让隐藏选择直接生效。
 function requestBatch(action) { if (props.trash && action === "purge") { batchPurgeOpen.value = true; return } void batch(action) }
 async function confirmBatchPurge() { await batch("purge"); if (!deleting.value && selected.value.size === 0) batchPurgeOpen.value = false }
+function sendSelectedToAI() {
+  const ids = [...selected.value]
+  if (!ids.length) return
+  router.push({ name: "ai", query: { items: ids.join(",") } })
+}
 // setView 协调当前组件的状态和交互。
 function setView(next) { view.value=next; localStorage.setItem("libraryView",next) }
 // toggleFilter 协调当前组件的状态和交互。
@@ -239,7 +244,7 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOverlay
       <button v-for="result in globalResults.slice(0, 8)" :key="`${result.source_type}-${result.id}`" type="button" @click="openGlobalResult(result)"><span class="learning-search-results__kind">{{ result.source_type === 'error' ? '错题' : '资料' }}</span><span><strong>{{ result.title }}</strong><small>{{ result.subtitle || result.match_field }}{{ result.snippet ? ` · ${result.snippet}` : '' }}</small></span></button>
     </section>
 
-    <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="requestBatch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>
+    <section v-if="selected.size" class="library-selection-bar" aria-live="polite" :aria-busy="deleting"><strong>已选择 {{selected.size}} 项</strong><button class="lib-btn" :disabled="deleting" @click="toggleSelectAll">{{selected.size===items.length?'取消全选':'全选'}}</button><button v-if="!props.trash" class="lib-btn lib-btn--primary" :disabled="deleting" @click="sendSelectedToAI"><Bot :size="16"/>发送给 AI 助手</button><button v-if="props.trash" class="lib-btn" :disabled="deleting" @click="requestBatch('restore')"><ArchiveRestore :size="16"/>恢复</button><button class="lib-btn" :disabled="deleting" @click="requestBatch(props.trash?'purge':'trash')"><Trash2 :size="16"/>{{props.trash?(deleting?'删除中…':'永久删除'):'移入回收站'}}</button><button class="lib-btn" :disabled="deleting" @click="selected=new Set()">取消选择</button></section>
     <div v-if="loading" class="library-loading" role="status" aria-live="polite">加载中</div>
     <section v-else-if="items.length" class="library-items" :class="`library-items--${view}`" aria-label="资料列表">
       <article v-for="(item, index) in sortedItems" :key="item.id" class="library-card" :class="{selected:selected.has(item.id),'is-previewable':item.kind==='note','has-menu':menuId===item.id,'is-flip-locked':ctrlHeld}" :style="{'--library-card-enter-delay': `${Math.min(index, 5) * 20}ms`}" draggable="true" tabindex="0" @contextmenu.prevent="menuId=item.id" @mouseenter="loadNotePreview(item)"

@@ -1,7 +1,7 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from "vue"
-import { useRouter } from "vue-router"
-import { Bot, BookOpenText, CornerDownLeft, FileText, Lightbulb, LoaderCircle, RefreshCw, Settings2, Sparkles } from "lucide-vue-next"
+import { computed, nextTick, onMounted, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import { Bot, BookOpenText, CornerDownLeft, FileText, Folder, Lightbulb, LoaderCircle, RefreshCw, Settings2, Sparkles, X } from "lucide-vue-next"
 import { api } from "../api/index.js"
 import { useToast } from "../store/toast.js"
 import MarkdownRenderer from "./MarkdownRenderer.vue"
@@ -9,12 +9,19 @@ import BaseButton from "./ui/BaseButton.vue"
 import PageHeader from "./ui/PageHeader.vue"
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const composer = ref("")
 const messages = ref([])
 const sending = ref(false)
 const configured = ref(null)
 const messageList = ref(null)
+const folderOptions = ref([])
+const folderOptionsLoading = ref(false)
+const selectedFolderID = ref(readPositiveID(route.query.folder))
+const folderSelection = ref(selectedFolderID.value)
+const selectedItemIDs = ref(readPositiveIDs(route.query.items))
+const selectedItems = ref([])
 
 const quickPrompts = [
   "请分析我的资料库，给出本周最值得优先复习的内容。",
@@ -22,9 +29,30 @@ const quickPrompts = [
   "帮我根据当前资料和每日目标，制定一个 30 分钟学习计划。",
 ]
 const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && configured.value === true)
+const selectedFolder = computed(() => folderOptions.value.find((folder) => folder.id === selectedFolderID.value) || null)
+const hasScopedContext = computed(() => selectedFolderID.value !== null || selectedItemIDs.value.length > 0)
+const scopeSummary = computed(() => {
+  const parts = []
+  if (selectedFolder.value) parts.push(`路径：${selectedFolder.value.path}`)
+  if (selectedItems.value.length) parts.push(`已转发 ${selectedItems.value.length} 项资料`)
+  return parts.join(" · ") || "整个资料库"
+})
+
+function readPositiveID(value) {
+  const id = Number(value)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+function readPositiveIDs(value) {
+  const seen = new Set()
+  return String(value || "").split(",").map((item) => readPositiveID(item)).filter((id) => id && !seen.has(id) && seen.add(id)).slice(0, 60)
+}
 
 function scrollToLatest() {
-  nextTick(() => messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: "smooth" }))
+  nextTick(() => {
+    const list = messageList.value
+    if (list && typeof list.scrollTo === "function") list.scrollTo({ top: list.scrollHeight, behavior: "smooth" })
+  })
 }
 
 function resetConversation() {
@@ -34,6 +62,81 @@ function resetConversation() {
 
 function setQuickPrompt(value) {
   composer.value = value
+}
+
+async function syncScopeQuery() {
+  const query = { ...route.query }
+  if (selectedFolderID.value) query.folder = String(selectedFolderID.value)
+  else delete query.folder
+  if (selectedItemIDs.value.length) query.items = selectedItemIDs.value.join(",")
+  else delete query.items
+  await router.replace({ name: "ai", query })
+}
+
+async function loadFolderOptions() {
+  folderOptionsLoading.value = true
+  const folders = []
+  try {
+    async function visit(parentID, parentPath) {
+      const result = await api.getLibraryItems({ parentId: parentID, kind: "folder" })
+      const children = [...(result.items || [])].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "zh-CN"))
+      for (const folder of children) {
+        const path = parentPath ? `${parentPath} / ${folder.name}` : folder.name
+        folders.push({ id: folder.id, path })
+        await visit(folder.id, path)
+      }
+    }
+    await visit(null, "")
+    folderOptions.value = folders
+    if (selectedFolderID.value && !folders.some((folder) => folder.id === selectedFolderID.value)) {
+      selectedFolderID.value = null
+      folderSelection.value = null
+      await syncScopeQuery()
+      toast.warning("原资料路径已不可用，已恢复为整个资料库")
+    }
+  } catch (error) {
+    toast.error(error.message || "资料路径读取失败")
+  } finally {
+    folderOptionsLoading.value = false
+  }
+}
+
+async function loadSelectedItems() {
+  const requestedIDs = [...selectedItemIDs.value]
+  if (!requestedIDs.length) {
+    selectedItems.value = []
+    return
+  }
+  const loaded = await Promise.all(requestedIDs.map((id) => api.getLibraryItem(id).catch(() => null)))
+  const available = loaded.filter(Boolean)
+  const availableIDs = available.map((item) => item.id)
+  selectedItems.value = available
+  if (availableIDs.length !== requestedIDs.length) {
+    selectedItemIDs.value = availableIDs
+    await syncScopeQuery()
+    toast.warning("已移除不存在或已删除的转发资料")
+  }
+}
+
+async function applyFolderScope() {
+  selectedFolderID.value = readPositiveID(folderSelection.value)
+  await syncScopeQuery()
+  toast.success(selectedFolderID.value ? `已索引路径：${selectedFolder.value?.path || "所选文件夹"}` : "已恢复为整个资料库")
+}
+
+async function removeSelectedItem(id) {
+  selectedItemIDs.value = selectedItemIDs.value.filter((itemID) => itemID !== id)
+  selectedItems.value = selectedItems.value.filter((item) => item.id !== id)
+  await syncScopeQuery()
+}
+
+async function clearScopedContext() {
+  selectedFolderID.value = null
+  folderSelection.value = null
+  selectedItemIDs.value = []
+  selectedItems.value = []
+  await syncScopeQuery()
+  toast.info("已恢复为整个资料库")
 }
 
 function historyForRequest() {
@@ -49,12 +152,12 @@ async function send() {
   if (configured.value === false) return toast.warning("请先在设置中配置 DeepSeek API Key")
   if (configured.value !== true) return
   const history = historyForRequest()
-  messages.value.push({ id: `user-${Date.now()}`, role: "user", content })
+  messages.value.push({ id: `user-${Date.now()}`, role: "user", content, scope: hasScopedContext.value ? scopeSummary.value : "" })
   composer.value = ""
   sending.value = true
   scrollToLatest()
   try {
-    const result = await api.aiChat({ message: content, history })
+    const result = await api.aiChat({ message: content, history, folder_id: selectedFolderID.value, item_ids: selectedItemIDs.value })
     messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [] })
   } catch (error) {
     const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
@@ -91,6 +194,17 @@ onMounted(async () => {
   } catch {
     configured.value = false
   }
+  await Promise.all([loadFolderOptions(), loadSelectedItems()])
+})
+
+watch(() => route.query, async () => {
+  const nextFolderID = readPositiveID(route.query.folder)
+  const nextItemIDs = readPositiveIDs(route.query.items)
+  if (nextFolderID === selectedFolderID.value && nextItemIDs.join(",") === selectedItemIDs.value.join(",")) return
+  selectedFolderID.value = nextFolderID
+  folderSelection.value = nextFolderID
+  selectedItemIDs.value = nextItemIDs
+  await loadSelectedItems()
 })
 </script>
 
@@ -103,6 +217,12 @@ onMounted(async () => {
     <section v-if="configured === false" class="ai-setup-callout">
       <div><Bot :size="22" /><div><strong>先连接 DeepSeek</strong><p>API Key 只保存在后端并加密存储；不会显示在聊天页面。</p></div></div>
       <BaseButton variant="primary" @click="openSettings"><template #icon><Settings2 :size="16" /></template>去配置</BaseButton>
+    </section>
+
+    <section class="ai-context-picker paper-panel" aria-label="AI 资料范围">
+      <div class="ai-context-picker__head"><div><Folder :size="20" /><div><strong>索引资料库路径</strong><p>选择路径后，AI 只会阅读该目录及其下的可读文件；也可叠加从资料库转发的文件。</p></div></div><button v-if="hasScopedContext" type="button" class="ai-context-picker__clear" @click="clearScopedContext"><X :size="15" />清除范围</button></div>
+      <div class="ai-context-picker__controls"><label><span>资料路径</span><select v-model="folderSelection" :disabled="folderOptionsLoading"><option :value="null">整个资料库</option><option v-for="folder in folderOptions" :key="folder.id" :value="folder.id">{{ folder.path }}</option></select></label><BaseButton :disabled="folderOptionsLoading" @click="applyFolderScope"><template #icon><Folder :size="16" /></template>{{ selectedFolderID === readPositiveID(folderSelection) ? (selectedFolderID ? '已索引' : '使用整个库') : '索引路径' }}</BaseButton><span class="ai-context-picker__status">当前：{{ scopeSummary }}</span></div>
+      <div v-if="selectedItems.length" class="ai-context-picker__items"><span>已从资料库转发</span><button v-for="item in selectedItems" :key="item.id" type="button" @click="removeSelectedItem(item.id)"><FileText :size="14" />{{ item.name }}<X :size="13" /></button></div>
     </section>
 
     <section class="ai-chat-layout">
@@ -123,6 +243,7 @@ onMounted(async () => {
               <span class="ai-message__label">{{ message.role === 'assistant' ? 'AI 学习助手' : message.role === 'user' ? '你' : '提示' }}</span>
               <MarkdownRenderer v-if="message.role === 'assistant'" :content="message.content" />
               <p v-else>{{ message.content }}</p>
+              <small v-if="message.scope" class="ai-message__scope">{{ message.scope }}</small>
               <div v-if="message.sources?.length" class="ai-message__sources"><span>本次参考</span><button v-for="source in message.sources" :key="`${source.source_type}-${source.id}`" type="button" @click="openSource(source)">{{ source.source_type === 'error' ? '错题' : '资料' }} · {{ source.title }}</button></div>
               <button v-if="message.setup" type="button" class="ai-message__setup" @click="openSettings">去配置 DeepSeek</button>
               <small v-if="message.model">{{ message.model }}</small>

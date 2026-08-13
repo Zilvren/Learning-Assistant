@@ -115,7 +115,7 @@ main.go
 | `/library/items/:itemId` | 文件或 Markdown 笔记阅读/编辑 |
 | `/trash/:folderId?` | 回收站 |
 | `/review` | 今日复习 |
-| `/ai` | AI 学习助手（DeepSeek） |
+| `/ai` | AI 学习助手（DeepSeek）；支持 `?folder=<id>` 限定文件夹树、`?items=<id,...>` 接收资料库勾选转发 |
 | `/settings` | 设置 |
 
 旧的 `/errors/:id?` 现在重定向到资料库；视觉预览和 `design-preview` 测试路由已经删除，不应重新加入生产路由。

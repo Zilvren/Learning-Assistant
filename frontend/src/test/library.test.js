@@ -54,6 +54,9 @@ describe("personal library", () => {
     expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["apple.pdf", "Zebra.pdf"])
 
     await wrapper.get('[aria-label="筛选标签 Redis"]').trigger("click")
+    // filterByTag intentionally starts router navigation without awaiting it;
+    // let the route watcher schedule its debounce before advancing fake time.
+    await flushPromises()
     await vi.advanceTimersByTimeAsync(250); await flushPromises()
     expect(router.currentRoute.value.query.tag).toBe("Redis")
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "Redis" }))
@@ -172,6 +175,21 @@ describe("personal library", () => {
     expect(wrapper.find(".library-selection-bar").text()).toContain("已选择 3 项")
     await wrapper.get('input[aria-label="搜索资料"]').setValue("课程")
     expect(wrapper.find(".library-selection-bar").exists()).toBe(false)
+  })
+
+  it("forwards checked library items to the AI assistant", async () => {
+    vi.spyOn(api,"getLibraryItems").mockResolvedValue({items:[
+      {id:31,kind:"note",name:"导数笔记",updated_at:"2026-08-02"},
+      {id:32,kind:"file",name:"极限讲义.pdf",updated_at:"2026-08-02"},
+    ]})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/:folderId?",name:"library",component:LibraryPage},{path:"/ai",name:"ai",component:{template:"<div/>"}},{path:"/library/items/:itemId",name:"library-item",component:{template:"<div/>"}}]})
+    await router.push("/library");await router.isReady()
+    const wrapper=mount(LibraryPage,{global:{plugins:[router],stubs:{BaseDialog:true}}});await flushPromises()
+    await wrapper.findAll('input[type="checkbox"]')[0].trigger("click")
+    await wrapper.get(".library-selection-bar .lib-btn--primary").trigger("click")
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe("ai")
+    expect(router.currentRoute.value.query.items).toBe("31")
   })
 
   it("syntax-highlights fenced code without exposing raw HTML", () => {
