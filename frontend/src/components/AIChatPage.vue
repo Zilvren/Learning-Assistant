@@ -30,6 +30,8 @@ const selectedItems = ref([])
 const editMode = ref(false)
 const editPreview = ref(null)
 const editApplying = ref(false)
+const noteWritePreview = ref(null)
+const noteWriteApplying = ref(false)
 
 const continueInstruction = "请从你上一条回答结束的位置直接继续。不要重复任何已经输出的内容，保持原有格式，并完成剩余内容。"
 const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && configured.value === true && conversationReady.value)
@@ -301,6 +303,57 @@ function toggleEditMode() {
   if (editMode.value) toast.info(`编辑模式：AI 将为“${editableItem.value.name}”生成预览，不会直接保存`)
 }
 
+function looksLikeAINoteWriteRequest(value) {
+  return /(?:^|(?:请(?:你)?|帮我|那你帮我|麻烦(?:你)?|把|将).{0,24})(?:写在|写到|写入|保存到|存到|新建|创建)/u.test(String(value || "").trim())
+}
+
+async function previewAINoteWrite(message) {
+  await ensureActiveConversation()
+  const history = historyForRequest()
+  messages.value.push({ id: `user-${Date.now()}`, role: "user", content: message, scope: hasScopedContext.value ? scopeSummary.value : "" })
+  composer.value = ""
+  sending.value = true
+  scrollToLatest()
+  try {
+    const request = { message, history, folder_id: selectedFolderID.value }
+    if (activeContextSummary.value) request.context_summary = activeContextSummary.value
+    const result = await api.previewAINoteWrite(request)
+    noteWritePreview.value = result
+    const actionLabel = result.action === "create" ? "创建" : "更新"
+    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: `已解析目标路径“${result.target_path}”，并生成${actionLabel}预览。请检查内容，确认后才会写入资料库。`, model: result.model })
+  } catch (error) {
+    messages.value.push({ id: `error-${Date.now()}`, role: "error", content: error.message || "AI 写入预览生成失败，请稍后重试。" })
+  } finally {
+    sending.value = false
+    await saveConversation(true)
+    scrollToLatest()
+  }
+}
+
+async function applyAINoteWrite() {
+  const preview = noteWritePreview.value
+  if (!preview || noteWriteApplying.value) return
+  noteWriteApplying.value = true
+  try {
+    const request = { action: preview.action, content: preview.content, base_version: preview.base_version }
+    if (preview.action === "update") request.item_id = preview.item?.id
+    else {
+      request.parent_id = preview.parent_id ?? null
+      request.name = preview.name
+    }
+    const item = await api.applyAINoteWrite(request)
+    const created = preview.action === "create"
+    noteWritePreview.value = null
+    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: created ? `已创建“${item.name}”。` : `已将内容保存到“${item.name}”的新版本。你可以在资料库版本记录中恢复原文。`, model: preview.model })
+    await saveConversation(true)
+    toast.success(created ? "AI 笔记已创建" : "AI 写入已保存为新的笔记版本")
+  } catch (error) {
+    toast.error(error.message || "确认 AI 写入失败")
+  } finally {
+    noteWriteApplying.value = false
+  }
+}
+
 async function previewAIEdit(instruction) {
   const target = editableItem.value
   if (!target) {
@@ -409,6 +462,7 @@ async function send() {
   if (configured.value === false) return toast.warning("请先在设置中配置 DeepSeek API Key")
   if (configured.value !== true) return
   if (editMode.value) return previewAIEdit(content)
+  if (looksLikeAINoteWriteRequest(content)) return previewAINoteWrite(content)
   await ensureActiveConversation()
   const history = historyForRequest()
   messages.value.push({ id: `user-${Date.now()}`, role: "user", content, scope: hasScopedContext.value ? scopeSummary.value : "" })
@@ -542,7 +596,7 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
             <textarea v-model="composer" rows="1" maxlength="2000" placeholder="输入你的问题…" :disabled="sending || configured !== true" @keydown="keydown" />
             <button type="submit" class="ai-composer__send" :disabled="!canSend" :aria-label="sending ? '正在发送' : '发送消息'"><LoaderCircle v-if="sending" :size="18" /><SendHorizontal v-else :size="18" /></button>
           </div>
-          <small class="ai-composer__context-status">{{ editMode ? `编辑“${editableItem?.name || '所选笔记'}” · 先预览，再确认保存` : '1M 上下文 · 单次最高 384K 输出 · 接近上限时自动整理早期对话' }}</small>
+          <small class="ai-composer__context-status">{{ editMode ? `编辑“${editableItem?.name || '所选笔记'}” · 先预览，再确认保存` : '1M 上下文 · 输出最高 384K · “写在 路径/文件名 中”可创建或写入' }}</small>
           <div v-if="configured === false" class="ai-composer__setup">尚未连接 DeepSeek <button type="button" @click="openSettings">去配置</button></div>
         </form>
       </section>
@@ -556,6 +610,16 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
         </div>
       </div>
       <template #footer><button class="lib-btn" :disabled="editApplying" @click="editPreview=null">取消</button><button class="lib-btn lib-btn--primary" :disabled="editApplying" @click="applyAIEdit">{{ editApplying ? '保存中…' : '确认并保存新版本' }}</button></template>
+    </BaseDialog>
+    <BaseDialog :open="Boolean(noteWritePreview)" title="确认 AI 写入" description="已根据你的话解析目标路径。确认后才会创建笔记或保存新版本。" size="full" :close-on-backdrop="false" @close="noteWritePreview=null">
+      <div v-if="noteWritePreview" class="ai-edit-preview">
+        <header><strong>{{ noteWritePreview.target_path }}</strong><small>{{ noteWritePreview.action === 'create' ? '创建笔记' : `基于版本 ${noteWritePreview.base_version}` }} · {{ noteWritePreview.model }}</small></header>
+        <div class="ai-edit-preview__columns">
+          <section><h3>{{ noteWritePreview.action === 'create' ? '将创建的目标' : '原文' }}</h3><pre>{{ noteWritePreview.action === 'create' ? `将创建新 Markdown 笔记\n${noteWritePreview.target_path}` : noteWritePreview.original_content }}</pre></section>
+          <section><h3>AI 写入预览</h3><textarea v-model="noteWritePreview.content" aria-label="AI 写入预览" spellcheck="false" /></section>
+        </div>
+      </div>
+      <template #footer><button class="lib-btn" :disabled="noteWriteApplying" @click="noteWritePreview=null">取消</button><button class="lib-btn lib-btn--primary" :disabled="noteWriteApplying" @click="applyAINoteWrite">{{ noteWriteApplying ? '保存中…' : noteWritePreview?.action === 'create' ? '确认创建笔记' : '确认并保存新版本' }}</button></template>
     </BaseDialog>
   </div>
 </template>

@@ -42,6 +42,43 @@ describe("AI library scope", () => {
     expect(apply).toHaveBeenCalledWith({ item_id: 7, content: "# 导数\n\n定义和求导规则", base_version: 3 })
   })
 
+  it("resolves a natural-language write path then previews creation before saving", async () => {
+    vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })
+    vi.spyOn(api, "getLibraryItems").mockImplementation(({ parentId, kind }) => {
+      if (kind === "folder" && parentId == null) return Promise.resolve({ items: [{ id: 4, kind: "folder", name: "daily" }] })
+      return Promise.resolve({ items: [] })
+    })
+    vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+    const preview = vi.spyOn(api, "previewAINoteWrite").mockResolvedValue({
+      action: "create", target_path: "daily / 20260813-问题整理.md", parent_id: 4, name: "20260813-问题整理.md", base_version: 0,
+      content: "# 问题整理\n\n- 今天的问题", model: "deepseek-v4-flash",
+    })
+    const apply = vi.spyOn(api, "applyAINoteWrite").mockResolvedValue({ id: 11, kind: "note", name: "20260813-问题整理.md" })
+    const chat = vi.spyOn(api, "aiChat")
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: "/ai", name: "ai", component: AIChatPage },
+      { path: "/settings", name: "settings", component: { template: "<div />" } },
+      { path: "/library/items/:itemId", name: "library-item", component: { template: "<div />" } },
+    ] })
+    await router.push("/ai?folder=4")
+    await router.isReady()
+    const wrapper = mount(AIChatPage, { global: { plugins: [router], stubs: { BaseDialog: { props: ["open"], template: '<section v-if="open"><slot /><slot name="footer" /></section>' } } } })
+    await flushPromises()
+
+    await wrapper.get("textarea").setValue("那你帮我写在20260813-问题整理中")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(preview).toHaveBeenCalledWith({ message: "那你帮我写在20260813-问题整理中", history: [], folder_id: 4 })
+    expect(chat).not.toHaveBeenCalled()
+    expect(wrapper.get('[aria-label="AI 写入预览"]').element.value).toContain("今天的问题")
+    const confirm = wrapper.findAll("button").find((button) => button.text().includes("确认创建笔记"))
+    await confirm.trigger("click")
+    await flushPromises()
+    expect(apply).toHaveBeenCalledWith({ action: "create", content: "# 问题整理\n\n- 今天的问题", base_version: 0, parent_id: 4, name: "20260813-问题整理.md" })
+  })
+
   it("creates and persists an independent conversation with the first message", async () => {
     vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
     vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })

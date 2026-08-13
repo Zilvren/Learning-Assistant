@@ -83,6 +83,56 @@ func ApplyAIEdit(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+// PreviewAINoteWrite resolves a natural-language target path and generates a
+// create or update preview without changing the user's library.
+func PreviewAINoteWrite(c *gin.Context) {
+	var request models.AINoteWritePreviewRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_ai_note_write_request", "AI 写入请求格式错误")
+		return
+	}
+	response, err := service.PreviewAINoteWrite(c.Request.Context(), request)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrDeepSeekNotConfigured):
+			respondProblem(c, http.StatusBadRequest, "deepseek_not_configured", err.Error())
+		case errors.Is(err, service.ErrDeepSeekClientUnavailable):
+			respondProblem(c, http.StatusServiceUnavailable, "deepseek_client_unavailable", err.Error())
+		case errors.Is(err, service.ErrAINoteWriteIntent):
+			respondProblem(c, http.StatusBadRequest, "not_ai_note_write_intent", err.Error())
+		case errors.Is(err, service.ErrAINoteWriteTarget):
+			respondProblem(c, http.StatusBadRequest, "invalid_ai_note_write_target", err.Error())
+		default:
+			respondError(c, http.StatusBadGateway, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+// ApplyAINoteWrite creates or updates exactly the note shown in an approved
+// preview. It is deliberately separate from preview generation.
+func ApplyAINoteWrite(c *gin.Context) {
+	var request models.AINoteWriteApplyRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		respondProblem(c, http.StatusBadRequest, "invalid_ai_note_write_apply", "AI 写入确认格式错误")
+		return
+	}
+	item, err := service.ApplyAINoteWrite(c.Request.Context(), request)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAINoteWriteConflict), strings.Contains(err.Error(), "版本冲突"):
+			respondProblem(c, http.StatusConflict, "ai_note_write_conflict", "目标笔记已变化，请重新生成写入预览")
+		case errors.Is(err, service.ErrAINoteWriteTarget):
+			respondProblem(c, http.StatusBadRequest, "invalid_ai_note_write_target", err.Error())
+		default:
+			respondError(c, http.StatusBadRequest, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 type aiConversationRequest struct {
 	Conversations []models.AIConversation `json:"conversations"`
 }

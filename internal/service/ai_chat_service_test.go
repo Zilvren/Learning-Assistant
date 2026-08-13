@@ -174,6 +174,82 @@ func TestPreviewAndApplyAIEditKeepsTheOriginalVersionRecoverable(t *testing.T) {
 	}
 }
 
+func TestAINoteWriteResolvesPathThenPreviewsCreateAndUpdate(t *testing.T) {
+	ctx := setupAIChatServiceTest(t)
+	if err := SetDeepSeekToken(ctx, "sk-local-test"); err != nil {
+		t.Fatal(err)
+	}
+	daily, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{Kind: "folder", Name: "daily"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteFolder, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{ParentID: &daily.ID, Kind: "folder", Name: "Note"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousRun := runDeepSeekChat
+	calls := 0
+	runDeepSeekChat = func(_ context.Context, _ string, _ string, systemPrompt string, history []models.AIChatMessage, prompt string) (string, string, bool, error) {
+		calls++
+		if !strings.Contains(systemPrompt, "受控笔记写入助手") || !strings.Contains(prompt, "daily / Note / 20260813-问题整理.md") || len(history) != 1 || history[0].Content != "先总结今天的问题" {
+			t.Fatalf("unexpected write prompt: system=%q history=%#v prompt=%q", systemPrompt, history, prompt)
+		}
+		if calls == 1 {
+			return "<revised_note>\n# 问题整理\n\n- 今天的第一条问题\n</revised_note>", deepSeekFlashModel, false, nil
+		}
+		return "<revised_note>\n# 问题整理\n\n- 今天的第一条问题\n- 复盘结论\n</revised_note>", deepSeekFlashModel, false, nil
+	}
+	t.Cleanup(func() { runDeepSeekChat = previousRun })
+
+	preview, err := PreviewAINoteWrite(ctx, models.AINoteWritePreviewRequest{
+		Message:  "那你帮我写在20260813-问题整理中",
+		History:  []models.AIChatMessage{{Role: "assistant", Content: "先总结今天的问题"}},
+		FolderID: &noteFolder.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Action != "create" || preview.TargetPath != "daily / Note / 20260813-问题整理.md" || preview.ParentID == nil || *preview.ParentID != noteFolder.ID || preview.Name != "20260813-问题整理.md" || preview.Item != nil {
+		t.Fatalf("unexpected create preview: %#v", preview)
+	}
+	created, err := ApplyAINoteWrite(ctx, models.AINoteWriteApplyRequest{Action: preview.Action, ParentID: preview.ParentID, Name: preview.Name, Content: preview.Content})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Name != preview.Name || created.ParentID == nil || *created.ParentID != noteFolder.ID {
+		t.Fatalf("unexpected created note: %#v", created)
+	}
+	body, _, err := ReadLibraryContent(ctx, created.ID)
+	if err != nil || !strings.Contains(string(body), "第一条问题") {
+		t.Fatalf("AI note was not created: %q %v", body, err)
+	}
+
+	preview, err = PreviewAINoteWrite(ctx, models.AINoteWritePreviewRequest{
+		Message: "请写在 daily/Note/20260813-问题整理.md 中，补充复盘结论",
+		History: []models.AIChatMessage{{Role: "assistant", Content: "先总结今天的问题"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Action != "update" || preview.Item == nil || preview.Item.ID != created.ID || preview.BaseVersion != created.CurrentVersion || !strings.Contains(preview.OriginalContent, "第一条问题") {
+		t.Fatalf("unexpected update preview: %#v", preview)
+	}
+	updated, err := ApplyAINoteWrite(ctx, models.AINoteWriteApplyRequest{Action: preview.Action, ItemID: preview.Item.ID, Content: preview.Content, BaseVersion: preview.BaseVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CurrentVersion <= preview.BaseVersion {
+		t.Fatalf("expected a new note version, got %#v", updated)
+	}
+	body, _, err = ReadLibraryContent(ctx, created.ID)
+	if err != nil || !strings.Contains(string(body), "复盘结论") {
+		t.Fatalf("AI note was not updated: %q %v", body, err)
+	}
+	if _, err := PreviewAINoteWrite(ctx, models.AINoteWritePreviewRequest{Message: "请总结今天的资料"}); !errors.Is(err, ErrAINoteWriteIntent) {
+		t.Fatalf("expected a non-write chat to be rejected by the write preview endpoint, got %v", err)
+	}
+}
+
 func TestChatWithStudyAICompactsEarlierHistoryNearTheContextLimit(t *testing.T) {
 	ctx := setupAIChatServiceTest(t)
 	if err := SetDeepSeekToken(ctx, "sk-local-test"); err != nil {

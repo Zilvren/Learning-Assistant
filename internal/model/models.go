@@ -334,6 +334,40 @@ type AIEditApplyRequest struct {
 	BaseVersion int    `json:"base_version"`
 }
 
+// AINoteWritePreviewRequest lets the AI resolve a natural-language write
+// command such as “写在 daily/Note/今日整理 中”. It only prepares a preview.
+type AINoteWritePreviewRequest struct {
+	Message        string          `json:"message"`
+	History        []AIChatMessage `json:"history"`
+	ContextSummary string          `json:"context_summary,omitempty"`
+	FolderID       *int64          `json:"folder_id,omitempty"`
+}
+
+// AINoteWritePreviewResponse identifies the resolved target and the complete
+// Markdown that would be created or saved after user confirmation.
+type AINoteWritePreviewResponse struct {
+	Action          string       `json:"action"`
+	TargetPath      string       `json:"target_path"`
+	Item            *LibraryItem `json:"item,omitempty"`
+	ParentID        *int64       `json:"parent_id,omitempty"`
+	Name            string       `json:"name"`
+	BaseVersion     int          `json:"base_version"`
+	OriginalContent string       `json:"original_content,omitempty"`
+	Content         string       `json:"content"`
+	Model           string       `json:"model"`
+}
+
+// AINoteWriteApplyRequest is the explicit confirmation for an AI-generated
+// create or update preview. Updates must include their original version.
+type AINoteWriteApplyRequest struct {
+	Action      string `json:"action"`
+	ItemID      int64  `json:"item_id,omitempty"`
+	ParentID    *int64 `json:"parent_id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Content     string `json:"content"`
+	BaseVersion int    `json:"base_version,omitempty"`
+}
+
 // AddErrorRequest 是创建错题时的请求体
 type AddErrorRequest struct {
 	ParentID   *int64   `json:"parent_id,omitempty"`

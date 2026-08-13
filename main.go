@@ -207,6 +207,8 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		api.POST("/ai/chat", middleware.RateLimit(20, time.Minute), handlers.AIChat)
 		api.POST("/ai/edits/preview", middleware.RateLimit(10, time.Minute), handlers.PreviewAIEdit)
 		api.POST("/ai/edits/apply", handlers.ApplyAIEdit)
+		api.POST("/ai/notes/preview", middleware.RateLimit(10, time.Minute), handlers.PreviewAINoteWrite)
+		api.POST("/ai/notes/apply", handlers.ApplyAINoteWrite)
 		api.GET("/ai/conversation", handlers.GetAIConversation)
 		api.PUT("/ai/conversation", handlers.SaveAIConversation)
 		api.DELETE("/ai/conversation", handlers.ClearAIConversation)
