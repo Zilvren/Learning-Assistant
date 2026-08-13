@@ -125,6 +125,55 @@ func TestChatWithStudyAIReportsAnIncompleteCompletion(t *testing.T) {
 	}
 }
 
+func TestPreviewAndApplyAIEditKeepsTheOriginalVersionRecoverable(t *testing.T) {
+	ctx := setupAIChatServiceTest(t)
+	if err := SetDeepSeekToken(ctx, "sk-local-test"); err != nil {
+		t.Fatal(err)
+	}
+	note, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{Kind: "note", Name: "导数笔记.md", MimeType: "text/markdown"}, []byte("# 导数\n\n只写了定义。"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousRun := runDeepSeekChat
+	runDeepSeekChat = func(_ context.Context, _ string, _ string, systemPrompt string, _ []models.AIChatMessage, prompt string) (string, string, bool, error) {
+		if !strings.Contains(systemPrompt, "笔记编辑助手") || !strings.Contains(prompt, "补全复习要点") || !strings.Contains(prompt, "只写了定义") {
+			t.Fatalf("unexpected edit prompt: system=%q prompt=%q", systemPrompt, prompt)
+		}
+		return "<revised_note>\n# 导数\n\n- 定义\n- 求导规则\n</revised_note>", deepSeekFlashModel, false, nil
+	}
+	t.Cleanup(func() { runDeepSeekChat = previousRun })
+
+	preview, err := PreviewAIEdit(ctx, models.AIEditPreviewRequest{ItemID: note.ID, Instruction: "补全复习要点"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.BaseVersion != note.CurrentVersion || preview.OriginalContent != "# 导数\n\n只写了定义。" || !strings.Contains(preview.Content, "求导规则") {
+		t.Fatalf("unexpected edit preview: %#v", preview)
+	}
+	updated, err := ApplyAIEdit(ctx, models.AIEditApplyRequest{ItemID: note.ID, Content: preview.Content, BaseVersion: preview.BaseVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CurrentVersion <= preview.BaseVersion {
+		t.Fatalf("expected a new version, got %#v", updated)
+	}
+	body, _, err := ReadLibraryContent(ctx, note.ID)
+	if err != nil || !strings.Contains(string(body), "求导规则") {
+		t.Fatalf("AI edit was not saved: %q %v", body, err)
+	}
+	versions, err := LibraryVersions(ctx, note.ID)
+	if err != nil || len(versions) < 2 {
+		t.Fatalf("expected recoverable AI edit versions: %#v %v", versions, err)
+	}
+	folder, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{Kind: "folder", Name: "课程"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PreviewAIEdit(ctx, models.AIEditPreviewRequest{ItemID: folder.ID, Instruction: "改名"}); !errors.Is(err, ErrAIEditTarget) {
+		t.Fatalf("expected non-note target to be rejected, got %v", err)
+	}
+}
+
 func TestChatWithStudyAICompactsEarlierHistoryNearTheContextLimit(t *testing.T) {
 	ctx := setupAIChatServiceTest(t)
 	if err := SetDeepSeekToken(ctx, "sk-local-test"); err != nil {

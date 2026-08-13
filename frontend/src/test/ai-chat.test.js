@@ -7,6 +7,76 @@ import { api } from "../api/index.js"
 describe("AI library scope", () => {
 	afterEach(() => vi.restoreAllMocks())
 
+  it("previews and confirms an AI edit only for the selected Markdown note", async () => {
+    vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })
+    vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [] })
+    vi.spyOn(api, "getLibraryItem").mockResolvedValue({ id: 7, kind: "note", name: "导数笔记.md" })
+    vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+    const preview = vi.spyOn(api, "previewAIEdit").mockResolvedValue({
+      item: { id: 7, kind: "note", name: "导数笔记.md" }, base_version: 3,
+      original_content: "# 导数\n\n定义", content: "# 导数\n\n定义和求导规则", model: "deepseek-v4-flash",
+    })
+    const apply = vi.spyOn(api, "applyAIEdit").mockResolvedValue({ id: 7, current_version: 4 })
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: "/ai", name: "ai", component: AIChatPage },
+      { path: "/settings", name: "settings", component: { template: "<div />" } },
+      { path: "/library/items/:itemId", name: "library-item", component: { template: "<div />" } },
+    ] })
+    await router.push("/ai?items=7")
+    await router.isReady()
+    const wrapper = mount(AIChatPage, { global: { plugins: [router], stubs: { BaseDialog: { props: ["open"], template: '<section v-if="open"><slot /><slot name="footer" /></section>' } } } })
+    await flushPromises()
+
+    const editToggle = wrapper.get('.ai-composer__edit-button')
+    expect(editToggle.attributes("disabled")).toBeUndefined()
+    await editToggle.trigger("click")
+    await wrapper.get("textarea").setValue("补全求导规则")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(preview).toHaveBeenCalledWith({ item_id: 7, instruction: "补全求导规则" })
+    expect(wrapper.get('[aria-label="AI 修改预览"]').element.value).toContain("求导规则")
+    await wrapper.get(".lib-btn--primary").trigger("click")
+    await flushPromises()
+    expect(apply).toHaveBeenCalledWith({ item_id: 7, content: "# 导数\n\n定义和求导规则", base_version: 3 })
+  })
+
+  it("creates and persists an independent conversation with the first message", async () => {
+    vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })
+    vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [] })
+    const saveConversation = vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+    vi.spyOn(api, "aiChat").mockResolvedValue({ answer: "你好，我在。", model: "deepseek-v4-flash", sources: [] })
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: "/ai", name: "ai", component: AIChatPage },
+      { path: "/settings", name: "settings", component: { template: "<div />" } },
+      { path: "/library/items/:itemId", name: "library-item", component: { template: "<div />" } },
+    ] })
+    await router.push("/ai")
+    await router.isReady()
+    const wrapper = mount(AIChatPage, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(wrapper.findAll(".ai-history-item")).toHaveLength(0)
+    await wrapper.get("textarea").setValue("你好")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.conversation).toMatch(/^chat-/)
+    expect(wrapper.findAll(".ai-history-item")).toHaveLength(1)
+    expect(wrapper.get(".ai-history-item").text()).toContain("你好")
+    expect(saveConversation).toHaveBeenNthCalledWith(1, expect.arrayContaining([
+      expect.objectContaining({ messages: [] }),
+    ]))
+    expect(saveConversation).toHaveBeenLastCalledWith(expect.arrayContaining([
+      expect.objectContaining({ messages: expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: "你好" }),
+        expect.objectContaining({ role: "assistant", content: "你好，我在。" }),
+      ]) }),
+    ]))
+  })
+
   it("indexes a selected path and sends forwarded items with the question", async () => {
     vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
     vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })

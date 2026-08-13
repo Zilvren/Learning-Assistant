@@ -17,17 +17,17 @@ const (
 	aiMaxMessageRunes              = 2_000
 	aiMaxHistoryMessages           = 160
 	aiMaxHistoryMessageRunes       = 16_000
-	aiMaxSources                   = 12
-	aiMaxContextRunes              = 24_000
-	aiMaxSourceRunes               = 3_200
+	aiMaxSources                   = 60
+	aiMaxStudyContextTokens        = 500_000
+	aiMaxSourceTokens              = 120_000
 	aiMaxScopedItems               = 60
 	aiContextWindowTokens          = 1_000_000
-	aiContextResponseReserveTokens = 120_000
+	aiContextResponseReserveTokens = 384_000
 	aiContextInputBudgetTokens     = aiContextWindowTokens - aiContextResponseReserveTokens
 	aiContextKeepRecentMessages    = 32
 	aiCompactChunkTokens           = 600_000
 	aiCompactSummaryRunes          = 24_000
-	aiRequestTimeout               = 75 * time.Second
+	aiRequestTimeout               = 30 * time.Minute
 	deepSeekFlashModel             = "deepseek-v4-flash"
 	deepSeekProModel               = "deepseek-v4-pro"
 	deepSeekDefaultModel           = deepSeekFlashModel
@@ -91,16 +91,31 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
-	studyContext, err := buildAIStudyContext(ctx, message, scope)
-	if err != nil {
-		return models.AIChatResponse{}, err
-	}
 	requestCtx, cancel := context.WithTimeout(ctx, aiRequestTimeout)
 	defer cancel()
 	history := normalizeAIHistory(request.History)
 	summary := aiBoundedText(request.ContextSummary, aiCompactSummaryRunes)
+	// Keep room for a large library context before deciding how much old chat
+	// transcript to retain. The newest exchanges are always kept verbatim.
+	history, summary, compactedMessages, err := compactAIHistoryToBudget(requestCtx, apiKey, modelName, aiSystemPrompt("", summary), summary, history, message, aiContextInputBudgetTokens-aiMaxStudyContextTokens)
+	if err != nil {
+		return models.AIChatResponse{}, err
+	}
+	basePrompt := aiSystemPrompt("", summary)
+	studyContextTokens := aiContextInputBudgetTokens - aiApproxTokens(basePrompt) - aiHistoryTokens(history) - aiApproxTokens(message)
+	if studyContextTokens < 0 {
+		studyContextTokens = 0
+	}
+	if studyContextTokens > aiMaxStudyContextTokens {
+		studyContextTokens = aiMaxStudyContextTokens
+	}
+	studyContext, err := buildAIStudyContext(ctx, message, scope, studyContextTokens)
+	if err != nil {
+		return models.AIChatResponse{}, err
+	}
 	systemPrompt := aiSystemPrompt(studyContext.prompt, summary)
-	history, summary, compactedMessages, err := compactAIHistoryIfNeeded(requestCtx, apiKey, modelName, systemPrompt, summary, history, message)
+	history, summary, finalCompactedMessages, err := compactAIHistoryIfNeeded(requestCtx, apiKey, modelName, systemPrompt, summary, history, message)
+	compactedMessages += finalCompactedMessages
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
@@ -203,7 +218,11 @@ func aiSystemPrompt(studyContext, conversationSummary string) string {
 </library_context>` + summarySection
 }
 
-func buildAIStudyContext(ctx context.Context, question string, scope aiLibraryScope) (aiStudyContext, error) {
+func buildAIStudyContext(ctx context.Context, question string, scope aiLibraryScope, budgets ...int) (aiStudyContext, error) {
+	contextTokenBudget := aiMaxStudyContextTokens
+	if len(budgets) > 0 {
+		contextTokenBudget = max(0, budgets[0])
+	}
 	repos, err := repositories(ctx)
 	if err != nil {
 		return aiStudyContext{}, err
@@ -248,25 +267,25 @@ func buildAIStudyContext(ctx context.Context, question string, scope aiLibrarySc
 
 	parts := make([]string, 0, aiMaxSources+2)
 	sources := make([]models.AIChatSource, 0, aiMaxSources)
-	usedRunes := 0
+	usedTokens := 0
 	for _, candidate := range candidates {
-		if len(sources) >= aiMaxSources || usedRunes >= aiMaxContextRunes {
+		if len(sources) >= aiMaxSources || usedTokens >= contextTokenBudget {
 			break
 		}
 		text, err := aiCandidateText(ctx, candidate)
 		if err != nil || strings.TrimSpace(text) == "" {
 			continue
 		}
-		text = aiBoundedText(text, aiMaxSourceRunes)
-		remaining := aiMaxContextRunes - usedRunes
-		text = aiBoundedText(text, remaining)
+		remaining := contextTokenBudget - usedTokens
+		text = aiBoundedTokens(text, min(aiMaxSourceTokens, remaining))
 		if text == "" {
 			break
 		}
 		candidate.source.Excerpt = aiBoundedText(strings.Join(strings.Fields(text), " "), 180)
-		parts = append(parts, fmt.Sprintf("[%s #%d：%s]\n%s", aiSourceLabel(candidate.source.SourceType), candidate.source.ID, candidate.source.Title, text))
+		part := fmt.Sprintf("[%s #%d：%s]\n%s", aiSourceLabel(candidate.source.SourceType), candidate.source.ID, candidate.source.Title, text)
+		parts = append(parts, part)
 		sources = append(sources, candidate.source)
-		usedRunes += len([]rune(text))
+		usedTokens += aiApproxTokens(part)
 	}
 	if scope.active() {
 		parts = append([]string{"[已限定资料范围]\n仅使用当前选择的资料路径和文件内容回答；范围外的资料库、错题与学习统计均未提供。"}, parts...)
@@ -493,8 +512,12 @@ func normalizeAIHistory(history []models.AIChatMessage) []models.AIChatMessage {
 // approached. Token counting is intentionally conservative: CJK and symbols
 // count as one token, while ASCII words are estimated at four characters each.
 func compactAIHistoryIfNeeded(ctx context.Context, apiKey, modelName, systemPrompt, summary string, history []models.AIChatMessage, message string) ([]models.AIChatMessage, string, int, error) {
+	return compactAIHistoryToBudget(ctx, apiKey, modelName, systemPrompt, summary, history, message, aiContextInputBudgetTokens)
+}
+
+func compactAIHistoryToBudget(ctx context.Context, apiKey, modelName, systemPrompt, summary string, history []models.AIChatMessage, message string, inputBudgetTokens int) ([]models.AIChatMessage, string, int, error) {
 	inputTokens := aiApproxTokens(systemPrompt) + aiApproxTokens(message) + aiHistoryTokens(history)
-	if inputTokens <= aiContextInputBudgetTokens || len(history) <= aiContextKeepRecentMessages {
+	if inputTokens <= inputBudgetTokens || len(history) <= aiContextKeepRecentMessages {
 		return history, summary, 0, nil
 	}
 
@@ -614,6 +637,31 @@ func aiBoundedText(value string, maximum int) string {
 		return "…"
 	}
 	return string(runes[:maximum-1]) + "…"
+}
+
+// aiBoundedTokens trims provider input by our conservative shared token
+// estimate, preserving as much source material as the active request allows.
+func aiBoundedTokens(value string, maximum int) string {
+	if maximum <= 0 {
+		return ""
+	}
+	if aiApproxTokens(value) <= maximum {
+		return value
+	}
+	runes := []rune(value)
+	low, high := 0, len(runes)
+	for low < high {
+		mid := (low + high + 1) / 2
+		if aiApproxTokens(string(runes[:mid])) <= maximum-1 {
+			low = mid
+		} else {
+			high = mid - 1
+		}
+	}
+	if low == 0 {
+		return "…"
+	}
+	return string(runes[:low]) + "…"
 }
 
 func aiSourceLabel(sourceType string) string {

@@ -308,6 +308,32 @@ type AIChatResponse struct {
 	CompactedMessages int            `json:"compacted_messages,omitempty"`
 }
 
+// AIEditPreviewRequest asks the assistant to prepare a revision for one
+// explicitly selected Markdown note. It never writes to the library.
+type AIEditPreviewRequest struct {
+	ItemID      int64  `json:"item_id"`
+	Instruction string `json:"instruction"`
+}
+
+// AIEditPreviewResponse contains a proposed full replacement and the exact
+// library version it was based on. The browser must ask the user to confirm
+// before sending it to the apply endpoint.
+type AIEditPreviewResponse struct {
+	Item            LibraryItem `json:"item"`
+	BaseVersion     int         `json:"base_version"`
+	OriginalContent string      `json:"original_content"`
+	Content         string      `json:"content"`
+	Model           string      `json:"model"`
+}
+
+// AIEditApplyRequest is the user-confirmed preview. BaseVersion makes an AI
+// edit fail safely rather than overwrite a newer manual change.
+type AIEditApplyRequest struct {
+	ItemID      int64  `json:"item_id"`
+	Content     string `json:"content"`
+	BaseVersion int    `json:"base_version"`
+}
+
 // AddErrorRequest 是创建错题时的请求体
 type AddErrorRequest struct {
 	ParentID   *int64   `json:"parent_id,omitempty"`

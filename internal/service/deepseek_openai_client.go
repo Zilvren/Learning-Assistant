@@ -13,11 +13,11 @@ import (
 
 const (
 	deepSeekBaseURLDefault = "https://api.deepseek.com"
-	// A 1,200-token cap often ends structured summaries in the middle of a
-	// list or Markdown link. 4,096 is sufficient for normal library reports;
-	// the completion finish reason still tells the UI when a continuation is
-	// required for unusually long answers.
-	deepSeekMaxCompletionTokens = 4_096
+	// DeepSeek V4 supports up to a 384K-token completion inside its 1M-token
+	// context window. Reserve that full allowance for long-form study plans,
+	// file edits, and generated notes; the UI still exposes continuation when
+	// the provider ends on its length boundary.
+	deepSeekMaxCompletionTokens = 384_000
 )
 
 // deepSeekBaseURL is a package variable only so the SDK adapter can be verified
