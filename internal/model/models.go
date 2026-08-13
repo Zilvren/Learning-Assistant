@@ -117,12 +117,13 @@ type ErrorProblem struct {
 
 // Config 是用户设置
 type Config struct {
-	MineruToken   string                  `json:"mineru_token"` // OCR 服务的 token
-	DeepSeekToken string                  `json:"deepseek_token"`
-	DeepSeekModel string                  `json:"deepseek_model"`
-	AIChatContext []AIConversationMessage `json:"ai_chat_context,omitempty"`
-	Username      string                  `json:"username"` // 用户名
-	DailyGoal     DailyGoalSettings       `json:"daily_goal"`
+	MineruToken     string                  `json:"mineru_token"` // OCR 服务的 token
+	DeepSeekToken   string                  `json:"deepseek_token"`
+	DeepSeekModel   string                  `json:"deepseek_model"`
+	AIChatContext   []AIConversationMessage `json:"ai_chat_context,omitempty"`
+	AIConversations []AIConversation        `json:"ai_conversations,omitempty"`
+	Username        string                  `json:"username"` // 用户名
+	DailyGoal       DailyGoalSettings       `json:"daily_goal"`
 }
 
 // DailyGoalSettings keeps the user's repeatable daily study targets. A zero
@@ -262,19 +263,33 @@ type AIChatMessage struct {
 // chat in the browser. It keeps display-only metadata separate from the small
 // provider history sent in AIChatRequest.
 type AIConversationMessage struct {
-	Role       string         `json:"role"`
-	Content    string         `json:"content"`
-	Scope      string         `json:"scope,omitempty"`
-	Model      string         `json:"model,omitempty"`
-	Sources    []AIChatSource `json:"sources,omitempty"`
-	Incomplete bool           `json:"incomplete,omitempty"`
+	Role             string         `json:"role"`
+	Content          string         `json:"content"`
+	Scope            string         `json:"scope,omitempty"`
+	Model            string         `json:"model,omitempty"`
+	Sources          []AIChatSource `json:"sources,omitempty"`
+	Incomplete       bool           `json:"incomplete,omitempty"`
+	ContextCompacted bool           `json:"context_compacted,omitempty"`
+}
+
+// AIConversation is one independently scoped, durable AI chat. Each record
+// owns its messages and library scope so switching conversations never leaks
+// a previous chat's context into the next request.
+type AIConversation struct {
+	ID             string                  `json:"id"`
+	Title          string                  `json:"title"`
+	FolderID       *int64                  `json:"folder_id,omitempty"`
+	ItemIDs        []int64                 `json:"item_ids,omitempty"`
+	Messages       []AIConversationMessage `json:"messages"`
+	ContextSummary string                  `json:"context_summary,omitempty"`
 }
 
 type AIChatRequest struct {
-	Message  string          `json:"message"`
-	History  []AIChatMessage `json:"history"`
-	FolderID *int64          `json:"folder_id,omitempty"`
-	ItemIDs  []int64         `json:"item_ids,omitempty"`
+	Message        string          `json:"message"`
+	History        []AIChatMessage `json:"history"`
+	ContextSummary string          `json:"context_summary,omitempty"`
+	FolderID       *int64          `json:"folder_id,omitempty"`
+	ItemIDs        []int64         `json:"item_ids,omitempty"`
 }
 
 type AIChatSource struct {
@@ -285,10 +300,12 @@ type AIChatSource struct {
 }
 
 type AIChatResponse struct {
-	Answer     string         `json:"answer"`
-	Model      string         `json:"model"`
-	Sources    []AIChatSource `json:"sources"`
-	Incomplete bool           `json:"incomplete"`
+	Answer            string         `json:"answer"`
+	Model             string         `json:"model"`
+	Sources           []AIChatSource `json:"sources"`
+	Incomplete        bool           `json:"incomplete"`
+	ContextSummary    string         `json:"context_summary,omitempty"`
+	CompactedMessages int            `json:"compacted_messages,omitempty"`
 }
 
 // AddErrorRequest 是创建错题时的请求体

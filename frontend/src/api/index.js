@@ -132,9 +132,10 @@ async function waitForOCRTask(id, { attempts = 150, interval = 2000 } = {}) {
 
 // api 集中声明页面可调用的后端接口；简单的一行包装函数直接映射到 request。
 export const api = {
-	getLibraryItems: ({ parentId = null, kind = '', query = '', tag = '', review = false, due = false, trashed = false } = {}) => {
+	getLibraryItems: ({ parentId = null, all = false, kind = '', query = '', tag = '', review = false, due = false, trashed = false } = {}) => {
 		const p = new URLSearchParams()
 		if (parentId) p.set('parent_id', parentId)
+		if (all) p.set('all', 'true')
 		if (kind) p.set('kind', kind)
 		if (query) p.set('q', query)
 		if (tag) p.set('tag', tag)
@@ -162,9 +163,6 @@ export const api = {
 	reviewLibraryNote: (id, rating = 'good') => request('POST', `/library/items/${id}/review`, { rating }),
 	getReviewInbox: () => request('GET', '/review/inbox'),
 	searchLearning: (query) => request('GET', `/search?q=${encodeURIComponent(query)}`),
-	getLearningRelations: (sourceType, sourceId) => request('GET', `/relations?source_type=${encodeURIComponent(sourceType)}&source_id=${encodeURIComponent(sourceId)}`),
-	createLearningRelation: (data) => request('POST', '/relations', data),
-	deleteLearningRelation: (id) => request('DELETE', `/relations/${id}`),
   getSubjects: () => request('GET', '/subjects'),
   authStatus: () => request('GET', '/auth/status', null, false),
   me: () => request('GET', '/auth/me', null, false),
@@ -190,7 +188,7 @@ export const api = {
 	saveDeepSeekModel: (model) => request('PUT', '/settings/deepseek/model', { model }),
 	aiChat: (data) => request('POST', '/ai/chat', data),
 	getAIConversation: () => request('GET', '/ai/conversation'),
-	saveAIConversation: (messages) => request('PUT', '/ai/conversation', { messages }),
+	saveAIConversation: (conversations) => request('PUT', '/ai/conversation', { conversations }),
 	clearAIConversation: () => request('DELETE', '/ai/conversation'),
 	  saveUsername: (name) => request('PUT', '/settings/username', { name }),
   exportBackup: () => requestBackupExport(),

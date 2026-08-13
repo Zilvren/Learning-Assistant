@@ -10,6 +10,7 @@ import { useToast } from "../store/toast.js"
 const settings = useSettings()
 const toast = useToast()
 const notes = ref([])
+const indexedItems = ref([])
 const due = ref([])
 const tags = ref([])
 const activity = ref({ days: [], total: 0, active_days: 0 })
@@ -107,7 +108,7 @@ const learningStreak = computed(() => streakStats(currentYearActivity.value.days
 const recentNotes = computed(() => [...notes.value].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 3))
 const tagStats = computed(() => {
   const counts = new Map(tags.value.map((tag) => [tag, 0]))
-  notes.value.forEach((item) => (item.tags || []).forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1)))
+  indexedItems.value.forEach((item) => (item.tags || []).forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1)))
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "zh-CN"))
@@ -190,8 +191,9 @@ function selectActivityYear(year) {
 onMounted(async () => {
   try {
     await settings.load()
-    const [all, reviews, tagResult, activityResult, dailyPlan, report] = await Promise.all([
-      api.getLibraryItems({ kind: "note", query: " " }),
+    const [all, indexed, reviews, tagResult, activityResult, dailyPlan, report] = await Promise.all([
+      api.getLibraryItems({ kind: "note", all: true }),
+      api.getLibraryItems({ all: true }),
       api.getLibraryReviews(),
       api.getLibraryTags(),
       api.getLearningActivity(selectedActivityYear.value),
@@ -199,6 +201,7 @@ onMounted(async () => {
       api.getWeeklyReport(),
     ])
     notes.value = all.items || []
+    indexedItems.value = indexed.items || []
     due.value = reviews.items || []
     tags.value = tagResult.tags || []
     activity.value = activityResult

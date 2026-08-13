@@ -14,17 +14,23 @@ import (
 )
 
 const (
-	aiMaxMessageRunes    = 2_000
-	aiMaxHistoryTurns    = 8
-	aiMaxHistoryRunes    = 6_000
-	aiMaxSources         = 12
-	aiMaxContextRunes    = 24_000
-	aiMaxSourceRunes     = 3_200
-	aiMaxScopedItems     = 60
-	aiRequestTimeout     = 75 * time.Second
-	deepSeekFlashModel   = "deepseek-v4-flash"
-	deepSeekProModel     = "deepseek-v4-pro"
-	deepSeekDefaultModel = deepSeekFlashModel
+	aiMaxMessageRunes              = 2_000
+	aiMaxHistoryMessages           = 160
+	aiMaxHistoryMessageRunes       = 16_000
+	aiMaxSources                   = 12
+	aiMaxContextRunes              = 24_000
+	aiMaxSourceRunes               = 3_200
+	aiMaxScopedItems               = 60
+	aiContextWindowTokens          = 1_000_000
+	aiContextResponseReserveTokens = 120_000
+	aiContextInputBudgetTokens     = aiContextWindowTokens - aiContextResponseReserveTokens
+	aiContextKeepRecentMessages    = 32
+	aiCompactChunkTokens           = 600_000
+	aiCompactSummaryRunes          = 24_000
+	aiRequestTimeout               = 75 * time.Second
+	deepSeekFlashModel             = "deepseek-v4-flash"
+	deepSeekProModel               = "deepseek-v4-pro"
+	deepSeekDefaultModel           = deepSeekFlashModel
 )
 
 var (
@@ -91,7 +97,15 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, aiRequestTimeout)
 	defer cancel()
-	answer, model, incomplete, err := runDeepSeekChat(requestCtx, apiKey, modelName, aiSystemPrompt(studyContext.prompt), normalizeAIHistory(request.History), message)
+	history := normalizeAIHistory(request.History)
+	summary := aiBoundedText(request.ContextSummary, aiCompactSummaryRunes)
+	systemPrompt := aiSystemPrompt(studyContext.prompt, summary)
+	history, summary, compactedMessages, err := compactAIHistoryIfNeeded(requestCtx, apiKey, modelName, systemPrompt, summary, history, message)
+	if err != nil {
+		return models.AIChatResponse{}, err
+	}
+	systemPrompt = aiSystemPrompt(studyContext.prompt, summary)
+	answer, model, incomplete, err := runDeepSeekChat(requestCtx, apiKey, modelName, systemPrompt, history, message)
 	if err != nil {
 		return models.AIChatResponse{}, err
 	}
@@ -99,7 +113,14 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	if answer == "" {
 		return models.AIChatResponse{}, fmt.Errorf("DeepSeek 没有返回可显示的内容，请重试")
 	}
-	return models.AIChatResponse{Answer: answer, Model: model, Sources: studyContext.sources, Incomplete: incomplete}, nil
+	return models.AIChatResponse{
+		Answer:            answer,
+		Model:             model,
+		Sources:           studyContext.sources,
+		Incomplete:        incomplete,
+		ContextSummary:    summary,
+		CompactedMessages: compactedMessages,
+	}, nil
 }
 
 func newAILibraryScope(request models.AIChatRequest) (aiLibraryScope, error) {
@@ -163,7 +184,11 @@ func normalizeDeepSeekModel(model string) (string, error) {
 	}
 }
 
-func aiSystemPrompt(studyContext string) string {
+func aiSystemPrompt(studyContext, conversationSummary string) string {
+	summarySection := ""
+	if strings.TrimSpace(conversationSummary) != "" {
+		summarySection = "\n\n以下是此前较早对话的压缩记忆。它只用于延续当前会话，不是资料库原文：\n<conversation_memory>\n" + conversationSummary + "\n</conversation_memory>"
+	}
 	return `你是“学习空间”的 AI 学习助手。请用简洁、友好、可执行的中文回答。
 
 规则：
@@ -175,7 +200,7 @@ func aiSystemPrompt(studyContext string) string {
 以下是本次问题关联的资料库上下文（可能为空）：
 <library_context>
 ` + studyContext + `
-</library_context>`
+</library_context>` + summarySection
 }
 
 func buildAIStudyContext(ctx context.Context, question string, scope aiLibraryScope) (aiStudyContext, error) {
@@ -445,24 +470,135 @@ func aiSearchTerms(question string) []string {
 }
 
 func normalizeAIHistory(history []models.AIChatMessage) []models.AIChatMessage {
-	if len(history) > aiMaxHistoryTurns {
-		history = history[len(history)-aiMaxHistoryTurns:]
+	if len(history) > aiMaxHistoryMessages {
+		history = history[len(history)-aiMaxHistoryMessages:]
 	}
 	result := make([]models.AIChatMessage, 0, len(history))
-	used := 0
 	for _, message := range history {
 		role := strings.ToLower(strings.TrimSpace(message.Role))
 		if role != "user" && role != "assistant" {
 			continue
 		}
-		content := aiBoundedText(strings.TrimSpace(message.Content), aiMaxMessageRunes)
-		if content == "" || used+len([]rune(content)) > aiMaxHistoryRunes {
+		content := aiBoundedText(strings.TrimSpace(message.Content), aiMaxHistoryMessageRunes)
+		if content == "" {
 			continue
 		}
-		used += len([]rune(content))
 		result = append(result, models.AIChatMessage{Role: role, Content: content})
 	}
 	return result
+}
+
+// compactAIHistoryIfNeeded preserves the newest exchange verbatim and turns
+// older messages into a durable memory before the 1M-token provider window is
+// approached. Token counting is intentionally conservative: CJK and symbols
+// count as one token, while ASCII words are estimated at four characters each.
+func compactAIHistoryIfNeeded(ctx context.Context, apiKey, modelName, systemPrompt, summary string, history []models.AIChatMessage, message string) ([]models.AIChatMessage, string, int, error) {
+	inputTokens := aiApproxTokens(systemPrompt) + aiApproxTokens(message) + aiHistoryTokens(history)
+	if inputTokens <= aiContextInputBudgetTokens || len(history) <= aiContextKeepRecentMessages {
+		return history, summary, 0, nil
+	}
+
+	compactCount := len(history) - aiContextKeepRecentMessages
+	compactedSummary, err := compactAITranscript(ctx, apiKey, modelName, summary, history[:compactCount])
+	if err != nil {
+		return nil, "", 0, fmt.Errorf("AI 上下文自动整理失败：%w", err)
+	}
+	return history[compactCount:], compactedSummary, compactCount, nil
+}
+
+func compactAITranscript(ctx context.Context, apiKey, modelName, previousSummary string, history []models.AIChatMessage) (string, error) {
+	summary := aiBoundedText(previousSummary, aiCompactSummaryRunes)
+	chunk := make([]models.AIChatMessage, 0, len(history))
+	chunkTokens := 0
+	flush := func() error {
+		if len(chunk) == 0 {
+			return nil
+		}
+		answer, _, _, err := runDeepSeekChat(ctx, apiKey, modelName, aiCompactionSystemPrompt(), nil, aiCompactionPrompt(summary, chunk))
+		if err != nil {
+			return err
+		}
+		summary = aiBoundedText(answer, aiCompactSummaryRunes)
+		chunk = chunk[:0]
+		chunkTokens = 0
+		return nil
+	}
+	for _, item := range history {
+		itemTokens := aiApproxTokens(aiHistoryLine(item))
+		if len(chunk) > 0 && chunkTokens+itemTokens > aiCompactChunkTokens {
+			if err := flush(); err != nil {
+				return "", err
+			}
+		}
+		chunk = append(chunk, item)
+		chunkTokens += itemTokens
+	}
+	if err := flush(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(summary) == "" {
+		return "", fmt.Errorf("DeepSeek 没有返回可用的上下文摘要")
+	}
+	return summary, nil
+}
+
+func aiCompactionSystemPrompt() string {
+	return `你负责把学习助手的较早对话压缩成可长期保留的会话记忆。只保留会影响后续回答的内容：用户目标、学习背景、已确认结论、关键资料、待办和未解决问题。忽略寒暄、重复表述和模型的无依据猜测。使用中文、条目化、简洁，不要提及“压缩”过程。`
+}
+
+func aiCompactionPrompt(previousSummary string, history []models.AIChatMessage) string {
+	parts := make([]string, 0, len(history)+2)
+	if strings.TrimSpace(previousSummary) != "" {
+		parts = append(parts, "已有会话记忆：\n"+previousSummary)
+	}
+	parts = append(parts, "需要合并的新对话记录：\n"+aiHistoryTranscript(history))
+	parts = append(parts, "请输出更新后的完整会话记忆。")
+	return strings.Join(parts, "\n\n")
+}
+
+func aiHistoryTranscript(history []models.AIChatMessage) string {
+	parts := make([]string, 0, len(history))
+	for _, item := range history {
+		parts = append(parts, aiHistoryLine(item))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func aiHistoryLine(item models.AIChatMessage) string {
+	role := "用户"
+	if item.Role == "assistant" {
+		role = "助手"
+	}
+	return role + "：" + item.Content
+}
+
+func aiHistoryTokens(history []models.AIChatMessage) int {
+	total := 0
+	for _, item := range history {
+		total += aiApproxTokens(item.Content)
+	}
+	return total
+}
+
+func aiApproxTokens(value string) int {
+	asciiRun := 0
+	tokens := 0
+	flushASCII := func() {
+		if asciiRun > 0 {
+			tokens += (asciiRun + 3) / 4
+			asciiRun = 0
+		}
+	}
+	for _, char := range value {
+		if char <= 0x7f && ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
+			asciiRun++
+			continue
+		}
+		flushASCII()
+		tokens++
+	}
+	flushASCII()
+	return tokens
 }
 
 func aiBoundedText(value string, maximum int) string {

@@ -1,12 +1,12 @@
 <script setup>
-import { ArrowLeft, Check, Edit3, Link2, Trash2, X } from "lucide-vue-next"
+import { ArrowLeft, Check, Edit3, Trash2 } from "lucide-vue-next"
 import { hasContent, reviewLabel, subjectColor } from "../../composables/useErrorLibrary.js"
 import MarkdownRenderer from "../MarkdownRenderer.vue"
 import BaseButton from "../ui/BaseButton.vue"
 import EmptyState from "../ui/EmptyState.vue"
 
-defineProps({ item: Object, today: String, reviewing: Boolean, notFound: Boolean, requestedId: [Number, String], relations: Array, relationLibraryId: String })
-defineEmits(["back", "edit", "delete", "review", "tag", "link-library", "unlink-relation", "open-library", "update:relationLibraryId"])
+defineProps({ item: Object, today: String, reviewing: Boolean, notFound: Boolean, requestedId: [Number, String] })
+defineEmits(["back", "edit", "delete", "review", "tag"])
 </script>
 
 <template>
@@ -34,12 +34,6 @@ defineEmits(["back", "edit", "delete", "review", "tag", "link-library", "unlink-
           <button v-for="tag in item.tags || []" :key="tag" type="button" class="tag-pill" @click="$emit('tag', '题目标签', tag)">{{ tag }}</button>
           <button v-for="tag in item.reason_tags || []" :key="tag" type="button" class="tag-pill tag-pill--reason" @click="$emit('tag', '错因标签', tag)">{{ tag }}</button>
         </div>
-        <section class="detail-manuscript error-relations">
-          <h3><span>05</span><Link2 :size="15" />关联笔记</h3>
-          <div class="error-relations__form"><input :value="relationLibraryId" inputmode="numeric" placeholder="资料库笔记 ID" @input="$emit('update:relationLibraryId', $event.target.value)" @keydown.enter="$emit('link-library')"/><button type="button" @click="$emit('link-library')">关联</button></div>
-          <p v-if="!relations?.length">把相关笔记关联到这道题，复习时可以一键回看知识点。</p>
-          <div v-else class="error-relations__list"><button v-for="relation in relations" :key="relation.id" type="button" class="error-relation" @click="$emit('open-library', relation.target_id)"><span>{{ relation.target_name || '关联笔记' }}</span><X :size="14" @click.stop="$emit('unlink-relation', relation.id)"/></button></div>
-        </section>
       </div>
     </template>
     <div v-else-if="notFound" class="error-detail__state" data-testid="formal-error-detail-not-found">

@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from "vitest"
 import { ApiError, api } from "../api/index.js"
 
 describe("API errors", () => {
+  it("requests the full library when a global tag index is needed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), {
+      status: 200, headers: { "content-type": "application/json" },
+    })))
+
+    await api.getLibraryItems({ all: true, tag: "链表" })
+    expect(fetch).toHaveBeenCalledWith("/api/library/items?all=true&tag=%E9%93%BE%E8%A1%A8", expect.any(Object))
+  })
+
   it("turns a busy data directory response into an identifiable error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ detail: "数据目录正在被其他操作占用" }),

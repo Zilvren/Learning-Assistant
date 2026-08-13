@@ -66,7 +66,7 @@ func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter)
 			if filter.Trashed && filter.ParentID == nil && hasTrashedLibraryAncestor(item, itemsByID) {
 				continue
 			}
-			if filter.ParentID == nil && filter.Query == "" && !filter.Trashed && !filter.ReviewOnly && item.ParentID != nil {
+			if filter.ParentID == nil && !filter.All && filter.Query == "" && !filter.Trashed && !filter.ReviewOnly && item.ParentID != nil {
 				continue
 			}
 			if filter.Kind != "" && filter.Kind != "all" && item.Kind != filter.Kind {

@@ -64,7 +64,7 @@ func ListLibraryItems(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, e)
 		return
 	}
-	items, e := service.ListLibrary(c.Request.Context(), repository.LibraryFilter{ParentID: parentID, Kind: c.Query("kind"), Query: c.Query("q"), Tag: c.Query("tag"), ReviewOnly: c.Query("review") == "true", DueOnly: c.Query("due") == "true", Trashed: c.Query("trashed") == "true"})
+	items, e := service.ListLibrary(c.Request.Context(), repository.LibraryFilter{ParentID: parentID, All: c.Query("all") == "true", Kind: c.Query("kind"), Query: c.Query("q"), Tag: c.Query("tag"), ReviewOnly: c.Query("review") == "true", DueOnly: c.Query("due") == "true", Trashed: c.Query("trashed") == "true"})
 	if e != nil {
 		respondError(c, http.StatusInternalServerError, e)
 		return

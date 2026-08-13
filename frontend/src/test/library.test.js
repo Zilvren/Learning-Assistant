@@ -59,7 +59,7 @@ describe("personal library", () => {
     await flushPromises()
     await vi.advanceTimersByTimeAsync(250); await flushPromises()
     expect(router.currentRoute.value.query.tag).toBe("Redis")
-    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "Redis" }))
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "Redis", all: true }))
     vi.useRealTimers()
   })
 

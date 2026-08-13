@@ -22,6 +22,7 @@ type Repositories struct {
 
 type LibraryFilter struct {
 	ParentID   *int64
+	All        bool
 	Kind       string
 	Query      string
 	Trashed    bool

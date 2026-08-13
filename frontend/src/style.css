@@ -1509,15 +1509,6 @@
   .token-status code { color: var(--ink-secondary); font-family: var(--font-mono); font-size: 11px; }
   .token-status button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
   .settings-ai-note { margin: 12px 0 0; color: var(--ink-muted); font-size: 10.5px; line-height: 1.6; }
-  .error-relations { margin-top: 16px; }
-  .error-relations h3 { display: flex; align-items: center; gap: 6px; }
-  .error-relations__form { display: flex; gap: 7px; margin-top: 10px; }
-  .error-relations__form input { min-width: 0; flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--sheet); font: inherit; font-size: 11px; }
-  .error-relations__form button { border: 0; border-radius: 6px; padding: 0 11px; color: var(--paper); background: var(--teal); font: inherit; font-size: 10.5px; cursor: pointer; }
-  .error-relations > p { margin: 9px 0 0; color: var(--ink-muted); font-size: 10.5px; line-height: 1.55; }
-  .error-relations__list { display: grid; gap: 6px; margin-top: 10px; }
-  .error-relation { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-secondary); background: var(--sheet-soft); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
-  .error-relation svg { color: var(--danger); }
   .ocr-task-center { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
   .ocr-task-center__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .ocr-task-center__heading strong { font-size: 12px; }

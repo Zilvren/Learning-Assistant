@@ -52,7 +52,7 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	if f.ParentID != nil {
 		args = append(args, *f.ParentID)
 		where = append(where, fmt.Sprintf("parent_id=$%d", len(args)))
-	} else if query == "" && !f.Trashed && !f.ReviewOnly {
+	} else if !f.All && query == "" && !f.Trashed && !f.ReviewOnly {
 		where = append(where, "parent_id IS NULL")
 	}
 	if f.Kind != "" && f.Kind != "all" {

@@ -39,9 +39,13 @@ func TestLibraryFoldersVersionsTrashAndMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note, err := repo.Create(ctx, models.CreateLibraryItemRequest{ParentID: &folder.ID, Kind: "note", Name: "高数.md", MimeType: "text/markdown"}, []byte("第一版"))
+	note, err := repo.Create(ctx, models.CreateLibraryItemRequest{ParentID: &folder.ID, Kind: "note", Name: "高数.md", MimeType: "text/markdown", Tags: []string{"链表"}}, []byte("第一版"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	indexed, err := repo.List(ctx, base.LibraryFilter{All: true, Tag: "链表"})
+	if err != nil || len(indexed) != 1 || indexed[0].ID != note.ID {
+		t.Fatalf("expected nested tagged note in global index: %#v %v", indexed, err)
 	}
 	updated, err := repo.SaveContent(ctx, note.ID, []byte("第二版"), note.CurrentVersion, true, false)
 	if err != nil {

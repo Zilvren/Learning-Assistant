@@ -86,7 +86,7 @@ async function load() {
         return
       }
     }
-    const result = await api.getLibraryItems({ parentId: folderId.value, kind: kind.value, query: query.value, tag: tag.value, trashed: props.trash })
+    const result = await api.getLibraryItems({ parentId: folderId.value, all: Boolean(tag.value) && !folderId.value && !props.trash, kind: kind.value, query: query.value, tag: tag.value, trashed: props.trash })
     if (requestVersion !== loadVersion) return
     items.value = result.items || []
     const globalQuery = query.value.trim()

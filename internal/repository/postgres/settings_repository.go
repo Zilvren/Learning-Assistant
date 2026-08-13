@@ -33,16 +33,18 @@ func (r *SettingsRepository) Load(ctx context.Context) (models.Config, error) {
 	config.MineruToken, err = base.OpenSecret(storedToken)
 	if err == nil && len(settings) > 0 {
 		var extra struct {
-			DailyGoal     models.DailyGoalSettings       `json:"daily_goal"`
-			DeepSeekToken string                         `json:"deepseek_token"`
-			DeepSeekModel string                         `json:"deepseek_model"`
-			AIChatContext []models.AIConversationMessage `json:"ai_chat_context"`
+			DailyGoal       models.DailyGoalSettings       `json:"daily_goal"`
+			DeepSeekToken   string                         `json:"deepseek_token"`
+			DeepSeekModel   string                         `json:"deepseek_model"`
+			AIChatContext   []models.AIConversationMessage `json:"ai_chat_context"`
+			AIConversations []models.AIConversation        `json:"ai_conversations"`
 		}
 		if json.Unmarshal(settings, &extra) == nil {
 			config.DailyGoal = extra.DailyGoal
 			config.DeepSeekToken, err = base.OpenSecret(extra.DeepSeekToken)
 			config.DeepSeekModel = extra.DeepSeekModel
 			config.AIChatContext = extra.AIChatContext
+			config.AIConversations = extra.AIConversations
 		}
 	}
 	return config, err
@@ -59,11 +61,12 @@ func (r *SettingsRepository) Save(ctx context.Context, config models.Config) err
 		return err
 	}
 	settings, err := json.Marshal(struct {
-		DailyGoal     models.DailyGoalSettings       `json:"daily_goal"`
-		DeepSeekToken string                         `json:"deepseek_token"`
-		DeepSeekModel string                         `json:"deepseek_model"`
-		AIChatContext []models.AIConversationMessage `json:"ai_chat_context"`
-	}{DailyGoal: config.DailyGoal, DeepSeekToken: sealedDeepSeekToken, DeepSeekModel: config.DeepSeekModel, AIChatContext: config.AIChatContext})
+		DailyGoal       models.DailyGoalSettings       `json:"daily_goal"`
+		DeepSeekToken   string                         `json:"deepseek_token"`
+		DeepSeekModel   string                         `json:"deepseek_model"`
+		AIChatContext   []models.AIConversationMessage `json:"ai_chat_context"`
+		AIConversations []models.AIConversation        `json:"ai_conversations"`
+	}{DailyGoal: config.DailyGoal, DeepSeekToken: sealedDeepSeekToken, DeepSeekModel: config.DeepSeekModel, AIChatContext: config.AIChatContext, AIConversations: config.AIConversations})
 	if err != nil {
 		return err
 	}
