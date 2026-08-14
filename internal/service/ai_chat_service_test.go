@@ -14,6 +14,7 @@ import (
 
 func setupAIChatServiceTest(t *testing.T) context.Context {
 	t.Helper()
+	t.Setenv("STUDY_HARNESS_ENABLED", "")
 	previousDir := base.DataDir()
 	previousApp := DefaultApp()
 	t.Cleanup(func() {

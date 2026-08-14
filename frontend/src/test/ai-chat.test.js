@@ -151,7 +151,7 @@ describe("AI library scope", () => {
     await wrapper.get("form").trigger("submit")
     await flushPromises()
 
-    expect(chat).toHaveBeenCalledWith({ message: "请总结这份资料", history: [], folder_id: 4, item_ids: [7] })
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ message: "请总结这份资料", history: [], folder_id: 4, item_ids: [7] }))
     expect(saveConversation).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({
         folder_id: 4,
@@ -196,7 +196,7 @@ describe("AI library scope", () => {
 		await wrapper.get("form").trigger("submit")
 		await flushPromises()
 
-		expect(chat).toHaveBeenCalledWith({
+		expect(chat).toHaveBeenCalledWith(expect.objectContaining({
 			message: "下一步怎么练？",
 			history: [
 				{ role: "user", content: "我在导数上总出错" },
@@ -204,7 +204,7 @@ describe("AI library scope", () => {
 			],
 			folder_id: null,
 			item_ids: [],
-		})
+		}))
 	})
 
 	it("keeps auto-compacted memory while excluding compacted messages from the next request", async () => {
@@ -300,7 +300,7 @@ describe("AI library scope", () => {
 		await wrapper.get("form").trigger("submit")
 		await flushPromises()
 
-		expect(chat).toHaveBeenCalledWith({
+		expect(chat).toHaveBeenCalledWith(expect.objectContaining({
 			message: "下一步呢？",
 			history: [
 				{ role: "user", content: "三角形全等怎么证？" },
@@ -308,7 +308,7 @@ describe("AI library scope", () => {
 			],
 			folder_id: 9,
 			item_ids: [],
-		})
+		}))
 		expect(saveConversation).toHaveBeenLastCalledWith(expect.arrayContaining([
 			expect.objectContaining({ id: "algebra-chat", messages: expect.arrayContaining([expect.objectContaining({ content: "帮我看看这个方程" })]) }),
 			expect.objectContaining({ id: "geometry-chat", messages: expect.arrayContaining([expect.objectContaining({ content: "下一步呢？" })]) }),

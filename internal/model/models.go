@@ -276,20 +276,23 @@ type AIConversationMessage struct {
 // owns its messages and library scope so switching conversations never leaks
 // a previous chat's context into the next request.
 type AIConversation struct {
-	ID             string                  `json:"id"`
-	Title          string                  `json:"title"`
-	FolderID       *int64                  `json:"folder_id,omitempty"`
-	ItemIDs        []int64                 `json:"item_ids,omitempty"`
-	Messages       []AIConversationMessage `json:"messages"`
-	ContextSummary string                  `json:"context_summary,omitempty"`
+	ID               string                  `json:"id"`
+	Title            string                  `json:"title"`
+	FolderID         *int64                  `json:"folder_id,omitempty"`
+	ItemIDs          []int64                 `json:"item_ids,omitempty"`
+	Messages         []AIConversationMessage `json:"messages"`
+	ContextSummary   string                  `json:"context_summary,omitempty"`
+	HarnessSessionID string                  `json:"harness_session_id,omitempty"`
 }
 
 type AIChatRequest struct {
-	Message        string          `json:"message"`
-	History        []AIChatMessage `json:"history"`
-	ContextSummary string          `json:"context_summary,omitempty"`
-	FolderID       *int64          `json:"folder_id,omitempty"`
-	ItemIDs        []int64         `json:"item_ids,omitempty"`
+	Message          string          `json:"message"`
+	History          []AIChatMessage `json:"history"`
+	ContextSummary   string          `json:"context_summary,omitempty"`
+	FolderID         *int64          `json:"folder_id,omitempty"`
+	ItemIDs          []int64         `json:"item_ids,omitempty"`
+	ConversationID   string          `json:"conversation_id,omitempty"`
+	HarnessSessionID string          `json:"harness_session_id,omitempty"`
 }
 
 type AIChatSource struct {
@@ -300,12 +303,22 @@ type AIChatSource struct {
 }
 
 type AIChatResponse struct {
-	Answer            string         `json:"answer"`
-	Model             string         `json:"model"`
-	Sources           []AIChatSource `json:"sources"`
-	Incomplete        bool           `json:"incomplete"`
-	ContextSummary    string         `json:"context_summary,omitempty"`
-	CompactedMessages int            `json:"compacted_messages,omitempty"`
+	Answer            string                      `json:"answer"`
+	Model             string                      `json:"model"`
+	Sources           []AIChatSource              `json:"sources"`
+	Incomplete        bool                        `json:"incomplete"`
+	ContextSummary    string                      `json:"context_summary,omitempty"`
+	CompactedMessages int                         `json:"compacted_messages,omitempty"`
+	HarnessSessionID  string                      `json:"harness_session_id,omitempty"`
+	NoteWritePreview  *AINoteWritePreviewResponse `json:"note_write_preview,omitempty"`
+}
+
+// HarnessStatus is the small capability check used by the browser to decide
+// whether a natural-language write request should go through the agent loop
+// or the legacy single-call preview path.
+type HarnessStatus struct {
+	Enabled bool   `json:"enabled"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // AIEditPreviewRequest asks the assistant to prepare a revision for one

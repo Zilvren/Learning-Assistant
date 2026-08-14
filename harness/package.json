@@ -1,0 +1,18 @@
+{
+  "name": "learning-assistant-harness",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-agent-spine-demo": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-compaction-basic": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-llm-deepseek": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-sdk-jsonrpc-demo": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-sdk-jsonrpc-server": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-token-meter": "0.0.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.0.1-rc.5"
+  }
+}

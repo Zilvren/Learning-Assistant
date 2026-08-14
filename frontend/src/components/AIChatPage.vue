@@ -17,6 +17,7 @@ const activeConversationID = ref(String(route.query.conversation || ""))
 const activeContextSummary = ref("")
 const sending = ref(false)
 const configured = ref(null)
+const harnessEnabled = ref(false)
 const conversationReady = ref(false)
 const messageList = ref(null)
 const folderOptions = ref([])
@@ -102,6 +103,7 @@ function normalizeConversation(conversation) {
     item_ids: readPositiveIDs((conversation.item_ids || []).join(",")),
     messages: restoredMessages,
     context_summary: String(conversation.context_summary || ""),
+    harness_session_id: /^[A-Za-z0-9_-]{1,80}$/.test(String(conversation.harness_session_id || "")) ? String(conversation.harness_session_id) : "",
   }
 }
 
@@ -113,6 +115,7 @@ function createConversation() {
     item_ids: [...selectedItemIDs.value],
     messages: [],
     context_summary: "",
+    harness_session_id: "",
   }
 }
 
@@ -438,9 +441,23 @@ async function ensureActiveConversation() {
 }
 
 function chatRequest(message, history) {
-  const request = { message, history, folder_id: selectedFolderID.value, item_ids: selectedItemIDs.value }
+  const request = {
+    message,
+    history,
+    folder_id: selectedFolderID.value,
+    item_ids: selectedItemIDs.value,
+    conversation_id: activeConversationID.value,
+    harness_session_id: activeConversation.value?.harness_session_id || "",
+  }
   if (activeContextSummary.value) request.context_summary = activeContextSummary.value
   return request
+}
+
+function applyHarnessResult(result) {
+  const sessionID = String(result?.harness_session_id || "")
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(sessionID)) return
+  const index = conversations.value.findIndex((conversation) => conversation.id === activeConversationID.value)
+  if (index >= 0) conversations.value.splice(index, 1, { ...conversations.value[index], harness_session_id: sessionID })
 }
 
 function applyCompactionResult(result) {
@@ -462,7 +479,7 @@ async function send() {
   if (configured.value === false) return toast.warning("请先在设置中配置 DeepSeek API Key")
   if (configured.value !== true) return
   if (editMode.value) return previewAIEdit(content)
-  if (looksLikeAINoteWriteRequest(content)) return previewAINoteWrite(content)
+  if (!harnessEnabled.value && looksLikeAINoteWriteRequest(content)) return previewAINoteWrite(content)
   await ensureActiveConversation()
   const history = historyForRequest()
   messages.value.push({ id: `user-${Date.now()}`, role: "user", content, scope: hasScopedContext.value ? scopeSummary.value : "" })
@@ -473,6 +490,8 @@ async function send() {
   try {
     const result = await api.aiChat(chatRequest(content, history))
     applyCompactionResult(result)
+    applyHarnessResult(result)
+    if (result.note_write_preview) noteWritePreview.value = result.note_write_preview
     messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
   } catch (error) {
     const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
@@ -493,6 +512,7 @@ async function continueGeneration(message) {
   try {
     const result = await api.aiChat(chatRequest(continueInstruction, history))
     applyCompactionResult(result)
+    applyHarnessResult(result)
     const messageIndex = messages.value.findIndex((item) => item.id === message.id)
     if (messageIndex >= 0) messages.value[messageIndex] = { ...messages.value[messageIndex], incomplete: false }
     messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
@@ -533,6 +553,11 @@ onMounted(async () => {
     configured.value = Boolean((await api.getDeepSeekToken()).configured)
   } catch {
     configured.value = false
+  }
+  try {
+    harnessEnabled.value = Boolean((await api.getAIHarnessStatus()).enabled)
+  } catch {
+    harnessEnabled.value = false
   }
   await loadFolderOptions()
   await loadSelectedItems()

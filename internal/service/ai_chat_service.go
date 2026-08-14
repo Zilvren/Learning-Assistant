@@ -72,6 +72,9 @@ type aiCandidate struct {
 // ChatWithStudyAI supplies a bounded, attributable slice of the learner's
 // library to DeepSeek. Raw PDF/image files and credentials are never included.
 func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.AIChatResponse, error) {
+	if harnessEnabled() {
+		return chatWithHarnessStudyAI(ctx, request)
+	}
 	message := strings.TrimSpace(request.Message)
 	if message == "" {
 		return models.AIChatResponse{}, fmt.Errorf("请输入想问 AI 的学习问题")

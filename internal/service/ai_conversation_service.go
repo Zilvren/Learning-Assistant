@@ -103,15 +103,24 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 			folderID = nil
 		}
 		result = append(result, models.AIConversation{
-			ID:             id,
-			Title:          aiConversationTitleWithFallback(conversation.Title, messages),
-			FolderID:       folderID,
-			ItemIDs:        normalizeAIConversationItemIDs(conversation.ItemIDs),
-			Messages:       messages,
-			ContextSummary: boundedAIConversationText(conversation.ContextSummary, aiConversationMaxSummaryRunes),
+			ID:               id,
+			Title:            aiConversationTitleWithFallback(conversation.Title, messages),
+			FolderID:         folderID,
+			ItemIDs:          normalizeAIConversationItemIDs(conversation.ItemIDs),
+			Messages:         messages,
+			ContextSummary:   boundedAIConversationText(conversation.ContextSummary, aiConversationMaxSummaryRunes),
+			HarnessSessionID: normalizeAIHarnessSessionID(conversation.HarnessSessionID),
 		})
 	}
 	return result, nil
+}
+
+func normalizeAIHarnessSessionID(value string) string {
+	value = strings.TrimSpace(value)
+	if !validAIConversationID(value) {
+		return ""
+	}
+	return value
 }
 
 func validAIConversationID(value string) bool {

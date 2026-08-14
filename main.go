@@ -62,6 +62,9 @@ func main() {
 		log.Errorf("failed to start server: %v", err)
 		os.Exit(1)
 	}
+	// The Harness child process must call back only through loopback, even when
+	// the browser-facing server listens on every interface in a local network.
+	service.SetHarnessBridgeURL(fmt.Sprintf("http://127.0.0.1:%d", port))
 
 	r := gin.New()
 	registerRoutes(r, app)
@@ -160,6 +163,9 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 	r.POST("/api/auth/login", publicAuthLimit, handlers.Login)
 	r.POST("/api/auth/refresh", handlers.Refresh)
 	r.POST("/api/auth/logout", handlers.Logout)
+	// The official Harness child process has no browser cookies. This internal
+	// bridge accepts only its short-lived, conversation-scoped bearer grant.
+	r.POST("/internal/harness/tools/:tool", middleware.HarnessToolAccess(app), handlers.HarnessTool)
 
 	//公开更新接口
 	r.GET("/api/version", handlers.GetVersion)
@@ -204,6 +210,7 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		api.PUT("/settings/username", handlers.SetUsername)
 
 		// AI 学习助手：DeepSeek Key 保持在服务端，资料上下文按请求即时生成。
+		api.GET("/ai/harness", handlers.HarnessStatus)
 		api.POST("/ai/chat", middleware.RateLimit(20, time.Minute), handlers.AIChat)
 		api.POST("/ai/edits/preview", middleware.RateLimit(10, time.Minute), handlers.PreviewAIEdit)
 		api.POST("/ai/edits/apply", handlers.ApplyAIEdit)
