@@ -51,3 +51,7 @@
 
 - id: learning-library
   name: ./src/learning-library-plugin.mjs
+  config:
+    bridgeUrlEnv: LEARNING_ASSISTANT_BRIDGE_URL
+    tokenEnv: LEARNING_ASSISTANT_HARNESS_TOKEN
+    toolPathPrefix: /internal/harness/tools

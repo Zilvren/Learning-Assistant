@@ -79,6 +79,34 @@ describe("AI library scope", () => {
     expect(apply).toHaveBeenCalledWith({ action: "create", content: "# 问题整理\n\n- 今天的问题", base_version: 0, parent_id: 4, name: "20260813-问题整理.md" })
   })
 
+  it("sends natural-language note writes to Harness for direct creation when enabled", async () => {
+    vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
+    vi.spyOn(api, "getAIHarnessStatus").mockResolvedValue({ enabled: true })
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })
+    vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [] })
+    vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+    const preview = vi.spyOn(api, "previewAINoteWrite")
+    const chat = vi.spyOn(api, "aiChat").mockResolvedValue({ answer: "已创建 daily / 今日整理.md。", model: "deepseek-v4-flash", sources: [] })
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: "/ai", name: "ai", component: AIChatPage },
+      { path: "/settings", name: "settings", component: { template: "<div />" } },
+      { path: "/library/items/:itemId", name: "library-item", component: { template: "<div />" } },
+    ] })
+    await router.push("/ai")
+    await router.isReady()
+    const wrapper = mount(AIChatPage, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await wrapper.get("textarea").setValue("把今天的复习整理写在 daily/今日整理.md 中")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(preview).not.toHaveBeenCalled()
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ message: "把今天的复习整理写在 daily/今日整理.md 中", history: [] }))
+    expect(wrapper.text()).toContain("已创建 daily / 今日整理.md")
+    expect(wrapper.text()).toContain("Harness 已启用")
+  })
+
   it("creates and persists an independent conversation with the first message", async () => {
     vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
     vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })

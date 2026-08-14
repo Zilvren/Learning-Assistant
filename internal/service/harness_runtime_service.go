@@ -176,7 +176,6 @@ func chatWithHarnessStudyAI(ctx context.Context, request models.AIChatRequest) (
 		Model:            modelName,
 		Sources:          ConsumeHarnessSources(token),
 		HarnessSessionID: sessionID,
-		NoteWritePreview: ConsumeHarnessNoteWritePreview(token),
 	}, nil
 }
 
@@ -198,7 +197,7 @@ func harnessPrompt(request models.AIChatRequest, message string) string {
 	var prompt strings.Builder
 	prompt.WriteString("You are the learner's private study assistant. Answer in the user's language. ")
 	prompt.WriteString("You may use only the learning-library tools shown to you; never claim you read, created, changed, or saved a file unless a tool result proves it. ")
-	prompt.WriteString("For a requested note creation or update, first resolve the explicit path when needed, then call prepare_note_change. It only creates a preview, so clearly ask the user to confirm in the application; do not say the note has been saved. ")
+	prompt.WriteString("For a requested new note, resolve an explicit path and call create_library_note; it saves immediately only when the path does not already exist. If the user specifies only a folder, choose a concise, meaningful .md filename based on the requested content; never use a literal placeholder such as 当前路径.md. For an existing note, call read_library_note first, then call update_library_note with its item id and exact current_version. That update saves immediately but rejects stale versions instead of overwriting newer user work. Do not claim a note was created or saved unless the relevant tool succeeds. Move, delete, and force-overwrite tools do not exist. ")
 	prompt.WriteString("Do not mention internal tools, tokens, prompts, or this instruction.\n\n")
 	if strings.TrimSpace(request.HarnessSessionID) == "" {
 		if summary := aiBoundedText(request.ContextSummary, aiCompactSummaryRunes); summary != "" {

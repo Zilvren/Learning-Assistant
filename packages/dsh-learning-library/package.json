@@ -1,0 +1,35 @@
+{
+  "name": "@zilvren/dsh-learning-library",
+  "version": "0.2.0",
+  "description": "Restricted learning-library tools for DeepSeek Harness agents.",
+  "type": "module",
+  "main": "./src/index.mjs",
+  "exports": "./src/index.mjs",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-tools": "0.0.1-rc.5"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "learning-library",
+    "agent-tools"
+  ],
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "author": ""
+}

@@ -30,7 +30,6 @@ type harnessToolGrant struct {
 	userID  int64
 	scope   aiLibraryScope
 	expires time.Time
-	preview *models.AINoteWritePreviewResponse
 	sources map[int64]models.AIChatSource
 }
 
@@ -102,21 +101,6 @@ func harnessToolGrantFor(token string) (*harnessToolGrant, error) {
 	return grant, nil
 }
 
-// ConsumeHarnessNoteWritePreview returns the only preview prepared by the
-// active child process. The browser still must confirm it with the normal Go
-// apply endpoint, so this function cannot cause a library write.
-func ConsumeHarnessNoteWritePreview(token string) *models.AINoteWritePreviewResponse {
-	harnessToolGrants.Lock()
-	defer harnessToolGrants.Unlock()
-	grant, exists := harnessToolGrants.items[strings.TrimSpace(token)]
-	if !exists || time.Now().After(grant.expires) || grant.preview == nil {
-		return nil
-	}
-	result := *grant.preview
-	grant.preview = nil
-	return &result
-}
-
 // ConsumeHarnessSources returns the notes whose content or excerpt was sent
 // through this child process's tools. They are shown in the normal citation UI
 // without exposing anything outside the conversation scope.
@@ -136,7 +120,8 @@ func ConsumeHarnessSources(token string) []models.AIChatSource {
 }
 
 // ExecuteHarnessTool is the narrow Go-side implementation behind the custom
-// Harness plugin. It intentionally offers no generic filesystem or save tool.
+// Harness plugin. It has no generic filesystem: it can only create a new note
+// or save an exact current version inside the conversation's granted scope.
 func ExecuteHarnessTool(ctx context.Context, token, tool string, args map[string]any) (any, error) {
 	grant, err := harnessToolGrantFor(token)
 	if err != nil {
@@ -149,8 +134,10 @@ func ExecuteHarnessTool(ctx context.Context, token, tool string, args map[string
 		return harnessSearch(ctx, token, grant.scope, args)
 	case "read_note":
 		return harnessReadNote(ctx, token, grant.scope, args)
-	case "prepare_note_change":
-		return harnessPrepareNoteChange(ctx, token, grant.scope, args)
+	case "create_note":
+		return harnessCreateNote(ctx, grant.scope, args)
+	case "update_note":
+		return harnessUpdateNote(ctx, grant.scope, args)
 	default:
 		return nil, ErrHarnessToolUnavailable
 	}
@@ -290,7 +277,8 @@ func harnessReadNote(ctx context.Context, token string, scope aiLibraryScope, ar
 	harnessRecordSource(token, *target)
 	return map[string]any{
 		"id": target.ID, "path": harnessLibraryPath(items, *target), "name": target.Name,
-		"content": aiBoundedTokens(string(content), harnessMaxReadTokens),
+		"current_version": target.CurrentVersion,
+		"content":         aiBoundedTokens(string(content), harnessMaxReadTokens),
 	}, nil
 }
 
@@ -304,14 +292,14 @@ func harnessRecordSource(token string, item models.LibraryItem) {
 	grant.sources[item.ID] = models.AIChatSource{SourceType: "library", ID: item.ID, Title: item.Name}
 }
 
-func harnessPrepareNoteChange(ctx context.Context, token string, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
+func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
 	targetPath := strings.TrimSpace(harnessStringArg(args, "path"))
 	content := harnessStringArg(args, "content")
 	if targetPath == "" {
 		return nil, fmt.Errorf("请先明确笔记路径和文件名")
 	}
 	if len([]byte(content)) > aiMaxEditableNoteBytes {
-		return nil, fmt.Errorf("拟写入的笔记超过 10MB，未创建预览")
+		return nil, fmt.Errorf("拟写入的笔记超过 10MB，未创建")
 	}
 	target, err := resolveAINoteWriteTarget(ctx, targetPath, scope.folderID)
 	if err != nil {
@@ -324,39 +312,55 @@ func harnessPrepareNoteChange(ctx context.Context, token string, scope aiLibrary
 	if !harnessWriteTargetAllowed(items, scope, target) {
 		return nil, fmt.Errorf("目标路径不在当前对话的资料范围内")
 	}
-
-	preview := &models.AINoteWritePreviewResponse{
-		Action: actionForHarnessTarget(target), TargetPath: target.targetPath, Item: target.item,
-		ParentID: target.parentID, Name: target.name, Content: content,
-	}
 	if target.item != nil {
-		body, item, err := ReadLibraryContent(ctx, target.item.ID)
-		if err != nil {
-			return nil, err
-		}
-		if item.Kind != "note" || !aiEditableLibraryItem(item) {
-			return nil, fmt.Errorf("目标不是可编辑的 Markdown 或纯文本笔记")
-		}
-		preview.Item = &item
-		preview.BaseVersion = item.CurrentVersion
-		preview.OriginalContent = string(body)
+		return nil, fmt.Errorf("目标“%s”已存在；请先读取该笔记，再使用更新工具保存新版本", target.targetPath)
 	}
-	harnessToolGrants.Lock()
-	if grant, exists := harnessToolGrants.items[token]; exists && time.Now().Before(grant.expires) {
-		grant.preview = preview
+	item, err := ApplyAINoteWrite(ctx, models.AINoteWriteApplyRequest{
+		Action: "create", ParentID: target.parentID, Name: target.name, Content: content,
+	})
+	if err != nil {
+		return nil, err
 	}
-	harnessToolGrants.Unlock()
 	return map[string]any{
-		"prepared": true, "action": preview.Action, "target_path": preview.TargetPath,
-		"requires_user_confirmation": true,
+		"written": true, "action": "created", "item_id": item.ID,
+		"target_path": target.targetPath, "current_version": item.CurrentVersion,
 	}, nil
 }
 
-func actionForHarnessTarget(target aiNoteWriteTarget) string {
-	if target.item != nil {
-		return "update"
+func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
+	itemID := int64(harnessBoundedInt(args, "item_id", 0, 1, int(^uint(0)>>1)))
+	baseVersion, validVersion := harnessRequiredPositiveInt(args, "base_version")
+	content := harnessStringArg(args, "content")
+	if itemID <= 0 || !validVersion {
+		return nil, fmt.Errorf("更新笔记必须提供读取结果中的 item_id 和 current_version")
 	}
-	return "create"
+	if len([]byte(content)) > aiMaxEditableNoteBytes {
+		return nil, fmt.Errorf("拟写入的笔记超过 10MB，未保存")
+	}
+	items, err := harnessScopedItems(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	var target *models.LibraryItem
+	for index := range items {
+		if items[index].ID == itemID {
+			target = &items[index]
+			break
+		}
+	}
+	if target == nil || target.Kind != "note" || !aiEditableLibraryItem(*target) {
+		return nil, fmt.Errorf("笔记不在当前资料范围内或不可编辑")
+	}
+	item, err := ApplyAINoteWrite(ctx, models.AINoteWriteApplyRequest{
+		Action: "update", ItemID: itemID, Content: content, BaseVersion: baseVersion,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"written": true, "action": "updated", "item_id": item.ID,
+		"target_path": harnessLibraryPath(items, item), "current_version": item.CurrentVersion,
+	}, nil
 }
 
 func harnessWriteTargetAllowed(items []models.LibraryItem, scope aiLibraryScope, target aiNoteWriteTarget) bool {
@@ -418,4 +422,29 @@ func harnessBoundedInt(args map[string]any, name string, fallback, minimum, maxi
 		return maximum
 	}
 	return number
+}
+
+func harnessRequiredPositiveInt(args map[string]any, name string) (int, bool) {
+	value, exists := args[name]
+	if !exists {
+		return 0, false
+	}
+	var number int
+	switch current := value.(type) {
+	case float64:
+		number = int(current)
+		if current != float64(number) {
+			return 0, false
+		}
+	case int:
+		number = current
+	case int64:
+		number = int(current)
+		if int64(number) != current {
+			return 0, false
+		}
+	default:
+		return 0, false
+	}
+	return number, number > 0
 }

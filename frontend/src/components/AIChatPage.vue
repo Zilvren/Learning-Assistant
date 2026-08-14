@@ -621,7 +621,7 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
             <textarea v-model="composer" rows="1" maxlength="2000" placeholder="输入你的问题…" :disabled="sending || configured !== true" @keydown="keydown" />
             <button type="submit" class="ai-composer__send" :disabled="!canSend" :aria-label="sending ? '正在发送' : '发送消息'"><LoaderCircle v-if="sending" :size="18" /><SendHorizontal v-else :size="18" /></button>
           </div>
-          <small class="ai-composer__context-status">{{ editMode ? `编辑“${editableItem?.name || '所选笔记'}” · 先预览，再确认保存` : '1M 上下文 · 输出最高 384K · “写在 路径/文件名 中”可创建或写入' }}</small>
+          <small class="ai-composer__context-status">{{ editMode ? `编辑“${editableItem?.name || '所选笔记'}” · 先预览，再确认保存` : harnessEnabled ? 'Harness 已启用 · 新笔记直接创建，已有笔记按版本保护写入' : '1M 上下文 · 输出最高 384K · “写在 路径/文件名 中”可创建或写入' }}</small>
           <div v-if="configured === false" class="ai-composer__setup">尚未连接 DeepSeek <button type="button" @click="openSettings">去配置</button></div>
         </form>
       </section>
