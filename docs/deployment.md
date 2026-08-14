@@ -170,6 +170,35 @@ docker compose logs --tail=100 caddy
 docker compose up -d --build app
 ```
 
+## 启用 DeepSeek Harness 学习助手
+
+生产镜像已经包含 Node.js 22、固定版本的 Harness 运行时和受限资料库
+插件；不要在正在运行的容器中执行 `npm install`。
+
+先在应用设置中配置可用的 DeepSeek API Key，再编辑服务器上的
+`/opt/Learning-Assistant/deploy/.env`：
+
+```text
+STUDY_HARNESS_ENABLED=true
+```
+
+重新构建应用容器（不会删除 PostgreSQL 或资料库卷）：
+
+```bash
+cd /opt/Learning-Assistant/deploy
+docker compose up -d --build app
+docker compose ps
+```
+
+等待容器变为 `Up` 后，在服务器上检查：
+
+```bash
+curl -s http://127.0.0.1/api/ai/harness
+```
+
+应返回 `{"enabled":true}`。若返回 `false`，将其中的 `reason` 作为排查
+依据；不要通过 `docker compose down -v` 重建，那个命令会删除数据卷。
+
 ## 域名与 HTTPS
 
 当前 `Caddyfile` 只提供 HTTP。使用域名正式开放前，先完成适用的备案与 DNS 配置：

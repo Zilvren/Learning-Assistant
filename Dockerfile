@@ -12,6 +12,16 @@ COPY frontend/ ./
 ENV NODE_OPTIONS=--max-old-space-size=512
 RUN npm run build
 
+# The production app can optionally run DeepSeek Harness as a child process.
+# Install its pinned runtime separately so the final image contains only the
+# dependencies needed at runtime, not this repository's development tooling.
+FROM docker.m.daocloud.io/library/node:22-bookworm-slim AS harness-builder
+WORKDIR /app/harness
+
+COPY harness/package.json harness/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org
+COPY harness/ ./
+
 FROM docker.m.daocloud.io/library/golang:1.26-bookworm AS app-builder
 WORKDIR /src
 
@@ -29,12 +39,16 @@ COPY --from=frontend-builder /src/frontend/dist ./frontend/dist
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOMAXPROCS=1 \
     go build -trimpath -ldflags="-s -w" -o /out/tracker .
 
-FROM docker.m.daocloud.io/library/debian:bookworm-slim
+# Keep Node.js 22 in the final image: the Go service starts the restricted
+# Harness JSON-RPC agent only when STUDY_HARNESS_ENABLED=true.
+FROM docker.m.daocloud.io/library/node:22-bookworm-slim
 WORKDIR /app
 # The Go builder already contains the certificate bundle.  Copy it instead of
 # reaching Debian package mirrors during the runtime-image build.
 COPY --from=app-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=app-builder /out/tracker /app/tracker
+COPY --from=harness-builder --chown=10001:10001 /app/harness /app/harness
+COPY --from=app-builder --chown=10001:10001 /src/packages/dsh-learning-library /app/packages/dsh-learning-library
 RUN mkdir /app/data && chown -R 10001:10001 /app
 
 USER 10001:10001
