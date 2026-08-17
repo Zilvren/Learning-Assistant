@@ -10,7 +10,8 @@ import MarkdownRenderer from "../MarkdownRenderer.vue"
 import { extractOutline } from "../../utils/markdown.js"
 
 const props=defineProps({itemId:[String,Number]});const router=useRouter();const toast=useToast();const item=ref(null);const content=ref("");const version=ref(0);const saving=ref(false);const dirty=ref(false);const mode=ref("preview");const previewPane=ref(null);const tagInput=ref("");let timer;let hydratingContent=false;let loadSequence=0;let savePromise=null
-const ocrInput=ref(null);const isNote=computed(()=>item.value?.kind==="note");const contentUrl=computed(()=>`/api/library/items/${item.value?.id ?? props.itemId}/content`);const officePreview=ref(null);const officeLoading=ref(false)
+const ocrInput=ref(null);const isNote=computed(()=>item.value?.kind==="note");const contentUrl=computed(()=>`/api/library/items/${item.value?.id ?? props.itemId}/content`);const officePreview=ref(null);const officeLoading=ref(false);const editorHeaderCollapsed=ref(false)
+const editorHeaderCollapseOffset=96
 const outline=computed(()=>extractOutline(content.value))
 const supportsOfficePreview=computed(()=>["application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.openxmlformats-officedocument.presentationml.presentation"].includes(item.value?.mime_type))
 // jumpToHeading 协调当前组件的状态和交互。
@@ -18,7 +19,11 @@ function jumpToHeading(entry){const target=previewPane.value?.querySelector(`[da
 // clearSaveTimer 协调当前组件的状态和交互。
 function clearSaveTimer(){clearTimeout(timer);timer=null}
 // restoreEditorChrome 确保从旧页面切入时恢复固定的应用顶部栏；滚动笔记不会再改变整体页面高度。
-function restoreEditorChrome(){window.dispatchEvent(new CustomEvent("learning-space:editor-chrome",{detail:{collapsed:false}}))}
+function restoreEditorChrome(){editorHeaderCollapsed.value=false;window.dispatchEvent(new CustomEvent("learning-space:editor-chrome",{detail:{collapsed:false}}))}
+// handleEditorScroll 在阅读或编辑笔记达到阈值后收起资料标题栏，腾出正文空间。
+function handleEditorScroll(event){editorHeaderCollapsed.value=Number(event?.target?.scrollTop||0)>=editorHeaderCollapseOffset}
+// toggleMode 切换阅读和编辑视图时恢复标题栏，避免新视图从收起状态开始。
+function toggleMode(){mode.value=mode.value==='preview'?'edit':'preview';editorHeaderCollapsed.value=false}
 // scheduleSave 协调当前组件的状态和交互。
 function scheduleSave(delay=800){clearSaveTimer();timer=setTimeout(()=>{void save(false)},delay)}
 // load 协调当前组件的状态和交互。
@@ -36,13 +41,13 @@ async function confirmPendingChanges(){if(!dirty.value)return true;const saved=a
 onMounted(()=>{restoreEditorChrome();load()});watch(()=>props.itemId,(nextId)=>{restoreEditorChrome();load(nextId)});onBeforeUnmount(()=>{clearSaveTimer();restoreEditorChrome()});onBeforeRouteUpdate(async(to)=>{if(String(to.params.itemId)===String(props.itemId))return true;restoreEditorChrome();return confirmPendingChanges()});onBeforeRouteLeave(async()=>{restoreEditorChrome();return confirmPendingChanges()})
 </script>
 <template><div class="library-item-page page-stage">
-  <header class="item-editor-head"><button class="item-back" @click="backToLibrary"><ArrowLeft :size="18"/>返回资料库</button><div><h1>{{ item?.name||'加载中…' }}</h1><p v-if="isNote">{{ saving?'正在保存…':dirty?'等待自动保存':'已保存' }}</p><div v-if="isNote" class="item-meta-editor"><input v-model="tagInput" aria-label="笔记标签" placeholder="添加标签，用逗号分隔" @change="saveMeta()"/><label><input type="checkbox" :checked="item?.review_enabled" @change="saveMeta({review_enabled:$event.target.checked})"/>加入复习计划</label></div></div><div class="item-head-actions"><button v-if="isNote" class="lib-btn" @click="ocrInput?.click()"><ScanText :size="16"/>OCR 插入</button><button v-if="isNote" class="lib-btn" @click="mode=mode==='preview'?'edit':'preview'"><component :is="mode==='preview'?Pencil:Eye" :size="16"/>{{mode==='preview'?'开始编辑':'专注预览'}}</button><a v-else class="lib-btn lib-btn--primary" :href="contentUrl" download><Download :size="16"/>下载</a></div></header>
+  <header class="item-editor-head" :class="{'is-collapsed':editorHeaderCollapsed}"><button class="item-back" @click="backToLibrary"><ArrowLeft :size="18"/>返回资料库</button><div><h1>{{ item?.name||'加载中…' }}</h1><p v-if="isNote">{{ saving?'正在保存…':dirty?'等待自动保存':'已保存' }}</p><div v-if="isNote" class="item-meta-editor"><input v-model="tagInput" aria-label="笔记标签" placeholder="添加标签，用逗号分隔" @change="saveMeta()"/><label><input type="checkbox" :checked="item?.review_enabled" @change="saveMeta({review_enabled:$event.target.checked})"/>加入复习计划</label></div></div><div class="item-head-actions"><button v-if="isNote" class="lib-btn" @click="ocrInput?.click()"><ScanText :size="16"/>OCR 插入</button><button v-if="isNote" class="lib-btn" @click="toggleMode"><component :is="mode==='preview'?Pencil:Eye" :size="16"/>{{mode==='preview'?'开始编辑':'专注预览'}}</button><a v-else class="lib-btn lib-btn--primary" :href="contentUrl" download><Download :size="16"/>下载</a></div></header>
   <input ref="ocrInput" hidden type="file" accept="image/*,.pdf" @change="ocr"/>
   <main v-if="item" class="item-editor-layout" :class="{'is-note':isNote,'is-preview-mode':isNote&&mode==='preview'}">
     <section v-if="isNote" class="note-workspace" :class="{'is-preview-mode':mode==='preview'}">
       <aside v-if="mode==='preview'" class="note-outline"><h2><ListTree :size="16"/>本文大纲</h2><nav v-if="outline.length" aria-label="笔记大纲"><button v-for="entry in outline" :key="entry.id" :data-level="entry.level" @click="jumpToHeading(entry)">{{entry.text}}</button></nav><p v-else>添加 Markdown 标题后，大纲会显示在这里。</p></aside>
-      <div v-else class="note-edit"><MarkdownEditor v-model="content" :fill="true" label="笔记正文"/></div>
-      <div ref="previewPane" class="note-preview"><MarkdownRenderer :content="content"/></div>
+      <div v-else class="note-edit"><MarkdownEditor v-model="content" :fill="true" label="笔记正文" @scroll="handleEditorScroll"/></div>
+      <div ref="previewPane" class="note-preview" @scroll.passive="handleEditorScroll"><MarkdownRenderer :content="content"/></div>
     </section>
     <section v-else class="file-preview"><img v-if="item.mime_type?.startsWith('image/')" :src="contentUrl" :alt="item.name"/><iframe v-else-if="item.mime_type==='application/pdf'" :src="contentUrl" :title="item.name"></iframe><div v-else-if="officeLoading" class="library-empty"><FileSearch :size="32"/><p>正在提取文档文字…</p></div><article v-else-if="officePreview" class="office-preview"><header><FileSearch :size="20"/><div><h2>{{ officePreview.title }}</h2><p>本地提取的 {{ officePreview.kind.toUpperCase() }} 文本预览</p></div></header><section v-for="page in officePreview.pages" :key="page.title"><h3>{{ page.title }}</h3><table v-if="page.rows?.length"><tbody><tr v-for="(row,rowIndex) in page.rows" :key="rowIndex"><td v-for="(cell,cellIndex) in row" :key="cellIndex">{{ cell }}</td></tr></tbody></table><p v-for="(line,lineIndex) in page.lines" :key="lineIndex">{{ line }}</p></section><a class="lib-btn lib-btn--primary" :href="contentUrl" download><Download :size="16"/>下载原文件</a></article><div v-else><Download :size="42"/><h2>{{item.name}}</h2><p>此文件类型暂不支持在线预览，可以下载后使用本地应用打开。</p><a class="lib-btn lib-btn--primary" :href="contentUrl" download>下载文件</a></div></section>
   </main>

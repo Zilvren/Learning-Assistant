@@ -133,6 +133,24 @@ describe("personal library", () => {
     vi.useRealTimers()
   })
 
+  it("collapses the note header after the reader scrolls past the threshold", async () => {
+    vi.spyOn(api,"getLibraryItem").mockResolvedValue({id:42,kind:"note",name:"长笔记",tags:[],current_version:1})
+    vi.spyOn(api,"getLibraryContent").mockResolvedValue({content:"# 第一节\n\n".repeat(80),version:1})
+    const router=createRouter({history:createMemoryHistory(),routes:[{path:"/library/items/:itemId",name:"library-item",component:LibraryItemPage,props:true}]})
+    await router.push("/library/items/42");await router.isReady()
+    const wrapper=mount({template:"<router-view/>"},{global:{plugins:[router],stubs:{MarkdownRenderer:true}}})
+    await flushPromises()
+
+    const reader=wrapper.get(".note-preview")
+    Object.defineProperty(reader.element,"scrollTop",{configurable:true,value:96})
+    await reader.trigger("scroll")
+    expect(wrapper.get(".item-editor-head").classes()).toContain("is-collapsed")
+
+    Object.defineProperty(reader.element,"scrollTop",{configurable:true,value:0})
+    await reader.trigger("scroll")
+    expect(wrapper.get(".item-editor-head").classes()).not.toContain("is-collapsed")
+  })
+
   it("persists text typed while an earlier autosave is still in flight", async () => {
     vi.useFakeTimers()
     vi.spyOn(api,"getLibraryItem").mockResolvedValue({id:42,kind:"note",name:"并发保存",tags:[],current_version:1})
