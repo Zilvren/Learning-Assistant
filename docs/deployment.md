@@ -170,19 +170,13 @@ docker compose logs --tail=100 caddy
 docker compose up -d --build app
 ```
 
-## 启用 DeepSeek Harness 学习助手
+## DeepSeek Harness 学习助手
 
 生产镜像已经包含 Node.js 22、固定版本的 Harness 运行时和受限资料库
 插件；不要在正在运行的容器中执行 `npm install`。
 
-先在应用设置中配置可用的 DeepSeek API Key，再编辑服务器上的
-`/opt/Learning-Assistant/deploy/.env`：
-
-```text
-STUDY_HARNESS_ENABLED=true
-```
-
-重新构建应用容器（不会删除 PostgreSQL 或资料库卷）：
+Harness 是唯一的 AI 运行时。先在应用设置中配置可用的 DeepSeek API Key，
+然后重新构建应用容器（不会删除 PostgreSQL 或资料库卷）：
 
 ```bash
 cd /opt/Learning-Assistant/deploy

@@ -36,8 +36,8 @@ func HarnessTool(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": result})
 }
 
-// HarnessStatus lets the browser select the agent workflow only when its
-// local runtime has been installed and explicitly enabled by the operator.
+// HarnessStatus lets the browser enable AI chat only when the required local
+// Harness runtime is installed and ready.
 func HarnessStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, service.HarnessRuntimeStatus(c.Request.Context()))
 }

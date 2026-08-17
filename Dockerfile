@@ -39,8 +39,8 @@ COPY --from=frontend-builder /src/frontend/dist ./frontend/dist
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOMAXPROCS=1 \
     go build -trimpath -ldflags="-s -w" -o /out/tracker .
 
-# Keep Node.js 22 in the final image: the Go service starts the restricted
-# Harness JSON-RPC agent only when STUDY_HARNESS_ENABLED=true.
+# Keep Node.js 22 in the final image: the Go service always uses the restricted
+# Harness JSON-RPC agent for AI chat.
 FROM docker.m.daocloud.io/library/node:22-bookworm-slim
 WORKDIR /app
 # The Go builder already contains the certificate bundle.  Copy it instead of

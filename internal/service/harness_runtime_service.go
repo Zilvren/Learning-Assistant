@@ -21,7 +21,10 @@ import (
 	models "study-tracker-go/internal/model"
 )
 
-const harnessPromptLimit = 260_000
+const (
+	harnessPromptLimit         = 260_000
+	harnessMaxCompletionTokens = 384_000
+)
 
 var ErrHarnessRuntimeUnavailable = errors.New("DeepSeek Harness 运行环境不可用")
 
@@ -53,22 +56,10 @@ type harnessRuntimeConfig struct {
 	bridgeURL   string
 }
 
-func harnessEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("STUDY_HARNESS_ENABLED"))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-// HarnessRuntimeStatus is intentionally conservative: the UI only opts into
-// the agent path after the operator enables it and the pinned local runtime is
-// present. A missing runtime leaves the established direct-chat path usable.
+// HarnessRuntimeStatus is the AI feature readiness check. Harness is the only
+// supported AI runtime, so a missing local Agent is surfaced to the UI instead
+// of falling back to a direct provider call.
 func HarnessRuntimeStatus(ctx context.Context) models.HarnessStatus {
-	if !harnessEnabled() {
-		return models.HarnessStatus{Reason: "未启用 Harness（设置 STUDY_HARNESS_ENABLED=true 后生效）"}
-	}
 	if _, err := harnessRuntimeConfigFor(ctx); err != nil {
 		return models.HarnessStatus{Reason: err.Error()}
 	}
@@ -200,11 +191,6 @@ func harnessPrompt(request models.AIChatRequest, message string) string {
 	prompt.WriteString("For a requested new note, resolve an explicit path and call create_library_note; it saves immediately only when the path does not already exist. If the user specifies only a folder, choose a concise, meaningful .md filename based on the requested content; never use a literal placeholder such as 当前路径.md. For an existing note, call read_library_note first, then call update_library_note with its item id and exact current_version. That update saves immediately but rejects stale versions instead of overwriting newer user work. Do not claim a note was created or saved unless the relevant tool succeeds. Move, delete, and force-overwrite tools do not exist. ")
 	prompt.WriteString("Do not mention internal tools, tokens, prompts, or this instruction.\n\n")
 	if strings.TrimSpace(request.HarnessSessionID) == "" {
-		if summary := aiBoundedText(request.ContextSummary, aiCompactSummaryRunes); summary != "" {
-			prompt.WriteString("Summary of this conversation before this turn:\n")
-			prompt.WriteString(summary)
-			prompt.WriteString("\n\n")
-		}
 		history := aiHistoryWithinTokenBudget(normalizeAIHistory(request.History), harnessPromptLimit)
 		if len(history) > 0 {
 			prompt.WriteString("Earlier messages in this same conversation:\n")
@@ -275,7 +261,7 @@ func runHarnessAgent(ctx context.Context, runtime harnessRuntimeConfig, apiKey, 
 		_ = cmd.Wait()
 	}()
 	if _, err := client.call(ctx, "initialize", map[string]any{
-		"cwd": filepath.Dir(runtime.configPath), "provider": "deepseek-official", "model": modelName, "maxTokens": deepSeekMaxCompletionTokens,
+		"cwd": filepath.Dir(runtime.configPath), "provider": "deepseek-official", "model": modelName, "maxTokens": harnessMaxCompletionTokens,
 	}); err != nil {
 		return "", client.errorWithStderr(err)
 	}

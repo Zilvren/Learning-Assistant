@@ -13,7 +13,6 @@ const (
 	aiConversationMaxConversations = 24
 	aiConversationMaxMessages      = 160
 	aiConversationMaxRunes         = 16_000
-	aiConversationMaxSummaryRunes  = 24_000
 	aiConversationMaxScope         = 240
 	aiConversationMaxModel         = 120
 	aiConversationMaxSources       = 8
@@ -108,7 +107,6 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 			FolderID:         folderID,
 			ItemIDs:          normalizeAIConversationItemIDs(conversation.ItemIDs),
 			Messages:         messages,
-			ContextSummary:   boundedAIConversationText(conversation.ContextSummary, aiConversationMaxSummaryRunes),
 			HarnessSessionID: normalizeAIHarnessSessionID(conversation.HarnessSessionID),
 		})
 	}
@@ -174,12 +172,12 @@ func cloneAIConversations(conversations []models.AIConversation) []models.AIConv
 	result := make([]models.AIConversation, 0, len(conversations))
 	for _, conversation := range conversations {
 		result = append(result, models.AIConversation{
-			ID:             conversation.ID,
-			Title:          conversation.Title,
-			FolderID:       conversation.FolderID,
-			ItemIDs:        append([]int64(nil), conversation.ItemIDs...),
-			Messages:       append([]models.AIConversationMessage(nil), conversation.Messages...),
-			ContextSummary: conversation.ContextSummary,
+			ID:               conversation.ID,
+			Title:            conversation.Title,
+			FolderID:         conversation.FolderID,
+			ItemIDs:          append([]int64(nil), conversation.ItemIDs...),
+			Messages:         append([]models.AIConversationMessage(nil), conversation.Messages...),
+			HarnessSessionID: conversation.HarnessSessionID,
 		})
 	}
 	return result
@@ -199,7 +197,7 @@ func normalizeAIConversation(messages []models.AIConversationMessage) ([]models.
 		if content == "" {
 			return nil, fmt.Errorf("%w：消息内容不能为空", ErrInvalidAIConversation)
 		}
-		normalized := models.AIConversationMessage{Role: role, Content: content, ContextCompacted: message.ContextCompacted}
+		normalized := models.AIConversationMessage{Role: role, Content: content}
 		if role == "user" {
 			normalized.Scope = boundedAIConversationText(message.Scope, aiConversationMaxScope)
 		} else {

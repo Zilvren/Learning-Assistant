@@ -1,11 +1,10 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { Bot, ChevronDown, FileText, Folder, LoaderCircle, MessageSquare, Pencil, Plus, SendHorizontal, Sparkles, X } from "lucide-vue-next"
+import { Bot, ChevronDown, FileText, Folder, LoaderCircle, MessageSquare, Plus, SendHorizontal, Sparkles, X } from "lucide-vue-next"
 import { api } from "../api/index.js"
 import { useToast } from "../store/toast.js"
 import MarkdownRenderer from "./MarkdownRenderer.vue"
-import BaseDialog from "./ui/BaseDialog.vue"
 
 const router = useRouter()
 const route = useRoute()
@@ -14,10 +13,10 @@ const composer = ref("")
 const messages = ref([])
 const conversations = ref([])
 const activeConversationID = ref(String(route.query.conversation || ""))
-const activeContextSummary = ref("")
 const sending = ref(false)
 const configured = ref(null)
-const harnessEnabled = ref(false)
+const harnessReady = ref(null)
+const harnessReason = ref("")
 const conversationReady = ref(false)
 const messageList = ref(null)
 const folderOptions = ref([])
@@ -28,20 +27,14 @@ const folderMenuOpen = ref(false)
 const scopeMenuOpen = ref(false)
 const selectedItemIDs = ref(readPositiveIDs(route.query.items))
 const selectedItems = ref([])
-const editMode = ref(false)
-const editPreview = ref(null)
-const editApplying = ref(false)
-const noteWritePreview = ref(null)
-const noteWriteApplying = ref(false)
 
 const continueInstruction = "请从你上一条回答结束的位置直接继续。不要重复任何已经输出的内容，保持原有格式，并完成剩余内容。"
-const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && configured.value === true && conversationReady.value)
+const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && configured.value === true && harnessReady.value === true && conversationReady.value)
 const selectedFolder = computed(() => folderOptions.value.find((folder) => folder.id === selectedFolderID.value) || null)
 const selectedFolderOption = computed(() => folderOptions.value.find((folder) => folder.id === readPositiveID(folderSelection.value)) || null)
 const selectedFolderLabel = computed(() => selectedFolderOption.value?.path || "整个资料库")
 const hasScopedContext = computed(() => selectedFolderID.value !== null || selectedItemIDs.value.length > 0)
 const activeConversation = computed(() => conversations.value.find((conversation) => conversation.id === activeConversationID.value) || null)
-const editableItem = computed(() => selectedItems.value.length === 1 && selectedItems.value[0]?.kind === "note" ? selectedItems.value[0] : null)
 const conversationRows = computed(() => conversations.value.map((conversation) => ({
   id: conversation.id,
   title: conversation.title || "新对话",
@@ -94,7 +87,6 @@ function normalizeConversation(conversation) {
       model: String(message.model || ""),
       sources: Array.isArray(message.sources) ? message.sources : [],
       incomplete: Boolean(message.incomplete),
-      context_compacted: Boolean(message.context_compacted),
     }))
   return {
     id,
@@ -102,7 +94,6 @@ function normalizeConversation(conversation) {
     folder_id: readPositiveID(conversation.folder_id),
     item_ids: readPositiveIDs((conversation.item_ids || []).join(",")),
     messages: restoredMessages,
-    context_summary: String(conversation.context_summary || ""),
     harness_session_id: /^[A-Za-z0-9_-]{1,80}$/.test(String(conversation.harness_session_id || "")) ? String(conversation.harness_session_id) : "",
   }
 }
@@ -114,7 +105,6 @@ function createConversation() {
     folder_id: selectedFolderID.value,
     item_ids: [...selectedItemIDs.value],
     messages: [],
-    context_summary: "",
     harness_session_id: "",
   }
 }
@@ -135,7 +125,6 @@ async function activateConversation(conversation, updateURL = true) {
   if (!conversation || sending.value) return
   activeConversationID.value = conversation.id
   messages.value = restoreMessages(conversation)
-  activeContextSummary.value = String(conversation.context_summary || "")
   selectedFolderID.value = readPositiveID(conversation.folder_id)
   folderSelection.value = selectedFolderID.value
   selectedItemIDs.value = readPositiveIDs((conversation.item_ids || []).join(","))
@@ -157,7 +146,6 @@ async function resetConversation() {
   folderSelection.value = null
   selectedItemIDs.value = []
   selectedItems.value = []
-  activeContextSummary.value = ""
   const conversation = createConversation()
   conversations.value.unshift(conversation)
   await activateConversation(conversation)
@@ -258,7 +246,7 @@ async function clearScopedContext() {
 
 function historyForRequest() {
   return messages.value
-    .filter((message) => (message.role === "user" || message.role === "assistant") && !message.context_compacted)
+    .filter((message) => message.role === "user" || message.role === "assistant")
     .map((message) => ({ role: message.role, content: message.content }))
 }
 
@@ -272,7 +260,6 @@ function persistableMessages() {
       model: message.model || "",
       sources: message.sources || [],
       incomplete: Boolean(message.incomplete),
-      context_compacted: Boolean(message.context_compacted),
     }))
 }
 
@@ -286,7 +273,6 @@ function updateActiveConversation(promote = false) {
     folder_id: selectedFolderID.value,
     item_ids: [...selectedItemIDs.value],
     messages: persistableMessages(),
-    context_summary: activeContextSummary.value,
   }
   if (promote && currentIndex > 0) {
     conversations.value.splice(currentIndex, 1)
@@ -295,109 +281,6 @@ function updateActiveConversation(promote = false) {
     conversations.value.splice(currentIndex, 1, updated)
   }
   return true
-}
-
-function toggleEditMode() {
-  if (!editableItem.value) {
-    toast.info("请先从资料库选择一篇 Markdown 笔记，再使用 AI 编辑")
-    return
-  }
-  editMode.value = !editMode.value
-  if (editMode.value) toast.info(`编辑模式：AI 将为“${editableItem.value.name}”生成预览，不会直接保存`)
-}
-
-function looksLikeAINoteWriteRequest(value) {
-  return /(?:^|(?:请(?:你)?|帮我|那你帮我|麻烦(?:你)?|把|将).{0,24})(?:写在|写到|写入|保存到|存到|新建|创建)/u.test(String(value || "").trim())
-}
-
-async function previewAINoteWrite(message) {
-  await ensureActiveConversation()
-  const history = historyForRequest()
-  messages.value.push({ id: `user-${Date.now()}`, role: "user", content: message, scope: hasScopedContext.value ? scopeSummary.value : "" })
-  composer.value = ""
-  sending.value = true
-  scrollToLatest()
-  try {
-    const request = { message, history, folder_id: selectedFolderID.value }
-    if (activeContextSummary.value) request.context_summary = activeContextSummary.value
-    const result = await api.previewAINoteWrite(request)
-    noteWritePreview.value = result
-    const actionLabel = result.action === "create" ? "创建" : "更新"
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: `已解析目标路径“${result.target_path}”，并生成${actionLabel}预览。请检查内容，确认后才会写入资料库。`, model: result.model })
-  } catch (error) {
-    messages.value.push({ id: `error-${Date.now()}`, role: "error", content: error.message || "AI 写入预览生成失败，请稍后重试。" })
-  } finally {
-    sending.value = false
-    await saveConversation(true)
-    scrollToLatest()
-  }
-}
-
-async function applyAINoteWrite() {
-  const preview = noteWritePreview.value
-  if (!preview || noteWriteApplying.value) return
-  noteWriteApplying.value = true
-  try {
-    const request = { action: preview.action, content: preview.content, base_version: preview.base_version }
-    if (preview.action === "update") request.item_id = preview.item?.id
-    else {
-      request.parent_id = preview.parent_id ?? null
-      request.name = preview.name
-    }
-    const item = await api.applyAINoteWrite(request)
-    const created = preview.action === "create"
-    noteWritePreview.value = null
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: created ? `已创建“${item.name}”。` : `已将内容保存到“${item.name}”的新版本。你可以在资料库版本记录中恢复原文。`, model: preview.model })
-    await saveConversation(true)
-    toast.success(created ? "AI 笔记已创建" : "AI 写入已保存为新的笔记版本")
-  } catch (error) {
-    toast.error(error.message || "确认 AI 写入失败")
-  } finally {
-    noteWriteApplying.value = false
-  }
-}
-
-async function previewAIEdit(instruction) {
-  const target = editableItem.value
-  if (!target) {
-    editMode.value = false
-    return toast.warning("AI 编辑需要明确选择一篇 Markdown 笔记")
-  }
-  await ensureActiveConversation()
-  const requestLabel = `编辑“${target.name}”：${instruction}`
-  messages.value.push({ id: `user-${Date.now()}`, role: "user", content: requestLabel, scope: `编辑目标：${target.name}` })
-  composer.value = ""
-  sending.value = true
-  scrollToLatest()
-  try {
-    const result = await api.previewAIEdit({ item_id: target.id, instruction })
-    editPreview.value = result
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: `已为“${target.name}”生成修改预览。请检查内容，确认后才会保存为新的笔记版本。`, model: result.model })
-  } catch (error) {
-    messages.value.push({ id: `error-${Date.now()}`, role: "error", content: error.message || "AI 修改预览生成失败，请稍后重试。" })
-  } finally {
-    sending.value = false
-    await saveConversation(true)
-    scrollToLatest()
-  }
-}
-
-async function applyAIEdit() {
-  const preview = editPreview.value
-  if (!preview || editApplying.value) return
-  editApplying.value = true
-  try {
-    await api.applyAIEdit({ item_id: preview.item.id, content: preview.content, base_version: preview.base_version })
-    editPreview.value = null
-    editMode.value = false
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: `已将修改保存到“${preview.item.name}”的新版本。你可以随时在资料库的版本记录中恢复。`, model: preview.model })
-    await saveConversation(true)
-    toast.success("AI 修改已保存为新的笔记版本")
-  } catch (error) {
-    toast.error(error.message || "保存 AI 修改失败")
-  } finally {
-    editApplying.value = false
-  }
 }
 
 async function saveConversation(promote = false) {
@@ -441,7 +324,7 @@ async function ensureActiveConversation() {
 }
 
 function chatRequest(message, history) {
-  const request = {
+  return {
     message,
     history,
     folder_id: selectedFolderID.value,
@@ -449,8 +332,6 @@ function chatRequest(message, history) {
     conversation_id: activeConversationID.value,
     harness_session_id: activeConversation.value?.harness_session_id || "",
   }
-  if (activeContextSummary.value) request.context_summary = activeContextSummary.value
-  return request
 }
 
 function applyHarnessResult(result) {
@@ -460,26 +341,12 @@ function applyHarnessResult(result) {
   if (index >= 0) conversations.value.splice(index, 1, { ...conversations.value[index], harness_session_id: sessionID })
 }
 
-function applyCompactionResult(result) {
-  if (typeof result.context_summary === "string") activeContextSummary.value = result.context_summary
-  let remaining = Number(result.compacted_messages) || 0
-  if (remaining <= 0) return
-  for (const message of messages.value) {
-    if (remaining <= 0) break
-    if ((message.role !== "user" && message.role !== "assistant") || message.context_compacted) continue
-    message.context_compacted = true
-    remaining -= 1
-  }
-  toast.info("较早对话已自动整理，后续回答会保留其中的关键信息")
-}
-
 async function send() {
   const content = composer.value.trim()
   if (!content || sending.value) return
   if (configured.value === false) return toast.warning("请先在设置中配置 DeepSeek API Key")
   if (configured.value !== true) return
-  if (editMode.value) return previewAIEdit(content)
-  if (!harnessEnabled.value && looksLikeAINoteWriteRequest(content)) return previewAINoteWrite(content)
+  if (harnessReady.value !== true) return toast.warning(harnessReason.value || "Harness 运行环境尚未就绪")
   await ensureActiveConversation()
   const history = historyForRequest()
   messages.value.push({ id: `user-${Date.now()}`, role: "user", content, scope: hasScopedContext.value ? scopeSummary.value : "" })
@@ -489,9 +356,7 @@ async function send() {
   let shouldSaveConversation = true
   try {
     const result = await api.aiChat(chatRequest(content, history))
-    applyCompactionResult(result)
     applyHarnessResult(result)
-    if (result.note_write_preview) noteWritePreview.value = result.note_write_preview
     messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
   } catch (error) {
     const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
@@ -511,7 +376,6 @@ async function continueGeneration(message) {
   scrollToLatest()
   try {
     const result = await api.aiChat(chatRequest(continueInstruction, history))
-    applyCompactionResult(result)
     applyHarnessResult(result)
     const messageIndex = messages.value.findIndex((item) => item.id === message.id)
     if (messageIndex >= 0) messages.value[messageIndex] = { ...messages.value[messageIndex], incomplete: false }
@@ -555,9 +419,12 @@ onMounted(async () => {
     configured.value = false
   }
   try {
-    harnessEnabled.value = Boolean((await api.getAIHarnessStatus()).enabled)
+    const status = await api.getAIHarnessStatus()
+    harnessReady.value = Boolean(status.enabled)
+    harnessReason.value = String(status.reason || "")
   } catch {
-    harnessEnabled.value = false
+    harnessReady.value = false
+    harnessReason.value = "无法检查 Harness 运行环境"
   }
   await loadFolderOptions()
   await loadSelectedItems()
@@ -617,34 +484,14 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
                 <div v-if="selectedItems.length" class="ai-context-picker__items"><span>已转发资料</span><button v-for="item in selectedItems" :key="item.id" type="button" @click="removeSelectedItem(item.id)"><FileText :size="14" />{{ item.name }}<X :size="13" /></button></div>
               </section>
             </div>
-            <button type="button" class="ai-composer__edit-button" :class="{ 'is-active': editMode }" :disabled="sending || !editableItem" :title="editableItem ? `编辑所选笔记：${editableItem.name}` : '先从资料库选择一篇 Markdown 笔记'" aria-label="切换 AI 笔记编辑模式" @click="toggleEditMode"><Pencil :size="17" /></button>
-            <textarea v-model="composer" rows="1" maxlength="2000" placeholder="输入你的问题…" :disabled="sending || configured !== true" @keydown="keydown" />
+            <textarea v-model="composer" rows="1" maxlength="2000" placeholder="输入你的问题…" :disabled="sending || configured !== true || harnessReady !== true" @keydown="keydown" />
             <button type="submit" class="ai-composer__send" :disabled="!canSend" :aria-label="sending ? '正在发送' : '发送消息'"><LoaderCircle v-if="sending" :size="18" /><SendHorizontal v-else :size="18" /></button>
           </div>
-          <small class="ai-composer__context-status">{{ editMode ? `编辑“${editableItem?.name || '所选笔记'}” · 先预览，再确认保存` : harnessEnabled ? 'Harness 已启用 · 新笔记直接创建，已有笔记按版本保护写入' : '1M 上下文 · 输出最高 384K · “写在 路径/文件名 中”可创建或写入' }}</small>
+          <small class="ai-composer__context-status">Harness Agent · 可按资料范围检索、读取，并以版本保护创建或更新笔记</small>
           <div v-if="configured === false" class="ai-composer__setup">尚未连接 DeepSeek <button type="button" @click="openSettings">去配置</button></div>
+          <div v-else-if="harnessReady === false" class="ai-composer__setup">Harness 未就绪：{{ harnessReason || '请检查本地运行环境' }}</div>
         </form>
       </section>
     </section>
-    <BaseDialog :open="Boolean(editPreview)" title="确认 AI 修改" description="先核对修改预览；确认后将保存为新的笔记版本，原文可从版本记录恢复。" size="full" :close-on-backdrop="false" @close="editPreview=null">
-      <div v-if="editPreview" class="ai-edit-preview">
-        <header><strong>{{ editPreview.item.name }}</strong><small>基于版本 {{ editPreview.base_version }} · {{ editPreview.model }}</small></header>
-        <div class="ai-edit-preview__columns">
-          <section><h3>原文</h3><pre>{{ editPreview.original_content }}</pre></section>
-          <section><h3>AI 修改预览</h3><textarea v-model="editPreview.content" aria-label="AI 修改预览" spellcheck="false" /></section>
-        </div>
-      </div>
-      <template #footer><button class="lib-btn" :disabled="editApplying" @click="editPreview=null">取消</button><button class="lib-btn lib-btn--primary" :disabled="editApplying" @click="applyAIEdit">{{ editApplying ? '保存中…' : '确认并保存新版本' }}</button></template>
-    </BaseDialog>
-    <BaseDialog :open="Boolean(noteWritePreview)" title="确认 AI 写入" description="已根据你的话解析目标路径。确认后才会创建笔记或保存新版本。" size="full" :close-on-backdrop="false" @close="noteWritePreview=null">
-      <div v-if="noteWritePreview" class="ai-edit-preview">
-        <header><strong>{{ noteWritePreview.target_path }}</strong><small>{{ noteWritePreview.action === 'create' ? '创建笔记' : `基于版本 ${noteWritePreview.base_version}` }} · {{ noteWritePreview.model }}</small></header>
-        <div class="ai-edit-preview__columns">
-          <section><h3>{{ noteWritePreview.action === 'create' ? '将创建的目标' : '原文' }}</h3><pre>{{ noteWritePreview.action === 'create' ? `将创建新 Markdown 笔记\n${noteWritePreview.target_path}` : noteWritePreview.original_content }}</pre></section>
-          <section><h3>AI 写入预览</h3><textarea v-model="noteWritePreview.content" aria-label="AI 写入预览" spellcheck="false" /></section>
-        </div>
-      </div>
-      <template #footer><button class="lib-btn" :disabled="noteWriteApplying" @click="noteWritePreview=null">取消</button><button class="lib-btn lib-btn--primary" :disabled="noteWriteApplying" @click="applyAINoteWrite">{{ noteWriteApplying ? '保存中…' : noteWritePreview?.action === 'create' ? '确认创建笔记' : '确认并保存新版本' }}</button></template>
-    </BaseDialog>
   </div>
 </template>

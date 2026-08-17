@@ -263,13 +263,12 @@ type AIChatMessage struct {
 // chat in the browser. It keeps display-only metadata separate from the small
 // provider history sent in AIChatRequest.
 type AIConversationMessage struct {
-	Role             string         `json:"role"`
-	Content          string         `json:"content"`
-	Scope            string         `json:"scope,omitempty"`
-	Model            string         `json:"model,omitempty"`
-	Sources          []AIChatSource `json:"sources,omitempty"`
-	Incomplete       bool           `json:"incomplete,omitempty"`
-	ContextCompacted bool           `json:"context_compacted,omitempty"`
+	Role       string         `json:"role"`
+	Content    string         `json:"content"`
+	Scope      string         `json:"scope,omitempty"`
+	Model      string         `json:"model,omitempty"`
+	Sources    []AIChatSource `json:"sources,omitempty"`
+	Incomplete bool           `json:"incomplete,omitempty"`
 }
 
 // AIConversation is one independently scoped, durable AI chat. Each record
@@ -281,14 +280,12 @@ type AIConversation struct {
 	FolderID         *int64                  `json:"folder_id,omitempty"`
 	ItemIDs          []int64                 `json:"item_ids,omitempty"`
 	Messages         []AIConversationMessage `json:"messages"`
-	ContextSummary   string                  `json:"context_summary,omitempty"`
 	HarnessSessionID string                  `json:"harness_session_id,omitempty"`
 }
 
 type AIChatRequest struct {
 	Message          string          `json:"message"`
 	History          []AIChatMessage `json:"history"`
-	ContextSummary   string          `json:"context_summary,omitempty"`
 	FolderID         *int64          `json:"folder_id,omitempty"`
 	ItemIDs          []int64         `json:"item_ids,omitempty"`
 	ConversationID   string          `json:"conversation_id,omitempty"`
@@ -303,82 +300,18 @@ type AIChatSource struct {
 }
 
 type AIChatResponse struct {
-	Answer            string                      `json:"answer"`
-	Model             string                      `json:"model"`
-	Sources           []AIChatSource              `json:"sources"`
-	Incomplete        bool                        `json:"incomplete"`
-	ContextSummary    string                      `json:"context_summary,omitempty"`
-	CompactedMessages int                         `json:"compacted_messages,omitempty"`
-	HarnessSessionID  string                      `json:"harness_session_id,omitempty"`
-	NoteWritePreview  *AINoteWritePreviewResponse `json:"note_write_preview,omitempty"`
+	Answer           string         `json:"answer"`
+	Model            string         `json:"model"`
+	Sources          []AIChatSource `json:"sources"`
+	Incomplete       bool           `json:"incomplete"`
+	HarnessSessionID string         `json:"harness_session_id,omitempty"`
 }
 
-// HarnessStatus is the small capability check used by the browser to decide
-// whether a natural-language write request should go through the agent loop
-// or the legacy single-call preview path.
+// HarnessStatus reports whether the required Agent runtime is ready. The AI
+// feature has no alternate direct-provider path.
 type HarnessStatus struct {
 	Enabled bool   `json:"enabled"`
 	Reason  string `json:"reason,omitempty"`
-}
-
-// AIEditPreviewRequest asks the assistant to prepare a revision for one
-// explicitly selected Markdown note. It never writes to the library.
-type AIEditPreviewRequest struct {
-	ItemID      int64  `json:"item_id"`
-	Instruction string `json:"instruction"`
-}
-
-// AIEditPreviewResponse contains a proposed full replacement and the exact
-// library version it was based on. The browser must ask the user to confirm
-// before sending it to the apply endpoint.
-type AIEditPreviewResponse struct {
-	Item            LibraryItem `json:"item"`
-	BaseVersion     int         `json:"base_version"`
-	OriginalContent string      `json:"original_content"`
-	Content         string      `json:"content"`
-	Model           string      `json:"model"`
-}
-
-// AIEditApplyRequest is the user-confirmed preview. BaseVersion makes an AI
-// edit fail safely rather than overwrite a newer manual change.
-type AIEditApplyRequest struct {
-	ItemID      int64  `json:"item_id"`
-	Content     string `json:"content"`
-	BaseVersion int    `json:"base_version"`
-}
-
-// AINoteWritePreviewRequest lets the AI resolve a natural-language write
-// command such as “写在 daily/Note/今日整理 中”. It only prepares a preview.
-type AINoteWritePreviewRequest struct {
-	Message        string          `json:"message"`
-	History        []AIChatMessage `json:"history"`
-	ContextSummary string          `json:"context_summary,omitempty"`
-	FolderID       *int64          `json:"folder_id,omitempty"`
-}
-
-// AINoteWritePreviewResponse identifies the resolved target and the complete
-// Markdown that would be created or saved after user confirmation.
-type AINoteWritePreviewResponse struct {
-	Action          string       `json:"action"`
-	TargetPath      string       `json:"target_path"`
-	Item            *LibraryItem `json:"item,omitempty"`
-	ParentID        *int64       `json:"parent_id,omitempty"`
-	Name            string       `json:"name"`
-	BaseVersion     int          `json:"base_version"`
-	OriginalContent string       `json:"original_content,omitempty"`
-	Content         string       `json:"content"`
-	Model           string       `json:"model"`
-}
-
-// AINoteWriteApplyRequest is the explicit confirmation for an AI-generated
-// create or update preview. Updates must include their original version.
-type AINoteWriteApplyRequest struct {
-	Action      string `json:"action"`
-	ItemID      int64  `json:"item_id,omitempty"`
-	ParentID    *int64 `json:"parent_id,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Content     string `json:"content"`
-	BaseVersion int    `json:"base_version,omitempty"`
 }
 
 // AddErrorRequest 是创建错题时的请求体

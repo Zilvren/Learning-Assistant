@@ -19,10 +19,10 @@ cd harness
 npm install --registry=https://registry.npmmirror.com --no-audit
 ```
 
-The Go server launches `dsh-jsonrpc-agent` from this directory when
-`STUDY_HARNESS_ENABLED=true`. The server passes the API key, local bridge URL,
-session root, and short-lived tool token directly to the child process; none of
-them are written to this project or sent to the browser.
+The Go server launches `dsh-jsonrpc-agent` from this directory for every AI
+chat. The server passes the API key, local bridge URL, session root, and
+short-lived tool token directly to the child process; none of them are written
+to this project or sent to the browser.
 
 The restricted tool implementation lives in
 `../packages/dsh-learning-library`, which is shaped as a reusable npm package.
@@ -34,15 +34,13 @@ unchanged.
 
 For a local launch, make sure the server can find the same Node.js 22.19+
 runtime used for installation. If it is not the default `node` on your PATH,
-set `STUDY_HARNESS_NODE` to the absolute `node` executable path, then enable
-the runtime before starting the Go service:
+set `STUDY_HARNESS_NODE` to the absolute `node` executable path before starting
+the Go service:
 
 ```powershell
-$env:STUDY_HARNESS_ENABLED = 'true'
 $env:STUDY_HARNESS_NODE = 'C:\absolute\path\to\node.exe' # only when needed
 go run . --no-browser
 ```
 
-When the runtime is not enabled, the application keeps using its existing
-direct DeepSeek chat path. The AI page's `GET /api/ai/harness` capability check
-shows whether the restricted Harness workflow is ready.
+Harness is the only AI path. If its runtime is unavailable, the AI page keeps
+chat disabled and shows the reason returned by `GET /api/ai/harness`.

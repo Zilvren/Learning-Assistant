@@ -298,7 +298,7 @@ func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	if targetPath == "" {
 		return nil, fmt.Errorf("请先明确笔记路径和文件名")
 	}
-	if len([]byte(content)) > aiMaxEditableNoteBytes {
+	if len([]byte(content)) > aiMaxHarnessNoteBytes {
 		return nil, fmt.Errorf("拟写入的笔记超过 10MB，未创建")
 	}
 	target, err := resolveAINoteWriteTarget(ctx, targetPath, scope.folderID)
@@ -315,9 +315,7 @@ func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	if target.item != nil {
 		return nil, fmt.Errorf("目标“%s”已存在；请先读取该笔记，再使用更新工具保存新版本", target.targetPath)
 	}
-	item, err := ApplyAINoteWrite(ctx, models.AINoteWriteApplyRequest{
-		Action: "create", ParentID: target.parentID, Name: target.name, Content: content,
-	})
+	item, err := createHarnessLibraryNote(ctx, target.parentID, target.name, content)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +332,7 @@ func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	if itemID <= 0 || !validVersion {
 		return nil, fmt.Errorf("更新笔记必须提供读取结果中的 item_id 和 current_version")
 	}
-	if len([]byte(content)) > aiMaxEditableNoteBytes {
+	if len([]byte(content)) > aiMaxHarnessNoteBytes {
 		return nil, fmt.Errorf("拟写入的笔记超过 10MB，未保存")
 	}
 	items, err := harnessScopedItems(ctx, scope)
@@ -351,9 +349,7 @@ func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	if target == nil || target.Kind != "note" || !aiEditableLibraryItem(*target) {
 		return nil, fmt.Errorf("笔记不在当前资料范围内或不可编辑")
 	}
-	item, err := ApplyAINoteWrite(ctx, models.AINoteWriteApplyRequest{
-		Action: "update", ItemID: itemID, Content: content, BaseVersion: baseVersion,
-	})
+	item, err := updateHarnessLibraryNote(ctx, itemID, content, baseVersion)
 	if err != nil {
 		return nil, err
 	}

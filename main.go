@@ -209,13 +209,9 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		api.PUT("/settings/deepseek/model", handlers.SetDeepSeekModel)
 		api.PUT("/settings/username", handlers.SetUsername)
 
-		// AI 学习助手：DeepSeek Key 保持在服务端，资料上下文按请求即时生成。
+		// AI 学习助手：仅使用受限的 DeepSeek Harness Agent；Key 与工具令牌都留在服务端。
 		api.GET("/ai/harness", handlers.HarnessStatus)
 		api.POST("/ai/chat", middleware.RateLimit(20, time.Minute), handlers.AIChat)
-		api.POST("/ai/edits/preview", middleware.RateLimit(10, time.Minute), handlers.PreviewAIEdit)
-		api.POST("/ai/edits/apply", handlers.ApplyAIEdit)
-		api.POST("/ai/notes/preview", middleware.RateLimit(10, time.Minute), handlers.PreviewAINoteWrite)
-		api.POST("/ai/notes/apply", handlers.ApplyAINoteWrite)
 		api.GET("/ai/conversation", handlers.GetAIConversation)
 		api.PUT("/ai/conversation", handlers.SaveAIConversation)
 		api.DELETE("/ai/conversation", handlers.ClearAIConversation)
