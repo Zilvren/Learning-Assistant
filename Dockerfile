@@ -7,7 +7,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund --registry=https://registry.npmjs.org
 
 COPY frontend/ ./
-ENV NODE_OPTIONS=--max-old-space-size=512
+# Mermaid 等前端依赖会在 Vite 打包阶段临时占用超过 512 MiB 的 V8 堆；保留余量，同时保持在 2 GiB 构建预算内。
+ENV NODE_OPTIONS=--max-old-space-size=1536
 RUN npm run build
 
 # 生产应用可选地将 DeepSeek Harness 作为子进程运行。单独安装其固定版本运行时，确保最终镜像只包含运行时依赖而不包含本仓库的开发工具。
