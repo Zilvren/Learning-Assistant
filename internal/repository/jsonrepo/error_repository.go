@@ -118,8 +118,7 @@ func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Ti
 	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
 }
 
-// ReviewWithRating keeps the review interval tied to recall quality instead
-// of advancing every card through one fixed schedule.
+// ReviewWithRating 让复习间隔与回忆质量关联，而不是按单一固定计划推进所有卡片。
 func (r *ErrorRepository) ReviewWithRating(ctx context.Context, id int, reviewedAt time.Time, rating string) (models.ErrorProblem, error) {
 	var result models.ErrorProblem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {

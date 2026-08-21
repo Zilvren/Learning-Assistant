@@ -16,8 +16,7 @@ type Detail struct {
 	Message string `json:"message"`
 }
 
-// Response keeps the legacy detail field for existing clients while exposing a
-// stable machine-readable error object for new clients.
+// Response 为现有客户端保留旧版 detail 字段，同时向新客户端提供稳定的机器可读错误对象。
 type Response struct {
 	Detail    string `json:"detail"`
 	Error     Detail `json:"error"`

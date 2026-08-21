@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-// StartAutomaticBackup keeps local JSON installations protected without
-// requiring the learner to remember a manual export. PostgreSQL deployments
-// are deliberately skipped because every account owns isolated data and a
-// process-level scheduler has no authenticated user scope.
+// StartAutomaticBackup 为本地 JSON 安装提供自动保护，免去学习者手动导出的负担。PostgreSQL 部署会被跳过，因为每个账户拥有隔离数据，而进程级调度器没有已认证的用户范围。
 func StartAutomaticBackup(app *App) func() {
 	if app == nil || app.AuthEnabled() {
 		return func() {}

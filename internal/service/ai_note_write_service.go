@@ -26,8 +26,7 @@ type aiNoteWriteTarget struct {
 	targetPath string
 }
 
-// createHarnessLibraryNote performs the create side of the restricted Harness
-// tool. It intentionally has no HTTP handler and no model invocation.
+// createHarnessLibraryNote 执行受限 Harness 工具的创建部分；它刻意不提供 HTTP 处理器，也不触发模型调用。
 func createHarnessLibraryNote(ctx context.Context, parentID *int64, name, content string) (models.LibraryItem, error) {
 	if len([]byte(content)) > aiMaxHarnessNoteBytes {
 		return models.LibraryItem{}, fmt.Errorf("笔记内容不能超过 10MB")
@@ -54,9 +53,7 @@ func createHarnessLibraryNote(ctx context.Context, parentID *int64, name, conten
 	}, []byte(content))
 }
 
-// updateHarnessLibraryNote saves one complete note version after the Harness
-// tool has read its exact current version. SaveLibraryContent rejects stale
-// versions, so the Agent cannot force-overwrite newer user edits.
+// updateHarnessLibraryNote 在 Harness 工具读取到笔记的确切当前版本后保存完整版本。SaveLibraryContent 会拒绝过期版本，因此 Agent 无法强制覆盖更新后的用户修改。
 func updateHarnessLibraryNote(ctx context.Context, itemID int64, content string, baseVersion int) (models.LibraryItem, error) {
 	if itemID <= 0 || baseVersion <= 0 {
 		return models.LibraryItem{}, ErrAINoteWriteConflict
@@ -79,6 +76,7 @@ func updateHarnessLibraryNote(ctx context.Context, itemID int64, content string,
 	})
 }
 
+// aiEditableLibraryItem 在业务层中执行当前流程或局部处理。
 func aiEditableLibraryItem(item models.LibraryItem) bool {
 	if item.Kind != "note" {
 		return false
@@ -87,6 +85,7 @@ func aiEditableLibraryItem(item models.LibraryItem) bool {
 	return mimeType == "" || strings.HasPrefix(mimeType, "text/") || strings.HasSuffix(strings.ToLower(item.Name), ".md") || strings.HasSuffix(strings.ToLower(item.Name), ".txt")
 }
 
+// resolveAINoteWriteTarget 在业务层中执行当前流程或局部处理。
 func resolveAINoteWriteTarget(ctx context.Context, rawPath string, scopeFolderID *int64) (aiNoteWriteTarget, error) {
 	parts, err := aiSplitLibraryPath(rawPath)
 	if err != nil {
@@ -124,6 +123,7 @@ func resolveAINoteWriteTarget(ctx context.Context, rawPath string, scopeFolderID
 	return aiNoteWriteTarget{parentID: parentID, name: name, targetPath: targetPath}, nil
 }
 
+// aiSplitLibraryPath 在业务层中执行当前流程或局部处理。
 func aiSplitLibraryPath(rawPath string) ([]string, error) {
 	normalized := strings.TrimSpace(strings.ReplaceAll(rawPath, "\\", "/"))
 	normalized = strings.TrimPrefix(normalized, "资料库/")
@@ -145,6 +145,7 @@ func aiSplitLibraryPath(rawPath string) ([]string, error) {
 	return parts, nil
 }
 
+// aiNormalizeNoteName 在业务层中执行当前流程或局部处理。
 func aiNormalizeNoteName(raw string) (string, error) {
 	name := strings.TrimSpace(raw)
 	if name == "" || strings.ContainsAny(name, "/\\\x00\r\n") || utf8.RuneCountInString(name) > 160 || name == "." || name == ".." {
@@ -159,6 +160,7 @@ func aiNormalizeNoteName(raw string) (string, error) {
 	return name, nil
 }
 
+// aiValidateWriteParent 在业务层中执行当前流程或局部处理。
 func aiValidateWriteParent(ctx context.Context, parentID *int64) error {
 	if parentID == nil {
 		return nil
@@ -176,6 +178,7 @@ func aiValidateWriteParent(ctx context.Context, parentID *int64) error {
 	return nil
 }
 
+// aiResolveFolderPath 在业务层中执行当前流程或局部处理。
 func aiResolveFolderPath(items []models.LibraryItem, parentID *int64, folders []string) (*int64, error) {
 	current := aiCopyID(parentID)
 	for _, segment := range folders {
@@ -194,6 +197,7 @@ func aiResolveFolderPath(items []models.LibraryItem, parentID *int64, folders []
 	return current, nil
 }
 
+// aiFindLibraryChild 在业务层中执行当前流程或局部处理。
 func aiFindLibraryChild(items []models.LibraryItem, parentID *int64, name string) *models.LibraryItem {
 	for index := range items {
 		item := &items[index]
@@ -205,6 +209,7 @@ func aiFindLibraryChild(items []models.LibraryItem, parentID *int64, name string
 	return nil
 }
 
+// aiLibraryParentPath 在业务层中执行当前流程或局部处理。
 func aiLibraryParentPath(items []models.LibraryItem, parentID *int64) string {
 	if parentID == nil {
 		return ""
@@ -231,6 +236,7 @@ func aiLibraryParentPath(items []models.LibraryItem, parentID *int64) string {
 	return strings.Join(parts, " / ")
 }
 
+// aiSameParent 在业务层中执行当前流程或局部处理。
 func aiSameParent(left, right *int64) bool {
 	if left == nil || right == nil {
 		return left == nil && right == nil
@@ -238,6 +244,7 @@ func aiSameParent(left, right *int64) bool {
 	return *left == *right
 }
 
+// aiCopyID 在业务层中执行当前流程或局部处理。
 func aiCopyID(value *int64) *int64 {
 	if value == nil {
 		return nil
@@ -246,6 +253,7 @@ func aiCopyID(value *int64) *int64 {
 	return &copy
 }
 
+// aiHistoryWithinTokenBudget 在业务层中执行当前流程或局部处理。
 func aiHistoryWithinTokenBudget(history []models.AIChatMessage, budget int) []models.AIChatMessage {
 	if budget <= 0 || len(history) == 0 {
 		return nil

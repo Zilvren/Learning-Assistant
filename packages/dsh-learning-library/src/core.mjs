@@ -2,18 +2,18 @@ import { createLearningLibraryBridge } from './client.mjs'
 
 export const pluginName = 'dsh-learning-library'
 
+// jsonOutput 完成当前模块定义的局部处理。
 function jsonOutput() {
   return {
     schema: { type: 'object', additionalProperties: true },
+// render 完成当前对象定义的局部处理。
     render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
   }
 }
 
 /**
- * Registers five constrained learning-library tools. The package has no
- * filesystem, shell, or generic database capability. The host bridge owns
- * scope and may allow a new note to be created or an exact current version to
- * be updated; it never exposes force-overwrite, move, or delete operations.
+ * 注册五个受限的学习资料库工具。该包没有文件系统、Shell 或通用数据库权限。
+ * 范围由宿主桥接层控制，可允许新建笔记或更新确切的当前版本；绝不暴露强制覆盖、移动或删除操作。
  */
 export function registerLearningLibraryTools({ ctx, defineTool, config = {}, dependencies = {} }) {
   if (!ctx?.tools?.register || typeof defineTool !== 'function') {
@@ -21,12 +21,14 @@ export function registerLearningLibraryTools({ ctx, defineTool, config = {}, dep
   }
 
   const bridge = createLearningLibraryBridge(config, dependencies)
+// register 完成当前模块定义的局部处理。
   const register = (name, description, parameters, bridgeTool) => {
     ctx.tools.register(defineTool({
       name,
       description,
       parameters,
       output: jsonOutput(),
+// execute 完成当前对象定义的局部处理。
       execute: (args) => bridge.call(bridgeTool, args),
     }))
   }

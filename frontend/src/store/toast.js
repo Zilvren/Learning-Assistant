@@ -4,11 +4,13 @@ const toasts = ref([])
 let nextId = 1
 const timers = new Map()
 
+// clearTimer 在前端状态层中维护当前状态或副作用。
 function clearTimer(state) {
   if (state?.timer) window.clearTimeout(state.timer)
   if (state) state.timer = null
 }
 
+// schedule 在前端状态层中维护当前状态或副作用。
 function schedule(id) {
   const state = timers.get(id)
   if (!state || state.reasons.size || state.remaining <= 0) return
@@ -34,6 +36,7 @@ function pause(id, reason = "interaction") {
   }
 }
 
+// resume 在前端状态层中维护当前状态或副作用。
 function resume(id, reason = "interaction") {
   const state = timers.get(id)
   if (!state) return
@@ -41,6 +44,7 @@ function resume(id, reason = "interaction") {
   if (!state.reasons.size) schedule(id)
 }
 
+// syncDocumentVisibility 在前端状态层中维护当前状态或副作用。
 function syncDocumentVisibility() {
   for (const { id } of toasts.value) {
     if (document.hidden) pause(id, "document")

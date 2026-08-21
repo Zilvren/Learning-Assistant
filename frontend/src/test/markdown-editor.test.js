@@ -7,6 +7,7 @@ import { renderMd } from "../utils/markdown.js"
 describe("MarkdownEditor", () => {
   it("embeds a selected image as base64 Markdown", async () => {
     class FakeFileReader {
+      // readAsDataURL 模拟异步读取图片数据并触发加载回调。
       readAsDataURL() {
         this.result = "data:image/png;base64,cGl4ZWw="
         this.onload()
@@ -32,6 +33,7 @@ describe("MarkdownEditor", () => {
 
   it("embeds an image pasted from the clipboard at the cursor", async () => {
     class FakeFileReader {
+      // readAsDataURL 模拟异步读取图片数据并触发加载回调。
       readAsDataURL() {
         this.result = "data:image/png;base64,cGl4ZWw="
         this.onload()

@@ -16,9 +16,7 @@ func libraryRepository(ctx context.Context) (repository.LibraryRepository, error
 	if err != nil {
 		return nil, err
 	}
-	// Browsing is strictly read-only. Legacy error-to-note migration used to run
-	// here and could recreate a note after the user had permanently deleted it.
-	// Backup/import is now the explicit migration path for both storage modes.
+	// 浏览必须严格只读。旧版错题转笔记迁移曾在此处执行，可能在用户永久删除后重新创建笔记；现在两个存储模式都通过备份导入这一显式路径迁移。
 	if err := repos.Library.Cleanup(ctx, time.Now().AddDate(0, 0, -30)); err != nil {
 		return nil, err
 	}
@@ -122,9 +120,7 @@ func PurgeLibraryItem(ctx context.Context, id int64) error {
 	if e != nil {
 		return e
 	}
-	// A library note may retain an error_problem_id for legacy compatibility,
-	// but it is not ownership. Permanently deleting a note must never delete
-	// the user's source error record.
+	// 资料库笔记可为兼容旧版而保留 error_problem_id，但它不代表所有权；永久删除笔记绝不能删除用户的源错题记录。
 	return r.Purge(ctx, id)
 }
 

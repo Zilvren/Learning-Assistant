@@ -9,6 +9,7 @@ import (
 
 type LearningRelationRepository struct{ store *Store }
 
+// List 在存储层中执行当前数据访问或局部处理。
 func (r *LearningRelationRepository) List(ctx context.Context, sourceType string, sourceID int64) ([]models.LearningRelation, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT id, from_type, from_id, to_type, to_id, label, created_at
@@ -31,6 +32,7 @@ func (r *LearningRelationRepository) List(ctx context.Context, sourceType string
 	return result, rows.Err()
 }
 
+// Create 在存储层中执行当前数据访问或局部处理。
 func (r *LearningRelationRepository) Create(ctx context.Context, relation models.LearningRelation) (models.LearningRelation, error) {
 	err := r.store.pool.QueryRow(ctx, `
 		INSERT INTO learning_relations (user_id, from_type, from_id, to_type, to_id, label)
@@ -42,6 +44,7 @@ func (r *LearningRelationRepository) Create(ctx context.Context, relation models
 	return relation, err
 }
 
+// Delete 在存储层中执行当前数据访问或局部处理。
 func (r *LearningRelationRepository) Delete(ctx context.Context, id int64) error {
 	command, err := r.store.pool.Exec(ctx, "DELETE FROM learning_relations WHERE user_id=$1 AND id=$2", r.store.userID, id)
 	if err != nil {

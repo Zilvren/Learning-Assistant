@@ -8,10 +8,12 @@ import (
 	models "study-tracker-go/internal/model"
 )
 
+// validRelationTarget 在业务层中执行当前流程或局部处理。
 func validRelationTarget(sourceType string, id int64) bool {
 	return (sourceType == "library" || sourceType == "error") && id > 0
 }
 
+// relationTargetName 在业务层中执行当前流程或局部处理。
 func relationTargetName(ctx context.Context, sourceType string, id int64) (string, error) {
 	if sourceType == "library" {
 		item, err := GetLibraryItem(ctx, id)
@@ -21,6 +23,7 @@ func relationTargetName(ctx context.Context, sourceType string, id int64) (strin
 	return problem.Title, err
 }
 
+// ListLearningRelations 在业务层中执行当前流程或局部处理。
 func ListLearningRelations(ctx context.Context, sourceType string, sourceID int64) ([]models.LearningRelation, error) {
 	if !validRelationTarget(sourceType, sourceID) {
 		return nil, fmt.Errorf("关联来源无效")
@@ -45,6 +48,7 @@ func ListLearningRelations(ctx context.Context, sourceType string, sourceID int6
 	return relations, nil
 }
 
+// CreateLearningRelation 在业务层中执行当前流程或局部处理。
 func CreateLearningRelation(ctx context.Context, relation models.LearningRelation) (models.LearningRelation, error) {
 	relation.FromType = strings.TrimSpace(relation.FromType)
 	relation.ToType = strings.TrimSpace(relation.ToType)
@@ -68,6 +72,7 @@ func CreateLearningRelation(ctx context.Context, relation models.LearningRelatio
 	return repos.Relations.Create(ctx, relation)
 }
 
+// DeleteLearningRelation 在业务层中执行当前流程或局部处理。
 func DeleteLearningRelation(ctx context.Context, id int64) error {
 	if id <= 0 {
 		return fmt.Errorf("关联 ID 无效")

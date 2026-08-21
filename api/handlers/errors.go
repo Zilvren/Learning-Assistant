@@ -43,6 +43,7 @@ func GetErrors(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"errors": errors, "total": len(errors)})
 }
 
+// GetError 在 HTTP 处理层中完成当前请求的处理与响应。
 func GetError(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {

@@ -103,9 +103,7 @@ func (r *LibraryRepository) List(ctx context.Context, filter base.LibraryFilter)
 	return result, err
 }
 
-// hasTrashedLibraryAncestor keeps a trashed folder tree together in the
-// recycle-bin view: only the deleted tree root is listed. An individually
-// deleted note whose parent is still active remains visible and recoverable.
+// hasTrashedLibraryAncestor 在回收站视图中保持已删除文件夹树的完整性：只列出被删除树的根节点；父节点仍有效而单独删除的笔记仍会显示并可恢复。
 // hasTrashedLibraryAncestor 判断条目是否位于已删除父目录的子树中。
 func hasTrashedLibraryAncestor(item models.LibraryItem, itemsByID map[int64]models.LibraryItem) bool {
 	parentID := item.ParentID
@@ -381,9 +379,7 @@ func (r *LibraryRepository) Purge(ctx context.Context, id int64) error {
 	})
 }
 
-// Batch makes the JSON implementation match PostgreSQL semantics: all input
-// is validated before the state is saved, so a failing selection is never
-// partially applied.
+// Batch 使 JSON 实现与 PostgreSQL 语义一致：保存状态前先校验全部输入，因此失败的选中项不会被部分应用。
 // Batch 原子执行资料库条目的批量移动、恢复或删除操作。
 func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int64, parentID *int64) error {
 	ids = uniqueLibraryIDs(ids)
@@ -581,9 +577,7 @@ func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, versionID in
 	if err != nil {
 		return item, err
 	}
-	// Restoring changes the current content, but it is not a new user-created
-	// checkpoint. Keep the revision token monotonic for conflict detection while
-	// leaving the visible version history unchanged.
+	// 恢复会改变当前内容，但不是用户新建的检查点；为冲突检测保持修订令牌单调递增，同时不改变可见版本历史。
 	return r.SaveContent(ctx, id, content, item.CurrentVersion, false, true)
 }
 
@@ -724,6 +718,7 @@ func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt tim
 	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
 }
 
+// ReviewWithRating 在存储层中执行当前数据访问或局部处理。
 func (r *LibraryRepository) ReviewWithRating(ctx context.Context, id int64, reviewedAt time.Time, rating string) (models.LibraryItem, error) {
 	var out models.LibraryItem
 	err := r.store.Write(ctx, func(tx *base.JSONTx) error {

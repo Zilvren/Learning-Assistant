@@ -15,6 +15,7 @@ import (
 	models "study-tracker-go/internal/model"
 )
 
+// TestHarnessSessionIDKeepsOneConversationSeparate 验证当前模块在相应场景下的行为与边界条件。
 func TestHarnessSessionIDKeepsOneConversationSeparate(t *testing.T) {
 	if got := harnessSessionID(models.AIChatRequest{HarnessSessionID: "stored-session", ConversationID: "chat-other"}); got != "stored-session" {
 		t.Fatalf("expected stored session, got %q", got)
@@ -27,6 +28,7 @@ func TestHarnessSessionIDKeepsOneConversationSeparate(t *testing.T) {
 	}
 }
 
+// TestHarnessAssistantFragmentsReadDurableAssistantMessages 验证当前模块在相应场景下的行为与边界条件。
 func TestHarnessAssistantFragmentsReadDurableAssistantMessages(t *testing.T) {
 	value := map[string]any{
 		"sessionId": "chat-1",
@@ -47,9 +49,7 @@ func TestHarnessAssistantFragmentsReadDurableAssistantMessages(t *testing.T) {
 	}
 }
 
-// This is opt-in because it boots the real pinned Harness runtime. It uses a
-// local fake DeepSeek SSE endpoint, so it never sends a request or key to the
-// network. Run with RUN_HARNESS_INTEGRATION_TEST=1 after npm install.
+// 此测试为可选项，因为它会启动固定版本的真实 Harness 运行时。它使用本地伪造的 DeepSeek SSE 端点，不会把请求或密钥发送到网络；执行 npm install 后可设置 RUN_HARNESS_INTEGRATION_TEST=1 运行。
 func TestHarnessAgentRoundTripWithLocalProvider(t *testing.T) {
 	if os.Getenv("RUN_HARNESS_INTEGRATION_TEST") != "1" {
 		t.Skip("set RUN_HARNESS_INTEGRATION_TEST=1 to run the local Harness round trip")

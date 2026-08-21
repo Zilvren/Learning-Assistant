@@ -30,12 +30,14 @@ const hour = new Date().getHours()
 const greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好"
 const today = new Date()
 
+// dateKey 在当前界面组件中完成交互或数据处理。
 function dateKey(value) {
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ""
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 }
 
+// parseDay 在当前界面组件中完成交互或数据处理。
 function parseDay(value) {
   if (!value) return null
   const [year, month, day] = String(value).slice(0, 10).split("-").map(Number)
@@ -43,10 +45,12 @@ function parseDay(value) {
   return Number.isFinite(date.getTime()) ? date : null
 }
 
+// dayDifference 在当前界面组件中完成交互或数据处理。
 function dayDifference(from, to) {
   return Math.round((to.getTime() - from.getTime()) / 86400000)
 }
 
+// streakStats 在当前界面组件中完成交互或数据处理。
 function streakStats(days) {
   const active = new Set((days || []).filter((day) => Number(day.count) > 0).map((day) => day.date))
   const ordered = [...active].sort()
@@ -115,6 +119,7 @@ const tagStats = computed(() => {
     .slice(0, 8)
 })
 
+// relativeTime 在当前界面组件中完成交互或数据处理。
 function relativeTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "最近更新"
@@ -126,6 +131,7 @@ function relativeTime(value) {
   return date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" })
 }
 
+// dueLabel 在当前界面组件中完成交互或数据处理。
 function dueLabel(item) {
   const nextReview = parseDay(item.next_review)
   if (!nextReview) return "今天"
@@ -133,6 +139,7 @@ function dueLabel(item) {
   return difference > 0 ? `逾期 ${difference} 天` : "今天"
 }
 
+// saveGoal 在当前界面组件中完成交互或数据处理。
 async function saveGoal() {
   goalBusy.value = true
   try {
@@ -144,6 +151,7 @@ async function saveGoal() {
   finally { goalBusy.value = false }
 }
 
+// recordFocus 在当前界面组件中完成交互或数据处理。
 async function recordFocus() {
   const minutes = Math.max(1, Math.min(240, Number(focusMinutes.value || 25)))
   focusBusy.value = true
@@ -157,6 +165,7 @@ async function recordFocus() {
   finally { focusBusy.value = false }
 }
 
+// toggleFocus 在当前界面组件中完成交互或数据处理。
 function toggleFocus() {
   if (focusBusy.value) return
   if (!focusRunning.value) {
@@ -172,6 +181,7 @@ function toggleFocus() {
   window.clearInterval(focusTimer)
 }
 
+// cancelFocus 在当前界面组件中完成交互或数据处理。
 function cancelFocus() { focusRunning.value = false; focusRemaining.value = 0; window.clearInterval(focusTimer) }
 
 // loadActivity 协调当前组件的状态和交互。

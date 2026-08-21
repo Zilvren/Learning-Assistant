@@ -1,7 +1,6 @@
 BEGIN;
 
--- Autosave may update one note many times in a day. Count a source item only
--- once per calendar day instead of turning keystrokes into study activity.
+-- 自动保存一天内可能多次更新同一笔记；每个源条目每个自然日只计一次，避免把击键都视为学习活动。
 CREATE OR REPLACE FUNCTION record_user_activity_event()
 RETURNS TRIGGER AS $$
 DECLARE

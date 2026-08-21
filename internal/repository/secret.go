@@ -18,10 +18,7 @@ const sealedSecretPrefix = "enc:v1:"
 
 var secretKeyMu sync.Mutex
 
-// SealSecret encrypts small application secrets before they are persisted.
-// An explicit TRACKER_ENCRYPTION_KEY is preferred. Local installations get a
-// random per-data-directory key with restrictive permissions, so encryption
-// remains stable across restarts without silently falling back to plaintext.
+// SealSecret 在持久化前加密小型应用密钥。优先使用显式的 TRACKER_ENCRYPTION_KEY；本地安装会获得按数据目录生成且权限受限的随机密钥，以便跨重启保持加密稳定且不静默降级为明文。
 // SealSecret 使用本地持久化密钥加密敏感设置值。
 func SealSecret(value string) (string, error) {
 	if value == "" || strings.HasPrefix(value, sealedSecretPrefix) {
@@ -47,8 +44,7 @@ func SealSecret(value string) (string, error) {
 	return sealedSecretPrefix + base64.RawStdEncoding.EncodeToString(append(nonce, ciphertext...)), nil
 }
 
-// OpenSecret also accepts legacy plaintext values so existing installations
-// continue to work and are upgraded the next time the setting is saved.
+// OpenSecret 同时接受旧版明文值，使现有安装继续工作，并在下次保存设置时完成升级。
 // OpenSecret 解密已加密的敏感设置值，并兼容旧版明文值。
 func OpenSecret(value string) (string, error) {
 	if value == "" || !strings.HasPrefix(value, sealedSecretPrefix) {

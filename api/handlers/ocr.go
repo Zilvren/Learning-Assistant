@@ -48,6 +48,7 @@ func OCRImage(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"task": task})
 }
 
+// ListOCRTasks 在 HTTP 处理层中完成当前请求的处理与响应。
 func ListOCRTasks(c *gin.Context) {
 	tasks, err := service.ListOCRTasks(c.Request.Context())
 	if err != nil {
@@ -57,6 +58,7 @@ func ListOCRTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks})
 }
 
+// GetOCRTask 在 HTTP 处理层中完成当前请求的处理与响应。
 func GetOCRTask(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -71,6 +73,7 @@ func GetOCRTask(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+// RetryOCRTask 在 HTTP 处理层中完成当前请求的处理与响应。
 func RetryOCRTask(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

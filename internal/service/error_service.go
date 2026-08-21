@@ -116,6 +116,7 @@ func GetAllErrors(ctx context.Context, subject, keyword, tag, reasonTag string) 
 	})
 }
 
+// GetError 在业务层中执行当前流程或局部处理。
 func GetError(ctx context.Context, id int) (models.ErrorProblem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {

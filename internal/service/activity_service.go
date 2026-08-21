@@ -72,8 +72,7 @@ func GetLearningActivity(ctx context.Context, requestedYear int) (models.Learnin
 	return result, nil
 }
 
-// recordAutomaticActivity records desktop JSON activity while PostgreSQL's
-// existing triggers keep server-side events de-duplicated at the database.
+// recordAutomaticActivity 在桌面 JSON 模式记录学习活动；PostgreSQL 模式继续由数据库触发器对服务端事件去重。
 func recordAutomaticActivity(ctx context.Context, eventType, sourceKey string, value int) error {
 	app, err := appFor(ctx)
 	if err != nil {
@@ -85,6 +84,7 @@ func recordAutomaticActivity(ctx context.Context, eventType, sourceKey string, v
 	return recordActivity(ctx, eventType, sourceKey, value)
 }
 
+// recordActivity 在业务层中执行当前流程或局部处理。
 func recordActivity(ctx context.Context, eventType, sourceKey string, value int) error {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -93,6 +93,7 @@ func recordActivity(ctx context.Context, eventType, sourceKey string, value int)
 	return repos.Activity.Record(ctx, models.ActivityEvent{Date: time.Now().Format(time.DateOnly), EventType: eventType, SourceKey: sourceKey, Value: value})
 }
 
+// normalizeDailyGoal 在业务层中执行当前流程或局部处理。
 func normalizeDailyGoal(goal models.DailyGoalSettings) models.DailyGoalSettings {
 	if goal.ReviewTarget < 0 {
 		goal.ReviewTarget = 0
@@ -115,6 +116,7 @@ func normalizeDailyGoal(goal models.DailyGoalSettings) models.DailyGoalSettings 
 	return goal
 }
 
+// summarizePlan 在业务层中执行当前流程或局部处理。
 func summarizePlan(events []models.ActivityEvent, goal models.DailyGoalSettings, date string) models.DailyPlan {
 	plan := models.DailyPlan{Date: date, Goal: goal}
 	for _, event := range events {
@@ -134,6 +136,7 @@ func summarizePlan(events []models.ActivityEvent, goal models.DailyGoalSettings,
 	return plan
 }
 
+// GetDailyPlan 在业务层中执行当前流程或局部处理。
 func GetDailyPlan(ctx context.Context) (models.DailyPlan, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -151,6 +154,7 @@ func GetDailyPlan(ctx context.Context) (models.DailyPlan, error) {
 	return summarizePlan(events, normalizeDailyGoal(config.DailyGoal), today.Format(time.DateOnly)), nil
 }
 
+// SetDailyGoal 在业务层中执行当前流程或局部处理。
 func SetDailyGoal(ctx context.Context, goal models.DailyGoalSettings) (models.DailyGoalSettings, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -163,6 +167,7 @@ func SetDailyGoal(ctx context.Context, goal models.DailyGoalSettings) (models.Da
 	return config.DailyGoal, nil
 }
 
+// RecordFocusSession 在业务层中执行当前流程或局部处理。
 func RecordFocusSession(ctx context.Context, minutes int, clientKey string) (models.DailyPlan, error) {
 	if minutes < 1 || minutes > 240 {
 		return models.DailyPlan{}, fmt.Errorf("专注时长应在 1 至 240 分钟之间")
@@ -178,6 +183,7 @@ func RecordFocusSession(ctx context.Context, minutes int, clientKey string) (mod
 	return GetDailyPlan(ctx)
 }
 
+// GetWeeklyReport 在业务层中执行当前流程或局部处理。
 func GetWeeklyReport(ctx context.Context) (models.WeeklyReport, error) {
 	today := time.Now()
 	start := time.Date(today.Year(), today.Month(), today.Day()-6, 0, 0, 0, 0, today.Location())

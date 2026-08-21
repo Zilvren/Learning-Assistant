@@ -38,9 +38,7 @@ var harnessToolGrants = struct {
 	items map[string]*harnessToolGrant
 }{items: make(map[string]*harnessToolGrant)}
 
-// NewHarnessToolGrant creates a short-lived capability for one Harness child
-// process. The value only grants access to the current user's current library
-// scope, and is never returned to the browser or written to disk.
+// NewHarnessToolGrant 为一个 Harness 子进程创建短时有效的能力令牌。该令牌只授予当前用户当前资料库范围的访问权，绝不返回给浏览器或写入磁盘。
 func NewHarnessToolGrant(ctx context.Context, request models.AIChatRequest) (string, error) {
 	scope, err := newAILibraryScope(request)
 	if err != nil {
@@ -70,14 +68,14 @@ func NewHarnessToolGrant(ctx context.Context, request models.AIChatRequest) (str
 	return token, nil
 }
 
+// RevokeHarnessToolGrant 在业务层中执行当前流程或局部处理。
 func RevokeHarnessToolGrant(token string) {
 	harnessToolGrants.Lock()
 	delete(harnessToolGrants.items, strings.TrimSpace(token))
 	harnessToolGrants.Unlock()
 }
 
-// HarnessToolUserID resolves a bearer capability for the HTTP middleware. The
-// middleware uses the result to restore the user-bound PostgreSQL repository.
+// HarnessToolUserID 为 HTTP 中间件解析 Bearer 能力令牌；中间件据此恢复绑定到用户的 PostgreSQL 仓储。
 func HarnessToolUserID(token string) (int64, error) {
 	grant, err := harnessToolGrantFor(token)
 	if err != nil {
@@ -86,6 +84,7 @@ func HarnessToolUserID(token string) (int64, error) {
 	return grant.userID, nil
 }
 
+// harnessToolGrantFor 在业务层中执行当前流程或局部处理。
 func harnessToolGrantFor(token string) (*harnessToolGrant, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -101,9 +100,7 @@ func harnessToolGrantFor(token string) (*harnessToolGrant, error) {
 	return grant, nil
 }
 
-// ConsumeHarnessSources returns the notes whose content or excerpt was sent
-// through this child process's tools. They are shown in the normal citation UI
-// without exposing anything outside the conversation scope.
+// ConsumeHarnessSources 返回通过该子进程工具发送过内容或摘要的笔记；它们会显示在常规引用界面中，且不会暴露对话范围之外的任何内容。
 func ConsumeHarnessSources(token string) []models.AIChatSource {
 	harnessToolGrants.Lock()
 	defer harnessToolGrants.Unlock()
@@ -119,9 +116,7 @@ func ConsumeHarnessSources(token string) []models.AIChatSource {
 	return result
 }
 
-// ExecuteHarnessTool is the narrow Go-side implementation behind the custom
-// Harness plugin. It has no generic filesystem: it can only create a new note
-// or save an exact current version inside the conversation's granted scope.
+// ExecuteHarnessTool 是自定义 Harness 插件背后的受限 Go 实现。它没有通用文件系统权限，只能在对话授予的范围内新建笔记或保存确切的当前版本。
 func ExecuteHarnessTool(ctx context.Context, token, tool string, args map[string]any) (any, error) {
 	grant, err := harnessToolGrantFor(token)
 	if err != nil {
@@ -143,6 +138,7 @@ func ExecuteHarnessTool(ctx context.Context, token, tool string, args map[string
 	}
 }
 
+// harnessScopedItems 在业务层中执行当前流程或局部处理。
 func harnessScopedItems(ctx context.Context, scope aiLibraryScope) ([]models.LibraryItem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -158,6 +154,7 @@ func harnessScopedItems(ctx context.Context, scope aiLibraryScope) ([]models.Lib
 	return filterAILibraryScope(items, scope)
 }
 
+// harnessListPaths 在业务层中执行当前流程或局部处理。
 func harnessListPaths(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
 	items, err := harnessScopedItems(ctx, scope)
 	if err != nil {
@@ -200,6 +197,7 @@ func harnessListPaths(ctx context.Context, scope aiLibraryScope, args map[string
 	return map[string]any{"paths": paths, "scope_limited": scope.active()}, nil
 }
 
+// harnessSearch 在业务层中执行当前流程或局部处理。
 func harnessSearch(ctx context.Context, token string, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
 	query := strings.TrimSpace(harnessStringArg(args, "query"))
 	if query == "" {
@@ -251,6 +249,7 @@ func harnessSearch(ctx context.Context, token string, scope aiLibraryScope, args
 	return map[string]any{"results": results, "scope_limited": scope.active()}, nil
 }
 
+// harnessReadNote 在业务层中执行当前流程或局部处理。
 func harnessReadNote(ctx context.Context, token string, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
 	id := int64(harnessBoundedInt(args, "item_id", 0, 1, int(^uint(0)>>1)))
 	if id <= 0 {
@@ -282,6 +281,7 @@ func harnessReadNote(ctx context.Context, token string, scope aiLibraryScope, ar
 	}, nil
 }
 
+// harnessRecordSource 在业务层中执行当前流程或局部处理。
 func harnessRecordSource(token string, item models.LibraryItem) {
 	harnessToolGrants.Lock()
 	defer harnessToolGrants.Unlock()
@@ -292,6 +292,7 @@ func harnessRecordSource(token string, item models.LibraryItem) {
 	grant.sources[item.ID] = models.AIChatSource{SourceType: "library", ID: item.ID, Title: item.Name}
 }
 
+// harnessCreateNote 在业务层中执行当前流程或局部处理。
 func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
 	targetPath := strings.TrimSpace(harnessStringArg(args, "path"))
 	content := harnessStringArg(args, "content")
@@ -325,6 +326,7 @@ func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	}, nil
 }
 
+// harnessUpdateNote 在业务层中执行当前流程或局部处理。
 func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
 	itemID := int64(harnessBoundedInt(args, "item_id", 0, 1, int(^uint(0)>>1)))
 	baseVersion, validVersion := harnessRequiredPositiveInt(args, "base_version")
@@ -359,6 +361,7 @@ func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	}, nil
 }
 
+// harnessWriteTargetAllowed 在业务层中执行当前流程或局部处理。
 func harnessWriteTargetAllowed(items []models.LibraryItem, scope aiLibraryScope, target aiNoteWriteTarget) bool {
 	if !scope.active() {
 		return true
@@ -382,6 +385,7 @@ func harnessWriteTargetAllowed(items []models.LibraryItem, scope aiLibraryScope,
 	return false
 }
 
+// harnessLibraryPath 在业务层中执行当前流程或局部处理。
 func harnessLibraryPath(items []models.LibraryItem, item models.LibraryItem) string {
 	parentPath := aiLibraryParentPath(items, item.ParentID)
 	if parentPath == "" {
@@ -390,11 +394,13 @@ func harnessLibraryPath(items []models.LibraryItem, item models.LibraryItem) str
 	return parentPath + " / " + item.Name
 }
 
+// harnessStringArg 在业务层中执行当前流程或局部处理。
 func harnessStringArg(args map[string]any, name string) string {
 	value, _ := args[name].(string)
 	return value
 }
 
+// harnessBoundedInt 在业务层中执行当前流程或局部处理。
 func harnessBoundedInt(args map[string]any, name string, fallback, minimum, maximum int) int {
 	value, exists := args[name]
 	if !exists {
@@ -420,6 +426,7 @@ func harnessBoundedInt(args map[string]any, name string, fallback, minimum, maxi
 	return number
 }
 
+// harnessRequiredPositiveInt 在业务层中执行当前流程或局部处理。
 func harnessRequiredPositiveInt(args map[string]any, name string) (int, bool) {
 	value, exists := args[name]
 	if !exists {

@@ -94,11 +94,8 @@ const visualSegments = computed(() => {
 
 watch(() => props.modelValue, (value) => {
   const next = String(value ?? "")
-  // The parent echoes editor updates back through v-model. Only ignore that
-  // echo when the visual surface already represents the same source. A plain
-  // `last emitted value` check breaks when Vue reuses this component while
-  // navigating between notes: returning to an image note then leaves the
-  // editor blank while the preview still shows the image.
+  // 父组件会通过 v-model 将编辑器更新回传。只有可视区域已表示同一份源内容时才忽略这次回传。
+  // 仅比较“最后发出的值”会在 Vue 复用组件切换笔记时失效：返回图片笔记后编辑器会空白，预览却仍显示图片。
   if (next === visualSource.value) return
   visualSource.value = next
   activeImageIndex.value = null

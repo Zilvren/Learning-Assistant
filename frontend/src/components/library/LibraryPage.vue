@@ -36,6 +36,7 @@ const sortLabel = computed(() => sortOptions.find((option) => option.value === s
 const batchPurgeMessage = computed(() => `将永久删除已选择的 ${selected.value.size} 项；其中的文件夹会连同全部内容一起删除。此操作无法撤销。`)
 const sortedItems = computed(() => {
   const [field, direction] = sort.value.split("_")
+// valueOf 在当前界面组件中完成交互或数据处理。
   const valueOf = (item) => field === "size" ? Number(item.size || 0) : Date.parse(item[`${field}_at`] || 0) || 0
   return [...items.value].sort((left, right) => {
     if (field === "size" && left.kind === "folder" !== (right.kind === "folder")) return left.kind === "folder" ? 1 : -1
@@ -79,8 +80,7 @@ async function load() {
       try {
         folder = await api.getLibraryItem(folderId.value)
       } catch {
-        // Backup restoration assigns fresh database IDs. A stale folder URL
-        // must never make a populated library look empty.
+        // 备份恢复会分配新的数据库 ID；过期的文件夹 URL 绝不能让已有内容的资料库看起来为空。
         if (requestVersion === loadVersion) {
           await router.replace({ name: props.trash ? "trash" : "library", query: route.query })
         }
@@ -133,6 +133,7 @@ function openItem(item) {
   return router.push({ name:"library-item", params:{ itemId:item.id } })
 }
 
+// openGlobalResult 在当前界面组件中完成交互或数据处理。
 function openGlobalResult(result) {
   if (result.source_type === "error") return router.push({ name: "errors", params: { id: result.id } })
   return router.push({ name: "library-item", params: { itemId: result.id } })
@@ -187,6 +188,7 @@ async function dropOnFolder(event, target) {
   }
   await forwardSelectedToFolder(target.id, ids)
 }
+// startDrag 在当前界面组件中完成交互或数据处理。
 function startDrag(event, item) {
   const ids = selected.value.has(item.id) ? [...selected.value] : [item.id]
   event.dataTransfer.effectAllowed = "move"
@@ -203,17 +205,21 @@ function toggleSelectAll() { selected.value = selected.value.size === items.valu
 async function batch(action) { const ids=[...selected.value]; if(!ids.length||deleting.value)return; const isPermanentDelete=props.trash&&action==='purge'; if(isPermanentDelete)deleting.value=true; try{await api.batchLibraryItems(action,ids);selected.value=new Set();toast.success(`已处理 ${ids.length} 项`);await load()}catch(e){toast.error(e.message)}finally{if(isPermanentDelete)deleting.value=false} }
 // requestBatch 对不可撤销的批量操作先展示明确确认，不让隐藏选择直接生效。
 function requestBatch(action) { if (props.trash && action === "purge") { batchPurgeOpen.value = true; return } void batch(action) }
+// confirmBatchPurge 在当前界面组件中完成交互或数据处理。
 async function confirmBatchPurge() { await batch("purge"); if (!deleting.value && selected.value.size === 0) batchPurgeOpen.value = false }
+// sendSelectedToAI 在当前界面组件中完成交互或数据处理。
 function sendSelectedToAI() {
   const ids = [...selected.value]
   if (!ids.length) return
   router.push({ name: "ai", query: { items: ids.join(",") } })
 }
+// loadForwardFolderOptions 在当前界面组件中完成交互或数据处理。
 async function loadForwardFolderOptions() {
   if (forwardFoldersLoading.value || forwardFolderOptions.value.length) return
   forwardFoldersLoading.value = true
   const folders = []; const seen = new Set()
   try {
+// visit 在当前界面组件中完成交互或数据处理。
     async function visit(parentID, parentPath) {
       const result = await api.getLibraryItems({ parentId: parentID, kind: "folder" })
       const children = [...(result.items || [])].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "zh-CN"))
@@ -230,10 +236,12 @@ async function loadForwardFolderOptions() {
   } catch (error) { toast.error(error.message || "目标路径读取失败") }
   finally { forwardFoldersLoading.value = false }
 }
+// toggleForwardMenu 在当前界面组件中完成交互或数据处理。
 async function toggleForwardMenu() {
   forwardMenuOpen.value = !forwardMenuOpen.value
   if (forwardMenuOpen.value && !props.trash) await loadForwardFolderOptions()
 }
+// forwardSelectedToFolder 在当前界面组件中完成交互或数据处理。
 async function forwardSelectedToFolder(parentID, providedIDs) {
   const ids = Array.isArray(providedIDs) ? providedIDs : [...selected.value]
   if (!ids.length || forwarding.value) return
@@ -248,11 +256,13 @@ async function forwardSelectedToFolder(parentID, providedIDs) {
   } catch (error) { toast.error(error.message || "移动资料失败") }
   finally { forwarding.value = false }
 }
+// forwardSelectedToAI 在当前界面组件中完成交互或数据处理。
 async function forwardSelectedToAI() {
   if (!selected.value.size || forwarding.value) return
   forwardMenuOpen.value = false
   sendSelectedToAI()
 }
+// forwardSelectedToTrash 在当前界面组件中完成交互或数据处理。
 async function forwardSelectedToTrash() {
   if (!selected.value.size || forwarding.value) return
   forwarding.value = true
@@ -272,6 +282,7 @@ function setView(next) { view.value=next; localStorage.setItem("libraryView",nex
 function toggleFilter(name) { activeFilter.value = activeFilter.value === name ? "" : name }
 // selectFilter 协调当前组件的状态和交互。
 function saveSort(field=sortField.value, direction=sortDirection.value) { const value = `${field}_${direction}`; sort.value = value; localStorage.setItem("librarySort", value) }
+// selectFilter 在当前界面组件中完成交互或数据处理。
 function selectFilter(name, value) { if (name === "kind") kind.value = value; else if (name === "tag") tag.value = value; else { selectSortOption(value); return }; activeFilter.value = "" }
 // selectSortOption 再次点击当前排序字段会在升序和降序间切换，新字段默认按降序排列。
 function selectSortOption(field) { const direction = sortField.value === field ? (sortDirection.value === "desc" ? "asc" : "desc") : field === "name" ? "asc" : "desc"; saveSort(field, direction); activeFilter.value = "" }
@@ -279,7 +290,9 @@ function selectSortOption(field) { const direction = sortField.value === field ?
 function filterByTag(value) { const next = String(value || ""); tag.value = next; const nextQuery = { ...route.query }; if (next) nextQuery.tag = next; else delete nextQuery.tag; void router.push({ name: props.trash ? "trash" : "library", params: folderId.value ? { folderId: folderId.value } : {}, query: nextQuery }) }
 // closeOverlays 点击筛选器或操作菜单之外时，统一收起浮层。
 function closeOverlays(event) { const target = event.target instanceof Element ? event.target : null; if (!target?.closest(".library-filter")) activeFilter.value = ""; if (!target?.closest(".library-menu, .library-more")) menuId.value = null; if (!target?.closest(".library-forward-control")) forwardMenuOpen.value = false }
+// syncCtrlHeld 在当前界面组件中完成交互或数据处理。
 function syncCtrlHeld(event) { ctrlHeld.value = event.ctrlKey }
+// clearCtrlHeld 在当前界面组件中完成交互或数据处理。
 function clearCtrlHeld() { ctrlHeld.value = false }
 let searchTimer
 watch(()=>route.query.tag,(value)=>{tag.value=String(value||"")})

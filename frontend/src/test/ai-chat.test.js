@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from "vue-router"
 import AIChatPage from "../components/AIChatPage.vue"
 import { api } from "../api/index.js"
 
+// createRouterForTest 为当前用例准备或验证测试场景。
 function createRouterForTest() {
   return createRouter({ history: createMemoryHistory(), routes: [
     { path: "/ai", name: "ai", component: AIChatPage },
@@ -12,6 +13,7 @@ function createRouterForTest() {
   ] })
 }
 
+// mountAIPage 为当前用例准备或验证测试场景。
 async function mountAIPage(path = "/ai") {
   const router = createRouterForTest()
   await router.push(path)
@@ -21,6 +23,7 @@ async function mountAIPage(path = "/ai") {
   return { wrapper, router }
 }
 
+// mockReadyHarness 为当前用例准备或验证测试场景。
 function mockReadyHarness() {
   vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
   vi.spyOn(api, "getAIHarnessStatus").mockResolvedValue({ enabled: true })
@@ -30,7 +33,10 @@ function mockReadyHarness() {
 }
 
 describe("Harness-only AI chat", () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    globalThis.localStorage?.clear()
+  })
 
   it("disables the assistant when the required Harness runtime is unavailable", async () => {
     vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
@@ -129,5 +135,58 @@ describe("Harness-only AI chat", () => {
         { role: "assistant", content: "先从导数符号表开始复习。" },
       ],
     }))
+  })
+
+  it("keeps the current conversation visible until the target conversation data is ready", async () => {
+    mockReadyHarness()
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
+      { id: "current", title: "当前对话", item_ids: [], messages: [{ role: "assistant", content: "当前内容" }] },
+      { id: "target", title: "目标对话", item_ids: [7], messages: [{ role: "assistant", content: "目标内容" }] },
+    ] })
+    let resolveItem
+    vi.spyOn(api, "getLibraryItem").mockImplementation(() => new Promise((resolve) => { resolveItem = resolve }))
+
+    const { wrapper } = await mountAIPage()
+    const targetButton = wrapper.findAll("button.ai-history-item").find((button) => button.text().includes("目标对话"))
+    await targetButton.trigger("click")
+
+    expect(wrapper.text()).toContain("当前内容")
+    expect(wrapper.find(".ai-chat-empty").exists()).toBe(false)
+
+    resolveItem({ id: 7, kind: "note", name: "资料" })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("目标内容")
+  })
+
+  it("archives the current conversation and automatically selects the remaining active conversation", async () => {
+    mockReadyHarness()
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
+      { id: "current", title: "当前对话", item_ids: [], messages: [{ role: "assistant", content: "当前内容" }] },
+      { id: "next", title: "下一对话", item_ids: [], messages: [{ role: "assistant", content: "下一内容" }] },
+    ] })
+    const archive = vi.spyOn(api, "archiveAIConversation").mockResolvedValue({ conversations: [
+      { id: "current", title: "当前对话", item_ids: [], messages: [{ role: "assistant", content: "当前内容" }], archived_at: "2026-08-21T00:00:00Z" },
+      { id: "next", title: "下一对话", item_ids: [], messages: [{ role: "assistant", content: "下一内容" }] },
+    ] })
+
+    const { wrapper, router } = await mountAIPage()
+    await wrapper.get('button[aria-label="当前对话 的操作"]').trigger("click")
+    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await flushPromises()
+
+    expect(archive).toHaveBeenCalledWith("current")
+    expect(wrapper.text()).toContain("下一内容")
+    expect(router.currentRoute.value.query.conversation).toBe("next")
+  })
+
+  it("can collapse the conversation list and keeps that preference in this browser", async () => {
+    mockReadyHarness()
+    const { wrapper } = await mountAIPage()
+
+    await wrapper.get('button[aria-label="隐藏对话记录"]').trigger("click")
+
+    expect(wrapper.find(".ai-history-collapsed").exists()).toBe(true)
+    expect(globalThis.localStorage.getItem("learning-assistant:ai-history-collapsed")).toBe("true")
   })
 })

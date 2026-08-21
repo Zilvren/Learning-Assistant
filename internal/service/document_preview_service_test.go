@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestZipNamesUsesNaturalNumericOrder 验证当前模块在相应场景下的行为与边界条件。
 func TestZipNamesUsesNaturalNumericOrder(t *testing.T) {
 	archive := officePreviewArchive(t, map[string]string{
 		"ppt/slides/slide10.xml": "<p/>",
@@ -22,6 +23,7 @@ func TestZipNamesUsesNaturalNumericOrder(t *testing.T) {
 	}
 }
 
+// TestValidateOfficeArchiveRejectsSuspiciousCompression 验证当前模块在相应场景下的行为与边界条件。
 func TestValidateOfficeArchiveRejectsSuspiciousCompression(t *testing.T) {
 	archive := officePreviewArchive(t, map[string]string{"word/document.xml": string(bytes.Repeat([]byte("a"), 1<<20))})
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
@@ -33,6 +35,7 @@ func TestValidateOfficeArchiveRejectsSuspiciousCompression(t *testing.T) {
 	}
 }
 
+// officePreviewArchive 验证当前模块在相应场景下的行为与边界条件。
 func officePreviewArchive(t *testing.T, entries map[string]string) []byte {
 	t.Helper()
 	var buffer bytes.Buffer

@@ -1,8 +1,6 @@
 BEGIN;
 
--- Keep creation, editing and review events distinct. Daily note targets must
--- not be satisfied by autosaves, while the heatmap can still show all study
--- activity. The source key remains one event of each kind per item per day.
+-- 区分创建、编辑和复习事件。每日笔记目标不能由自动保存完成，而热力图仍可展示所有学习活动；每个源条目每天每类事件仍只有一条。
 CREATE OR REPLACE FUNCTION record_user_activity_event()
 RETURNS TRIGGER AS $$
 DECLARE

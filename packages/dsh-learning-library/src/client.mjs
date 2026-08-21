@@ -3,11 +3,13 @@ export const DEFAULT_TOKEN_ENV = 'DSH_LEARNING_LIBRARY_CAPABILITY_TOKEN'
 export const DEFAULT_TOOL_PATH_PREFIX = '/v1/learning-library/tools'
 export const DEFAULT_REQUEST_TIMEOUT_MS = 45_000
 
+// stringOption 完成当前模块定义的局部处理。
 function stringOption(value, fallback) {
   const normalized = String(value ?? '').trim()
   return normalized || fallback
 }
 
+// environmentName 完成当前模块定义的局部处理。
 function environmentName(value, optionName) {
   const name = stringOption(value, '')
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) {
@@ -16,6 +18,7 @@ function environmentName(value, optionName) {
   return name
 }
 
+// normalizeToolPathPrefix 完成当前模块定义的局部处理。
 function normalizeToolPathPrefix(value) {
   const path = stringOption(value, DEFAULT_TOOL_PATH_PREFIX)
   if (!path.startsWith('/') || path.includes('..') || /[?#]/u.test(path)) {
@@ -24,6 +27,7 @@ function normalizeToolPathPrefix(value) {
   return path.replace(/\/+$/u, '') || '/'
 }
 
+// normalizeTimeout 完成当前模块定义的局部处理。
 function normalizeTimeout(value) {
   const timeout = Number(value ?? DEFAULT_REQUEST_TIMEOUT_MS)
   if (!Number.isFinite(timeout) || timeout < 1_000 || timeout > 120_000) {
@@ -32,6 +36,7 @@ function normalizeTimeout(value) {
   return Math.round(timeout)
 }
 
+// readBridgeURL 完成当前模块定义的局部处理。
 function readBridgeURL(env, bridgeUrlEnv) {
   const raw = String(env[bridgeUrlEnv] ?? '').trim()
   if (!raw) throw new Error(`Learning-library bridge URL is missing in ${bridgeUrlEnv}`)
@@ -56,12 +61,14 @@ function readBridgeURL(env, bridgeUrlEnv) {
   return url.toString().replace(/\/+$/u, '')
 }
 
+// readCapabilityToken 完成当前模块定义的局部处理。
 function readCapabilityToken(env, tokenEnv) {
   const token = String(env[tokenEnv] ?? '').trim()
   if (token.length < 16) throw new Error(`Learning-library capability token in ${tokenEnv} is missing or too short`)
   return token
 }
 
+// errorMessage 完成当前模块定义的局部处理。
 function errorMessage(body, fallback) {
   const detail = body?.detail
   if (typeof detail === 'string' && detail.trim()) return detail
@@ -71,14 +78,15 @@ function errorMessage(body, fallback) {
   return fallback
 }
 
+// toolURL 完成当前模块定义的局部处理。
 function toolURL(baseURL, toolPathPrefix, toolName) {
   if (!/^[a-z][a-z0-9_]*$/u.test(toolName)) throw new Error('Invalid learning-library tool name')
   return `${baseURL}${toolPathPrefix}/${encodeURIComponent(toolName)}`
 }
 
 /**
- * Creates the minimal, capability-token-protected bridge used by the plugin.
- * URL and token values are deliberately read only from the host environment.
+ * 创建供插件使用、由能力令牌保护的最小桥接层。
+ * URL 和令牌值刻意只从宿主环境读取。
  */
 export function createLearningLibraryBridge(config = {}, dependencies = {}) {
   const env = dependencies.env ?? process.env

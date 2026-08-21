@@ -1,5 +1,5 @@
--- Study Tracker PostgreSQL initial schema.
--- Target: PostgreSQL 14+
+-- 学习追踪器的 PostgreSQL 初始架构。
+-- 目标版本：PostgreSQL 14 及以上。
 
 BEGIN;
 

@@ -26,8 +26,7 @@ func RequestContext(app *service.App) gin.HandlerFunc {
 	}
 }
 
-// RequestAudit records state-changing requests and failures. Request bodies,
-// query strings, cookies, and authorization headers are intentionally omitted.
+// RequestAudit 记录改变状态的请求及失败情况；请求体、查询字符串、Cookie 和授权头会被刻意省略。
 // RequestAudit 为请求附加审计日志，记录耗时、状态和关联请求 ID。
 func RequestAudit(log *logger.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {

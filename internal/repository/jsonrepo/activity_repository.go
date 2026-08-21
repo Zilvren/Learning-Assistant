@@ -16,6 +16,7 @@ type activityState struct {
 
 type ActivityRepository struct{ store *base.JSONStore }
 
+// loadActivity 在存储层中执行当前数据访问或局部处理。
 func loadActivity(tx *base.JSONTx) (activityState, error) {
 	state := activityState{NextID: 1, Events: []models.ActivityEvent{}}
 	err := tx.Load("activity.json", &state)
@@ -28,8 +29,7 @@ func loadActivity(tx *base.JSONTx) (activityState, error) {
 	return state, err
 }
 
-// Record writes a de-duplicated local activity event, so the JSON desktop
-// mode provides the same learning heatmap signal as PostgreSQL deployments.
+// Record 写入去重的本地学习活动事件，使桌面 JSON 模式提供与 PostgreSQL 部署相同的学习热力图信号。
 func (r *ActivityRepository) Record(ctx context.Context, event models.ActivityEvent) error {
 	return r.store.Write(ctx, func(tx *base.JSONTx) error {
 		state, err := loadActivity(tx)
@@ -58,6 +58,7 @@ func (r *ActivityRepository) Record(ctx context.Context, event models.ActivityEv
 	})
 }
 
+// List 在存储层中执行当前数据访问或局部处理。
 func (r *ActivityRepository) List(ctx context.Context, startDate, endDate time.Time) ([]models.ActivityEvent, error) {
 	result := []models.ActivityEvent{}
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {

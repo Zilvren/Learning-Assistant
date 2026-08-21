@@ -20,6 +20,7 @@ const officePreviewMaxUncompressed = 60 << 20
 const officePreviewMaxEntries = 400
 const officePreviewMaxRatio = 100
 
+// GetDocumentPreview 在业务层中执行当前流程或局部处理。
 func GetDocumentPreview(ctx context.Context, id int64) (models.DocumentPreview, error) {
 	body, item, err := ReadLibraryContent(ctx, id)
 	if err != nil {
@@ -72,6 +73,7 @@ func GetDocumentPreview(ctx context.Context, id int64) (models.DocumentPreview, 
 	return preview, nil
 }
 
+// validateOfficeArchive 在业务层中执行当前流程或局部处理。
 func validateOfficeArchive(reader *zip.Reader) error {
 	if len(reader.File) > officePreviewMaxEntries {
 		return fmt.Errorf("文档包含过多内容，暂不支持在线预览")
@@ -92,6 +94,7 @@ func validateOfficeArchive(reader *zip.Reader) error {
 	return nil
 }
 
+// zipFile 在业务层中执行当前流程或局部处理。
 func zipFile(reader *zip.Reader, name string) (*zip.File, error) {
 	for _, file := range reader.File {
 		if file.Name == name {
@@ -101,6 +104,7 @@ func zipFile(reader *zip.Reader, name string) (*zip.File, error) {
 	return nil, fmt.Errorf("文档缺少 %s", filepath.Base(name))
 }
 
+// zipText 在业务层中执行当前流程或局部处理。
 func zipText(reader *zip.Reader, name, breakElement string) ([]string, error) {
 	file, err := zipFile(reader, name)
 	if err != nil {
@@ -140,6 +144,7 @@ func zipText(reader *zip.Reader, name, breakElement string) ([]string, error) {
 	return lines, nil
 }
 
+// zipNames 在业务层中执行当前流程或局部处理。
 func zipNames(reader *zip.Reader, prefix, suffix string) []string {
 	result := []string{}
 	for _, file := range reader.File {
@@ -151,6 +156,7 @@ func zipNames(reader *zip.Reader, prefix, suffix string) []string {
 	return result
 }
 
+// zipNameIndex 在业务层中执行当前流程或局部处理。
 func zipNameIndex(name string) int {
 	value := strings.TrimSuffix(filepath.Base(name), ".xml")
 	value = strings.TrimPrefix(value, "slide")
@@ -162,6 +168,7 @@ func zipNameIndex(name string) int {
 	return parsed
 }
 
+// slideNumber 在业务层中执行当前流程或局部处理。
 func slideNumber(name string) string {
 	if index := zipNameIndex(name); index > 0 {
 		return strconv.Itoa(index)
@@ -169,6 +176,7 @@ func slideNumber(name string) string {
 	return strings.TrimSuffix(filepath.Base(name), ".xml")
 }
 
+// limitLines 在业务层中执行当前流程或局部处理。
 func limitLines(lines []string, maximum int) []string {
 	if len(lines) <= maximum {
 		return lines
@@ -176,6 +184,7 @@ func limitLines(lines []string, maximum int) []string {
 	return append(append([]string{}, lines[:maximum]...), "…其余内容请下载文件查看")
 }
 
+// spreadsheetPreview 在业务层中执行当前流程或局部处理。
 func spreadsheetPreview(reader *zip.Reader) ([]models.DocumentPreviewPage, error) {
 	shared, _ := zipText(reader, "xl/sharedStrings.xml", "si")
 	pages := []models.DocumentPreviewPage{}
@@ -204,6 +213,7 @@ func spreadsheetPreview(reader *zip.Reader) ([]models.DocumentPreviewPage, error
 	return pages, nil
 }
 
+// parseSheet 在业务层中执行当前流程或局部处理。
 func parseSheet(source io.Reader, shared []string) ([][]string, error) {
 	decoder := xml.NewDecoder(io.LimitReader(source, officePreviewMaxSize))
 	rows := [][]string{}
@@ -271,6 +281,7 @@ func parseSheet(source io.Reader, shared []string) ([][]string, error) {
 	return rows, nil
 }
 
+// spreadsheetColumn 在业务层中执行当前流程或局部处理。
 func spreadsheetColumn(reference string) int {
 	column := 0
 	for _, letter := range reference {

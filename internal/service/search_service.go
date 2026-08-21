@@ -10,9 +10,7 @@ import (
 	"study-tracker-go/internal/repository"
 )
 
-// SearchLearning searches notes, files and mistakes in one request. Results
-// carry a short contextual snippet so the user can judge a match before
-// opening an item.
+// SearchLearning 在一次请求中搜索笔记、文件和错题；结果携带简短上下文片段，方便用户在打开项目之前判断是否匹配。
 func SearchLearning(ctx context.Context, query string) ([]models.SearchHit, error) {
 	query = strings.TrimSpace(query)
 	if len([]rune(query)) < 2 {
@@ -56,6 +54,7 @@ func SearchLearning(ctx context.Context, query string) ([]models.SearchHit, erro
 	return result, nil
 }
 
+// librarySubtitle 在业务层中执行当前流程或局部处理。
 func librarySubtitle(item models.LibraryItem) string {
 	if item.Kind == "note" {
 		return "笔记"
@@ -65,6 +64,8 @@ func librarySubtitle(item models.LibraryItem) string {
 	}
 	return item.MimeType
 }
+
+// libraryMatchField 在业务层中执行当前流程或局部处理。
 func libraryMatchField(item models.LibraryItem, query string) string {
 	if strings.Contains(strings.ToLower(item.Name), strings.ToLower(query)) {
 		return "标题"
@@ -76,6 +77,8 @@ func libraryMatchField(item models.LibraryItem, query string) string {
 	}
 	return "正文"
 }
+
+// errorMatchField 在业务层中执行当前流程或局部处理。
 func errorMatchField(item models.ErrorProblem, query string) string {
 	q := strings.ToLower(query)
 	if strings.Contains(strings.ToLower(item.Title), q) {
@@ -91,6 +94,8 @@ func errorMatchField(item models.ErrorProblem, query string) string {
 	}
 	return "内容"
 }
+
+// searchSnippet 在业务层中执行当前流程或局部处理。
 func searchSnippet(text, query string) string {
 	text = strings.Join(strings.Fields(text), " ")
 	if text == "" {

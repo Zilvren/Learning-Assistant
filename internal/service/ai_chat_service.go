@@ -30,25 +30,23 @@ var (
 	ErrAIInvalidScope           = errors.New("AI 资料范围无效")
 )
 
-// aiLibraryScope is the user-selected boundary that is copied into the
-// short-lived Harness capability token. The Node agent never receives direct
-// repository access.
+// aiLibraryScope 是用户选择的资料库范围，会写入短时有效的 Harness 能力令牌；Node Agent 不会直接获得仓储访问权限。
 type aiLibraryScope struct {
 	folderID *int64
 	itemIDs  []int64
 }
 
+// active 在业务层中执行当前流程或局部处理。
 func (scope aiLibraryScope) active() bool {
 	return scope.folderID != nil || len(scope.itemIDs) > 0
 }
 
-// ChatWithStudyAI is deliberately Harness-only. There is no direct
-// OpenAI-compatible DeepSeek fallback: unavailable Harness dependencies are
-// returned to the caller as ErrHarnessRuntimeUnavailable.
+// ChatWithStudyAI 只通过 Harness 运行；没有兼容 OpenAI 的 DeepSeek 直连降级路径，Harness 依赖不可用时返回 ErrHarnessRuntimeUnavailable。
 func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.AIChatResponse, error) {
 	return chatWithHarnessStudyAI(ctx, request)
 }
 
+// newAILibraryScope 在业务层中执行当前流程或局部处理。
 func newAILibraryScope(request models.AIChatRequest) (aiLibraryScope, error) {
 	scope := aiLibraryScope{folderID: request.FolderID}
 	if scope.folderID != nil && *scope.folderID <= 0 {
@@ -71,6 +69,7 @@ func newAILibraryScope(request models.AIChatRequest) (aiLibraryScope, error) {
 	return scope, nil
 }
 
+// deepSeekAPIKey 在业务层中执行当前流程或局部处理。
 func deepSeekAPIKey(ctx context.Context) (string, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -85,6 +84,7 @@ func deepSeekAPIKey(ctx context.Context) (string, error) {
 	return "", ErrDeepSeekNotConfigured
 }
 
+// deepSeekModel 在业务层中执行当前流程或局部处理。
 func deepSeekModel(ctx context.Context) (string, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -99,6 +99,7 @@ func deepSeekModel(ctx context.Context) (string, error) {
 	return deepSeekDefaultModel, nil
 }
 
+// normalizeDeepSeekModel 在业务层中执行当前流程或局部处理。
 func normalizeDeepSeekModel(model string) (string, error) {
 	switch strings.TrimSpace(model) {
 	case deepSeekFlashModel:
@@ -110,6 +111,7 @@ func normalizeDeepSeekModel(model string) (string, error) {
 	}
 }
 
+// filterAILibraryScope 在业务层中执行当前流程或局部处理。
 func filterAILibraryScope(items []models.LibraryItem, scope aiLibraryScope) ([]models.LibraryItem, error) {
 	byID := make(map[int64]models.LibraryItem, len(items))
 	for _, item := range items {
@@ -172,6 +174,7 @@ func filterAILibraryScope(items []models.LibraryItem, scope aiLibraryScope) ([]m
 	return result, nil
 }
 
+// collectAILibraryItems 在业务层中执行当前流程或局部处理。
 func collectAILibraryItems(ctx context.Context, repo repository.LibraryRepository) ([]models.LibraryItem, error) {
 	result := []models.LibraryItem{}
 	queue := []*int64{nil}
@@ -198,6 +201,7 @@ func collectAILibraryItems(ctx context.Context, repo repository.LibraryRepositor
 	return result, nil
 }
 
+// aiReadableLibraryItem 在业务层中执行当前流程或局部处理。
 func aiReadableLibraryItem(item models.LibraryItem) bool {
 	if item.Kind == "note" {
 		return true
@@ -214,6 +218,7 @@ func aiReadableLibraryItem(item models.LibraryItem) bool {
 		mimeType == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 }
 
+// aiScore 在业务层中执行当前流程或局部处理。
 func aiScore(question, text string) int {
 	text = strings.ToLower(text)
 	if text == "" {
@@ -232,6 +237,7 @@ func aiScore(question, text string) int {
 	return score
 }
 
+// aiSearchTerms 在业务层中执行当前流程或局部处理。
 func aiSearchTerms(question string) []string {
 	clean := strings.ToLower(strings.TrimSpace(question))
 	seen := map[string]bool{}
@@ -256,6 +262,7 @@ func aiSearchTerms(question string) []string {
 	return terms
 }
 
+// normalizeAIHistory 在业务层中执行当前流程或局部处理。
 func normalizeAIHistory(history []models.AIChatMessage) []models.AIChatMessage {
 	if len(history) > aiMaxHistoryMessages {
 		history = history[len(history)-aiMaxHistoryMessages:]
@@ -275,6 +282,7 @@ func normalizeAIHistory(history []models.AIChatMessage) []models.AIChatMessage {
 	return result
 }
 
+// aiHistoryTranscript 在业务层中执行当前流程或局部处理。
 func aiHistoryTranscript(history []models.AIChatMessage) string {
 	parts := make([]string, 0, len(history))
 	for _, item := range history {
@@ -283,6 +291,7 @@ func aiHistoryTranscript(history []models.AIChatMessage) string {
 	return strings.Join(parts, "\n\n")
 }
 
+// aiHistoryLine 在业务层中执行当前流程或局部处理。
 func aiHistoryLine(item models.AIChatMessage) string {
 	role := "用户"
 	if item.Role == "assistant" {
@@ -291,6 +300,7 @@ func aiHistoryLine(item models.AIChatMessage) string {
 	return role + "：" + item.Content
 }
 
+// aiApproxTokens 在业务层中执行当前流程或局部处理。
 func aiApproxTokens(value string) int {
 	asciiRun := 0
 	tokens := 0
@@ -312,6 +322,7 @@ func aiApproxTokens(value string) int {
 	return tokens
 }
 
+// aiBoundedText 在业务层中执行当前流程或局部处理。
 func aiBoundedText(value string, maximum int) string {
 	if maximum <= 0 {
 		return ""
@@ -327,6 +338,7 @@ func aiBoundedText(value string, maximum int) string {
 	return string(runes[:maximum-1]) + "…"
 }
 
+// aiBoundedTokens 在业务层中执行当前流程或局部处理。
 func aiBoundedTokens(value string, maximum int) string {
 	if maximum <= 0 {
 		return ""

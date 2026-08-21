@@ -15,9 +15,7 @@ type rateWindow struct {
 	count   int
 }
 
-// RateLimit provides a small in-process guard for public authentication and
-// mail endpoints. It deliberately fails closed per client IP and periodically
-// removes idle entries to avoid an unbounded map.
+// RateLimit 为公开认证和邮件接口提供轻量的进程内保护。它按客户端 IP 采取默认拒绝策略，并定期清理空闲条目以避免映射无限增长。
 // RateLimit 创建按客户端 IP 限制请求频率的 Gin 中间件。
 func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	if limit < 1 {

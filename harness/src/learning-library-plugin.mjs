@@ -4,9 +4,7 @@ import { pluginName, registerLearningLibraryTools } from '../../packages/dsh-lea
 export const name = pluginName
 export const inject = ['tools']
 
-// Local adapter until the npm package is published. It keeps the project on
-// the same generic bridge contract while resolving the Harness peer dependency
-// from this deployment's node_modules.
+// 在 npm 包发布前使用本地适配器。它让项目遵循相同的通用桥接约定，同时从本次部署的 node_modules 解析 Harness 对等依赖。
 export function apply(ctx, config = {}) {
   return registerLearningLibraryTools({ ctx, defineTool, config })
 }

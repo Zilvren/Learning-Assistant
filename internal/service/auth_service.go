@@ -75,8 +75,7 @@ func AuthStatusResponse(ctx context.Context) (AuthStatus, error) {
 	}, nil
 }
 
-// UpdateEnabled is limited to the desktop JSON mode. Production releases are
-// deployed by the server pipeline instead of downloading a client updater.
+// UpdateEnabled 仅在桌面 JSON 模式下启用；生产版本由服务器发布流程部署，而非下载客户端更新器。
 // UpdateEnabled 返回当前认证开关是否已启用。
 func UpdateEnabled(ctx context.Context) bool {
 	app, err := appFor(ctx)

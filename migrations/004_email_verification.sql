@@ -15,7 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_active
   ON email_verification_tokens(user_id, created_at DESC)
   WHERE consumed_at IS NULL;
 
--- Existing accounts predate email verification and retain access.
+-- 现有账户早于邮件验证机制创建，因此保留其访问权限。
 UPDATE users
 SET email_verified_at = COALESCE(last_login_at, created_at)
 WHERE email IS NOT NULL AND email_verified_at IS NULL;

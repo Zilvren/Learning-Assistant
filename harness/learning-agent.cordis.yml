@@ -1,9 +1,7 @@
-# Restricted DeepSeek Harness composition for the learning assistant.
+# 面向学习助手的受限 DeepSeek Harness 组合配置。
 #
-# This is intentionally not the coding-agent example: it mounts no filesystem,
-# shell, subprocess, web, or generic edit tools. The model can only call the
-# learning-library plugin below, which talks back to the Go application through
-# a short-lived, conversation-scoped capability token.
+# 此配置刻意不是编程 Agent 示例：它不挂载文件系统、Shell、子进程、Web 或通用编辑工具。
+# 模型只能调用下方的学习资料库插件；插件通过短时有效、限定对话范围的能力令牌回连 Go 应用。
 
 - id: sdk-jsonrpc-server
   name: '@deepseek-ai/dsh-sdk-jsonrpc-server'

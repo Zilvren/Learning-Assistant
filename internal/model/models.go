@@ -44,8 +44,7 @@ type CreateLibraryItemRequest struct {
 	MimeType      string   `json:"mime_type"`
 	Tags          []string `json:"tags"`
 	ReviewEnabled bool     `json:"review_enabled"`
-	// ErrorProblemID is reserved for the internal legacy-error bridge.  It must
-	// never be accepted from the public create-item API.
+	// ErrorProblemID 保留给内部旧版错题桥接，绝不能从公开的创建条目 API 接收。
 	ErrorProblemID *int `json:"-"`
 }
 
@@ -54,8 +53,7 @@ type UpdateLibraryItemRequest struct {
 	Tags     *[]string `json:"tags"`
 	Pinned   *bool     `json:"pinned"`
 	ParentID *int64    `json:"parent_id"`
-	// ParentSet distinguishes an omitted parent_id from an explicit JSON null.
-	// The latter means “move to the root folder”.
+	// ParentSet 用于区分省略 parent_id 与显式 JSON null；后者表示“移动到根文件夹”。
 	ParentSet     bool   `json:"-"`
 	Conflict      string `json:"conflict"`
 	ReviewEnabled *bool  `json:"review_enabled"`
@@ -126,8 +124,7 @@ type Config struct {
 	DailyGoal       DailyGoalSettings       `json:"daily_goal"`
 }
 
-// DailyGoalSettings keeps the user's repeatable daily study targets. A zero
-// value is intentionally valid so existing installs can opt in gradually.
+// DailyGoalSettings 保存用户可重复执行的每日学习目标。零值被刻意视为有效，以便现有安装逐步启用。
 type DailyGoalSettings struct {
 	ReviewTarget       int `json:"review_target"`
 	FocusTargetMinutes int `json:"focus_target_minutes"`
@@ -138,8 +135,7 @@ type ReviewRequest struct {
 	Rating string `json:"rating"`
 }
 
-// NormalizeReviewRating accepts the four choices exposed by the review UI and
-// keeps old clients compatible by treating an omitted value as "good".
+// NormalizeReviewRating 接受复习界面提供的四个选项，并将省略值视为“good”以兼容旧客户端。
 func NormalizeReviewRating(value string) string {
 	switch value {
 	case "again", "hard", "good", "easy":
@@ -149,8 +145,7 @@ func NormalizeReviewRating(value string) string {
 	}
 }
 
-// NextReview schedules a simple, transparent spaced-repetition progression.
-// A rating changes the stage rather than merely marking every review complete.
+// NextReview 安排简单透明的间隔重复进程；评分会改变阶段，而不是只把每次复习标为完成。
 func NextReview(stage, count int, rating string, reviewedAt time.Time) (nextStage, nextCount int, nextReview string) {
 	rating = NormalizeReviewRating(rating)
 	nextCount = count + 1
@@ -251,17 +246,13 @@ type DocumentPreviewPage struct {
 	Rows  [][]string `json:"rows,omitempty"`
 }
 
-// AIChatMessage is application-level conversation history. It deliberately
-// contains no provider-specific fields; the DeepSeek request itself is built
-// by the official OpenAI client in the service layer.
+// AIChatMessage 是应用级对话历史。它刻意不包含提供商专属字段；实际的 DeepSeek 请求由业务层中的官方 OpenAI 客户端构建。
 type AIChatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// AIConversationMessage is the durable representation used to restore an AI
-// chat in the browser. It keeps display-only metadata separate from the small
-// provider history sent in AIChatRequest.
+// AIConversationMessage 是在浏览器中恢复 AI 对话时使用的持久化表示；它将仅展示的元数据与 AIChatRequest 发送的精简提供商历史分离。
 type AIConversationMessage struct {
 	Role       string         `json:"role"`
 	Content    string         `json:"content"`
@@ -271,9 +262,7 @@ type AIConversationMessage struct {
 	Incomplete bool           `json:"incomplete,omitempty"`
 }
 
-// AIConversation is one independently scoped, durable AI chat. Each record
-// owns its messages and library scope so switching conversations never leaks
-// a previous chat's context into the next request.
+// AIConversation 是一个范围独立且可持久化的 AI 对话。每条记录拥有自己的消息和资料范围，因此切换对话不会将前一对话的上下文泄露到下一次请求。
 type AIConversation struct {
 	ID               string                  `json:"id"`
 	Title            string                  `json:"title"`
@@ -281,6 +270,7 @@ type AIConversation struct {
 	ItemIDs          []int64                 `json:"item_ids,omitempty"`
 	Messages         []AIConversationMessage `json:"messages"`
 	HarnessSessionID string                  `json:"harness_session_id,omitempty"`
+	ArchivedAt       *time.Time              `json:"archived_at,omitempty"`
 }
 
 type AIChatRequest struct {
@@ -307,8 +297,7 @@ type AIChatResponse struct {
 	HarnessSessionID string         `json:"harness_session_id,omitempty"`
 }
 
-// HarnessStatus reports whether the required Agent runtime is ready. The AI
-// feature has no alternate direct-provider path.
+// HarnessStatus 报告所需 Agent 运行时是否就绪；AI 功能没有备用的直接提供商路径。
 type HarnessStatus struct {
 	Enabled bool   `json:"enabled"`
 	Reason  string `json:"reason,omitempty"`

@@ -33,15 +33,14 @@ var harnessBridge = struct {
 	url string
 }{}
 
-// SetHarnessBridgeURL records the loopback address that the child process can
-// use for its deliberately limited tool bridge. It is set after the HTTP
-// listener has selected its final port.
+// SetHarnessBridgeURL 记录子进程可用于受限工具桥的回环地址；该地址会在 HTTP 监听器确定最终端口后设置。
 func SetHarnessBridgeURL(value string) {
 	harnessBridge.Lock()
 	harnessBridge.url = strings.TrimRight(strings.TrimSpace(value), "/")
 	harnessBridge.Unlock()
 }
 
+// harnessBridgeURL 在业务层中执行当前流程或局部处理。
 func harnessBridgeURL() string {
 	harnessBridge.RLock()
 	defer harnessBridge.RUnlock()
@@ -56,9 +55,7 @@ type harnessRuntimeConfig struct {
 	bridgeURL   string
 }
 
-// HarnessRuntimeStatus is the AI feature readiness check. Harness is the only
-// supported AI runtime, so a missing local Agent is surfaced to the UI instead
-// of falling back to a direct provider call.
+// HarnessRuntimeStatus 用于检查 AI 功能是否就绪。Harness 是唯一受支持的 AI 运行时，因此本地 Agent 缺失时会反馈给界面，而不会降级为直接调用提供商。
 func HarnessRuntimeStatus(ctx context.Context) models.HarnessStatus {
 	if _, err := harnessRuntimeConfigFor(ctx); err != nil {
 		return models.HarnessStatus{Reason: err.Error()}
@@ -66,6 +63,7 @@ func HarnessRuntimeStatus(ctx context.Context) models.HarnessStatus {
 	return models.HarnessStatus{Enabled: true}
 }
 
+// harnessRuntimeConfigFor 在业务层中执行当前流程或局部处理。
 func harnessRuntimeConfigFor(ctx context.Context) (harnessRuntimeConfig, error) {
 	cfg, err := currentConfig(ctx)
 	if err != nil {
@@ -118,9 +116,7 @@ func harnessRuntimeConfigFor(ctx context.Context) (harnessRuntimeConfig, error) 
 	}, nil
 }
 
-// chatWithHarnessStudyAI uses DeepSeek's official JSON-RPC agent runtime. It
-// gives the runtime a conversation-specific session identifier, not a generic
-// filesystem workspace, so separate chats cannot share private context.
+// chatWithHarnessStudyAI 使用 DeepSeek 官方 JSON-RPC Agent 运行时。它向运行时提供对话专属会话标识而不是通用文件系统工作区，以隔离不同对话的私有上下文。
 func chatWithHarnessStudyAI(ctx context.Context, request models.AIChatRequest) (models.AIChatResponse, error) {
 	message := strings.TrimSpace(request.Message)
 	if message == "" {
@@ -170,6 +166,7 @@ func chatWithHarnessStudyAI(ctx context.Context, request models.AIChatRequest) (
 	}, nil
 }
 
+// harnessSessionID 在业务层中执行当前流程或局部处理。
 func harnessSessionID(request models.AIChatRequest) string {
 	if validAIConversationID(strings.TrimSpace(request.HarnessSessionID)) {
 		return strings.TrimSpace(request.HarnessSessionID)
@@ -184,6 +181,7 @@ func harnessSessionID(request models.AIChatRequest) string {
 	return "harness-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
+// harnessPrompt 在业务层中执行当前流程或局部处理。
 func harnessPrompt(request models.AIChatRequest, message string) string {
 	var prompt strings.Builder
 	prompt.WriteString("You are the learner's private study assistant. Answer in the user's language. ")
@@ -229,6 +227,7 @@ type harnessRPCClient struct {
 	stderr          *bytes.Buffer
 }
 
+// runHarnessAgent 在业务层中执行当前流程或局部处理。
 func runHarnessAgent(ctx context.Context, runtime harnessRuntimeConfig, apiKey, modelName, sessionID, token, prompt string) (string, error) {
 	cmd := exec.CommandContext(ctx, runtime.nodePath, runtime.agentPath, runtime.configPath)
 	cmd.Dir = filepath.Dir(runtime.configPath)
@@ -265,8 +264,7 @@ func runHarnessAgent(ctx context.Context, runtime harnessRuntimeConfig, apiKey, 
 	}); err != nil {
 		return "", client.errorWithStderr(err)
 	}
-	// A persisted session replays its old durable events while being restored.
-	// Only collect assistant text after this prompt has started a new agent run.
+	// 恢复持久化会话时会重放旧的持久事件；只在本次提示启动新的 Agent 运行后收集助手文本。
 	client.running, client.idle, client.acceptAssistant, client.answer = false, false, false, ""
 	result, err := client.call(ctx, "session/prompt", map[string]any{
 		"sessionId":     sessionID,
@@ -287,6 +285,7 @@ func runHarnessAgent(ctx context.Context, runtime harnessRuntimeConfig, apiKey, 
 	return client.answer, nil
 }
 
+// readHarnessFrames 在业务层中执行当前流程或局部处理。
 func readHarnessFrames(reader io.Reader) (<-chan harnessRPCFrame, <-chan error) {
 	frames := make(chan harnessRPCFrame, 32)
 	errs := make(chan error, 1)
@@ -314,6 +313,7 @@ func readHarnessFrames(reader io.Reader) (<-chan harnessRPCFrame, <-chan error) 
 	return frames, errs
 }
 
+// call 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	client.nextID++
 	id := client.nextID
@@ -344,6 +344,7 @@ func (client *harnessRPCClient) call(ctx context.Context, method string, params 
 	}
 }
 
+// notify 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) notify(method string, params any) error {
 	payload, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 	if err != nil {
@@ -353,6 +354,7 @@ func (client *harnessRPCClient) notify(method string, params any) error {
 	return err
 }
 
+// nextFrame 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) nextFrame(ctx context.Context) (harnessRPCFrame, error) {
 	select {
 	case frame, ok := <-client.frames:
@@ -377,6 +379,7 @@ func (client *harnessRPCClient) nextFrame(ctx context.Context) (harnessRPCFrame,
 	}
 }
 
+// waitForIdle 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) waitForIdle(ctx context.Context) error {
 	for {
 		frame, err := client.nextFrame(ctx)
@@ -390,6 +393,7 @@ func (client *harnessRPCClient) waitForIdle(ctx context.Context) error {
 	}
 }
 
+// capture 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) capture(frame harnessRPCFrame) {
 	if strings.TrimSpace(frame.Method) == "session.status" {
 		var status struct {
@@ -410,6 +414,7 @@ func (client *harnessRPCClient) capture(frame harnessRPCFrame) {
 	}
 }
 
+// captureResult 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) captureResult(raw json.RawMessage) {
 	if len(raw) == 0 {
 		return
@@ -423,6 +428,7 @@ func (client *harnessRPCClient) captureResult(raw json.RawMessage) {
 	}
 }
 
+// harnessAssistantFragments 在业务层中执行当前流程或局部处理。
 func harnessAssistantFragments(value any, assistantContext bool) []string {
 	switch current := value.(type) {
 	case []any:
@@ -452,6 +458,7 @@ func harnessAssistantFragments(value any, assistantContext bool) []string {
 	}
 }
 
+// mergeHarnessText 在业务层中执行当前流程或局部处理。
 func mergeHarnessText(existing, incoming string) string {
 	incoming = strings.TrimSpace(incoming)
 	if incoming == "" || strings.Contains(existing, incoming) {
@@ -466,6 +473,7 @@ func mergeHarnessText(existing, incoming string) string {
 	return existing + incoming
 }
 
+// errorWithStderr 在业务层中执行当前流程或局部处理。
 func (client *harnessRPCClient) errorWithStderr(err error) error {
 	if err == nil {
 		return nil

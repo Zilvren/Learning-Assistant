@@ -27,15 +27,14 @@ var (
 	storeRegistry   = map[string]*sync.RWMutex{}
 )
 
-// JSONStore serializes access to one data directory, both within this process
-// and across different Tracker processes.
+// JSONStore 串行化对一个数据目录的访问，既覆盖当前进程内，也覆盖不同 Tracker 进程之间。
 type JSONStore struct {
 	dir         string
 	local       *sync.RWMutex
 	lockTimeout time.Duration
 }
 
-// JSONTx is valid only for the duration of a JSONStore Read or Write callback.
+// JSONTx 仅在 JSONStore 的 Read 或 Write 回调执行期间有效。
 type JSONTx struct {
 	dir      string
 	writable bool
@@ -259,9 +258,7 @@ func (tx *JSONTx) Save(filename string, value interface{}) error {
 	return writeFileAtomic(path, data, 0600)
 }
 
-// SaveAll marshals all values before replacing any file, then rolls back files
-// already replaced if a later filesystem write fails. It gives JSON backup
-// imports all-or-nothing behavior for normal I/O failures.
+// SaveAll 会在替换任何文件前序列化全部值；若后续文件系统写入失败，则回滚已替换的文件，从而使 JSON 备份导入在常规 I/O 故障下保持全有或全无。
 func (tx *JSONTx) SaveAll(values map[string]interface{}) error {
 	if !tx.writable {
 		return errors.New("JSON read transaction cannot write")
@@ -362,8 +359,7 @@ func normalizeDataDir(dir string) string {
 	return absolute
 }
 
-// LoadJSON and SaveJSON remain for compatibility. Read-modify-write callers
-// should use one JSONStore transaction instead of calling these separately.
+// LoadJSON 和 SaveJSON 为兼容性保留；读取后修改再写入的调用方应使用单个 JSONStore 事务，而非分别调用两者。
 // LoadJSON 以兼容方式读取一个 JSON 数据文件到目标对象。
 func LoadJSON(filename string, target interface{}) error {
 	return DefaultJSONStore().Read(context.Background(), func(tx *JSONTx) error {
