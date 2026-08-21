@@ -5,25 +5,32 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 import models "study-tracker-go/internal/model"
 
 const (
-	aiConversationMaxConversations = 24
-	aiConversationMaxMessages      = 160
-	aiConversationMaxRunes         = 16_000
-	aiConversationMaxScope         = 240
-	aiConversationMaxModel         = 120
-	aiConversationMaxSources       = 8
-	aiConversationMaxTitle         = 240
-	aiConversationMaxExcerpt       = 800
-	aiConversationMaxID            = 80
-	aiConversationMaxName          = 96
-	aiConversationMaxItems         = 60
+	aiConversationMaxActive   = 24
+	aiConversationMaxArchived = 100
+	aiConversationMaxMessages = 160
+	aiConversationMaxRunes    = 16_000
+	aiConversationMaxScope    = 240
+	aiConversationMaxModel    = 120
+	aiConversationMaxSources  = 8
+	aiConversationMaxTitle    = 240
+	aiConversationMaxExcerpt  = 800
+	aiConversationMaxID       = 80
+	aiConversationMaxName     = 96
+	aiConversationMaxItems    = 60
 )
 
-var ErrInvalidAIConversation = errors.New("AI 对话上下文无效")
+var (
+	ErrInvalidAIConversation       = errors.New("AI 对话上下文无效")
+	ErrAIConversationNotFound      = errors.New("AI 对话不存在")
+	ErrAIConversationActiveLimit   = errors.New("活跃对话已达上限，请先归档一条对话")
+	ErrAIConversationArchivedLimit = errors.New("归档对话已达上限，请先永久删除一条归档对话")
+)
 
 // GetAIConversation 读取当前用户保存的全部对话。每个对话独占其消息记录和资料范围，因此在界面切换对话后不会使用其他对话的资料上下文。
 func GetAIConversation(ctx context.Context) ([]models.AIConversation, error) {
@@ -44,7 +51,7 @@ func GetAIConversation(ctx context.Context) ([]models.AIConversation, error) {
 	return cloneAIConversations(config.AIConversations), nil
 }
 
-// SaveAIConversation 替换当前用户数量受限的独立对话集合。浏览器提交完整的有序列表，使 JSON 与 PostgreSQL 模式下的切换和新建对话同样安全。
+// SaveAIConversation 替换当前用户的独立对话集合，并分别校验活跃和归档对话的数量上限。
 func SaveAIConversation(ctx context.Context, conversations []models.AIConversation) ([]models.AIConversation, error) {
 	normalized, err := normalizeAIConversations(conversations)
 	if err != nil {
@@ -73,13 +80,100 @@ func ClearAIConversation(ctx context.Context) error {
 	return saveConfig(ctx, config)
 }
 
+// ArchiveAIConversation 将指定活跃对话移入归档，并由服务端记录归档时间。
+func ArchiveAIConversation(ctx context.Context, id string) ([]models.AIConversation, error) {
+	conversations, err := GetAIConversation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index, err := aiConversationIndex(conversations, id)
+	if err != nil {
+		return nil, err
+	}
+	if conversations[index].ArchivedAt != nil {
+		return conversations, nil
+	}
+	if countArchivedAIConversations(conversations) >= aiConversationMaxArchived {
+		return nil, ErrAIConversationArchivedLimit
+	}
+	now := time.Now().UTC()
+	conversations[index].ArchivedAt = &now
+	return SaveAIConversation(ctx, conversations)
+}
+
+// RestoreAIConversation 将指定归档对话恢复为活跃对话，并阻止超过活跃对话上限的恢复操作。
+func RestoreAIConversation(ctx context.Context, id string) ([]models.AIConversation, error) {
+	conversations, err := GetAIConversation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index, err := aiConversationIndex(conversations, id)
+	if err != nil {
+		return nil, err
+	}
+	if conversations[index].ArchivedAt == nil {
+		return conversations, nil
+	}
+	if countActiveAIConversations(conversations) >= aiConversationMaxActive {
+		return nil, ErrAIConversationActiveLimit
+	}
+	conversations[index].ArchivedAt = nil
+	return SaveAIConversation(ctx, conversations)
+}
+
+// DeleteArchivedAIConversation 永久删除指定归档对话，避免活跃对话被删除接口误删。
+func DeleteArchivedAIConversation(ctx context.Context, id string) ([]models.AIConversation, error) {
+	conversations, err := GetAIConversation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index, err := aiConversationIndex(conversations, id)
+	if err != nil {
+		return nil, err
+	}
+	if conversations[index].ArchivedAt == nil {
+		return nil, fmt.Errorf("%w：请先归档后再永久删除", ErrInvalidAIConversation)
+	}
+	conversations = append(conversations[:index:index], conversations[index+1:]...)
+	return SaveAIConversation(ctx, conversations)
+}
+
+// aiConversationIndex 根据会话标识定位一条已保存的对话，并统一处理非法或缺失标识。
+func aiConversationIndex(conversations []models.AIConversation, id string) (int, error) {
+	id = strings.TrimSpace(id)
+	if !validAIConversationID(id) {
+		return -1, ErrAIConversationNotFound
+	}
+	for index, conversation := range conversations {
+		if conversation.ID == id {
+			return index, nil
+		}
+	}
+	return -1, ErrAIConversationNotFound
+}
+
+// countActiveAIConversations 返回尚未归档的对话数量。
+func countActiveAIConversations(conversations []models.AIConversation) int {
+	count := 0
+	for _, conversation := range conversations {
+		if conversation.ArchivedAt == nil {
+			count++
+		}
+	}
+	return count
+}
+
+// countArchivedAIConversations 返回已归档的对话数量。
+func countArchivedAIConversations(conversations []models.AIConversation) int {
+	return len(conversations) - countActiveAIConversations(conversations)
+}
+
 // normalizeAIConversations 在业务层中执行当前流程或局部处理。
 func normalizeAIConversations(conversations []models.AIConversation) ([]models.AIConversation, error) {
-	if len(conversations) > aiConversationMaxConversations {
-		conversations = conversations[:aiConversationMaxConversations]
-	}
 	result := make([]models.AIConversation, 0, len(conversations))
 	seenIDs := make(map[string]struct{}, len(conversations))
+	activeCount := 0
+	archivedCount := 0
 	for _, conversation := range conversations {
 		id := strings.TrimSpace(conversation.ID)
 		if !validAIConversationID(id) {
@@ -98,6 +192,18 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 		if folderID != nil && *folderID <= 0 {
 			folderID = nil
 		}
+		archivedAt := normalizeAIConversationArchivedAt(conversation.ArchivedAt)
+		if archivedAt == nil {
+			activeCount++
+			if activeCount > aiConversationMaxActive {
+				return nil, ErrAIConversationActiveLimit
+			}
+		} else {
+			archivedCount++
+			if archivedCount > aiConversationMaxArchived {
+				return nil, ErrAIConversationArchivedLimit
+			}
+		}
 		result = append(result, models.AIConversation{
 			ID:               id,
 			Title:            aiConversationTitleWithFallback(conversation.Title, messages),
@@ -105,9 +211,19 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 			ItemIDs:          normalizeAIConversationItemIDs(conversation.ItemIDs),
 			Messages:         messages,
 			HarnessSessionID: normalizeAIHarnessSessionID(conversation.HarnessSessionID),
+			ArchivedAt:       archivedAt,
 		})
 	}
 	return result, nil
+}
+
+// normalizeAIConversationArchivedAt 复制归档时间并统一为 UTC，零值按未归档处理。
+func normalizeAIConversationArchivedAt(value *time.Time) *time.Time {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	normalized := value.UTC()
+	return &normalized
 }
 
 // normalizeAIHarnessSessionID 在业务层中执行当前流程或局部处理。
@@ -181,6 +297,7 @@ func cloneAIConversations(conversations []models.AIConversation) []models.AIConv
 			ItemIDs:          append([]int64(nil), conversation.ItemIDs...),
 			Messages:         append([]models.AIConversationMessage(nil), conversation.Messages...),
 			HarnessSessionID: conversation.HarnessSessionID,
+			ArchivedAt:       normalizeAIConversationArchivedAt(conversation.ArchivedAt),
 		})
 	}
 	return result

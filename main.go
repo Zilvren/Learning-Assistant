@@ -214,6 +214,9 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 		api.GET("/ai/conversation", handlers.GetAIConversation)
 		api.PUT("/ai/conversation", handlers.SaveAIConversation)
 		api.DELETE("/ai/conversation", handlers.ClearAIConversation)
+		api.POST("/ai/conversation/:id/archive", handlers.ArchiveAIConversation)
+		api.POST("/ai/conversation/:id/restore", handlers.RestoreAIConversation)
+		api.DELETE("/ai/conversation/:id", handlers.DeleteAIConversation)
 
 		//备份接口
 		api.GET("/backup/export", handlers.ExportBackup)

@@ -270,6 +270,7 @@ type AIConversation struct {
 	ItemIDs          []int64                 `json:"item_ids,omitempty"`
 	Messages         []AIConversationMessage `json:"messages"`
 	HarnessSessionID string                  `json:"harness_session_id,omitempty"`
+	ArchivedAt       *time.Time              `json:"archived_at,omitempty"`
 }
 
 type AIChatRequest struct {

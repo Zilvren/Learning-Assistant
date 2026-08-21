@@ -57,14 +57,54 @@ func SaveAIConversation(c *gin.Context) {
 	}
 	conversations, err := service.SaveAIConversation(c.Request.Context(), request.Conversations)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidAIConversation) {
-			respondProblem(c, http.StatusBadRequest, "invalid_ai_conversation", err.Error())
-			return
-		}
-		respondError(c, http.StatusInternalServerError, err)
+		respondAIConversationError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"conversations": conversations})
+}
+
+// ArchiveAIConversation 将一条活跃对话归档，归档后不会占用活跃对话数量。
+func ArchiveAIConversation(c *gin.Context) {
+	conversations, err := service.ArchiveAIConversation(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		respondAIConversationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversations": conversations})
+}
+
+// RestoreAIConversation 恢复一条归档对话；活跃对话达到上限时返回明确提示。
+func RestoreAIConversation(c *gin.Context) {
+	conversations, err := service.RestoreAIConversation(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		respondAIConversationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversations": conversations})
+}
+
+// DeleteAIConversation 永久删除一条已经归档的对话。
+func DeleteAIConversation(c *gin.Context) {
+	conversations, err := service.DeleteArchivedAIConversation(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		respondAIConversationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversations": conversations})
+}
+
+// respondAIConversationError 将对话操作的领域错误转换为前端可读且稳定的 HTTP 响应。
+func respondAIConversationError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrInvalidAIConversation):
+		respondProblem(c, http.StatusBadRequest, "invalid_ai_conversation", err.Error())
+	case errors.Is(err, service.ErrAIConversationNotFound):
+		respondProblem(c, http.StatusNotFound, "ai_conversation_not_found", err.Error())
+	case errors.Is(err, service.ErrAIConversationActiveLimit), errors.Is(err, service.ErrAIConversationArchivedLimit):
+		respondProblem(c, http.StatusConflict, "ai_conversation_limit", err.Error())
+	default:
+		respondError(c, http.StatusInternalServerError, err)
+	}
 }
 
 // ClearAIConversation 在 HTTP 处理层中完成当前请求的处理与响应。

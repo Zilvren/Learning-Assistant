@@ -236,6 +236,12 @@ export const api = {
 	getAIConversation: () => request('GET', '/ai/conversation'),
 // saveAIConversation 封装对应的后端接口调用。
 	saveAIConversation: (conversations) => request('PUT', '/ai/conversation', { conversations }),
+// archiveAIConversation 封装对应的后端接口调用。
+	archiveAIConversation: (id) => request('POST', `/ai/conversation/${encodeURIComponent(id)}/archive`),
+// restoreAIConversation 封装对应的后端接口调用。
+	restoreAIConversation: (id) => request('POST', `/ai/conversation/${encodeURIComponent(id)}/restore`),
+// deleteAIConversation 封装对应的后端接口调用。
+	deleteAIConversation: (id) => request('DELETE', `/ai/conversation/${encodeURIComponent(id)}`),
 // clearAIConversation 封装对应的后端接口调用。
 	clearAIConversation: () => request('DELETE', '/ai/conversation'),
 // saveUsername 封装对应的后端接口调用。

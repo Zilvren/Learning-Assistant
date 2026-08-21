@@ -251,7 +251,7 @@ onBeforeUnmount(() => {
     <main id="app-main-content" class="app-main" tabindex="-1" data-testid="formal-app-main">
       <RouterView v-slot="{ Component, route: currentRoute }">
         <Transition name="page-shift" mode="out-in">
-          <component :is="Component" :key="currentRoute.fullPath.split('/').slice(0, 2).join('/')" />
+          <component :is="Component" :key="currentRoute.path" />
         </Transition>
       </RouterView>
     </main>
