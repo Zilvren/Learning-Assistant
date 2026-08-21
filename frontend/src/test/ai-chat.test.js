@@ -202,6 +202,34 @@ describe("Harness-only AI chat", () => {
     expect(archive).toHaveBeenCalledWith("contextual")
   })
 
+  it("saves a non-current conversation before archiving it", async () => {
+    mockReadyHarness()
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
+      { id: "current", title: "当前对话", item_ids: [], messages: [{ role: "assistant", content: "当前内容" }] },
+      { id: "pending", title: "待归档对话", item_ids: [], messages: [{ role: "assistant", content: "待归档内容" }] },
+    ] })
+    let savedPending = false
+    vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => {
+      savedPending = conversations.some((conversation) => conversation.id === "pending")
+      return Promise.resolve({ conversations })
+    })
+    const archive = vi.spyOn(api, "archiveAIConversation").mockImplementation((id) => {
+      if (!savedPending) return Promise.reject(new Error("AI 对话不存在"))
+      return Promise.resolve({ conversations: [
+        { id: "current", title: "当前对话", item_ids: [], messages: [{ role: "assistant", content: "当前内容" }] },
+        { id, title: "待归档对话", item_ids: [], messages: [{ role: "assistant", content: "待归档内容" }], archived_at: "2026-08-21T00:00:00Z" },
+      ] })
+    })
+
+    const { wrapper } = await mountAIPage()
+    await wrapper.get('button[aria-label="待归档对话 的操作"]').trigger("click")
+    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await flushPromises()
+
+    expect(archive).toHaveBeenCalledWith("pending")
+    expect(wrapper.text()).not.toContain("待归档对话")
+  })
+
   it("does not archive a current conversation when its save fails", async () => {
     mockReadyHarness()
     vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
@@ -225,7 +253,8 @@ describe("Harness-only AI chat", () => {
 
     await wrapper.get('button[aria-label="隐藏对话记录"]').trigger("click")
 
-    expect(wrapper.find(".ai-history-collapsed").exists()).toBe(true)
+    expect(wrapper.find(".ai-history-rail.is-collapsed").exists()).toBe(true)
+    expect(wrapper.get('button[aria-label="展开对话记录"]').exists()).toBe(true)
     expect(globalThis.localStorage.getItem("learning-assistant:ai-history-collapsed")).toBe("true")
   })
 })

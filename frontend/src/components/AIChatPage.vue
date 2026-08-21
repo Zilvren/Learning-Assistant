@@ -260,8 +260,8 @@ async function archiveConversation(id) {
   historyMenuID.value = ""
   conversationOperationID.value = id
   try {
-    // 对话尚未成功写入服务端时不能继续归档，否则会造成“上下文格式错误”后又报“对话不存在”。
-    if (archivingCurrent && !(await saveConversation())) {
+    // 无论是否为当前对话，都要先同步整个集合；非当前的本地新对话此前会直接触发“AI 对话不存在”。
+    if (!(await saveConversation(false, id))) {
       toast.error("当前对话未保存，已取消归档；请刷新页面后重试")
       return
     }
@@ -463,12 +463,12 @@ function updateActiveConversation(promote = false) {
 }
 
 // saveConversation 在当前界面组件中完成交互或数据处理。
-async function saveConversation(promote = false) {
+async function saveConversation(promote = false, requiredConversationID = activeConversationID.value) {
   if (!updateActiveConversation(promote)) return false
   try {
     const result = await api.saveAIConversation(conversations.value)
-    if (!applySavedConversations(result) || !conversations.value.some((conversation) => conversation.id === activeConversationID.value)) {
-      throw new Error("服务端未确认保存当前对话")
+    if (!applySavedConversations(result) || !conversations.value.some((conversation) => conversation.id === requiredConversationID)) {
+      throw new Error("服务端未确认保存该对话")
     }
     return true
   } catch (error) {
@@ -638,38 +638,38 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
 <template>
   <div class="ai-chat-page">
     <section class="ai-workspace" :class="{ 'is-history-collapsed': historyCollapsed }" aria-label="AI 学习助手">
-      <Transition name="ai-history-rail">
-        <aside v-if="historyCollapsed" key="collapsed" class="ai-history-collapsed" aria-label="已折叠的对话记录">
-          <button type="button" title="展开对话记录" aria-label="展开对话记录" @click="toggleHistoryCollapsed"><PanelLeftOpen :size="18" /><span>展开对话记录</span></button>
-        </aside>
-        <aside v-else key="expanded" class="ai-history-rail" aria-label="当前对话记录">
-          <header class="ai-history-rail__head">
-            <div><MessageSquare :size="18" /><strong>对话记录</strong></div>
-            <div class="ai-history-rail__tools">
-              <button type="button" title="新对话" aria-label="新对话" :disabled="sending || conversationOperationPending || !conversationReady || historyView === 'archived'" @click="resetConversation"><Plus :size="17" /></button>
-              <button type="button" title="隐藏对话记录" aria-label="隐藏对话记录" @click="toggleHistoryCollapsed"><PanelLeftClose :size="17" /></button>
-            </div>
-          </header>
-          <button type="button" class="ai-history-archive-toggle" :title="historyView === 'active' ? '查看已归档对话' : '返回活跃对话'" :aria-label="historyView === 'active' ? '查看已归档对话' : '返回活跃对话'" @click="historyView = historyView === 'active' ? 'archived' : 'active'"><Archive :size="14" />{{ historyView === 'active' ? '查看已归档' : '返回活跃对话' }}</button>
-          <div class="ai-history-rail__list">
-            <p>{{ historyView === 'active' ? `活跃对话 · ${activeConversations.length}/24` : `已归档 · ${archivedConversations.length}/100` }}</p>
-            <TransitionGroup name="ai-history-row" tag="div" class="ai-history-rows">
-              <div v-for="conversation in conversationRows" :key="conversation.id" class="ai-history-item-row" :class="{ 'is-active': conversation.active, 'is-loading': conversation.loading }">
-                <button type="button" class="ai-history-item" :class="{ 'is-active': conversation.active }" :disabled="sending || conversation.archived || conversationSwitching || conversationOperationPending" @click="selectConversation(conversation.id)"><MessageSquare :size="14" /><span>{{ conversation.title }}</span><LoaderCircle v-if="conversation.loading" :size="13" /></button>
-                <button type="button" class="ai-history-item__menu-button" :aria-label="`${conversation.title} 的操作`" :aria-expanded="historyMenuID === conversation.id" :disabled="sending || conversationSwitching || conversationOperationPending" @click.stop="toggleConversationMenu(conversation.id)"><Ellipsis :size="16" /></button>
-                <div v-if="historyMenuID === conversation.id" class="ai-history-item__menu" role="menu">
-                  <button v-if="!conversation.archived" type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="archiveConversation(conversation.id)"><Archive :size="14" />归档</button>
-                  <template v-else>
-                    <button type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="restoreConversation(conversation.id)"><ArchiveRestore :size="14" />恢复</button>
-                    <button type="button" class="is-danger" role="menuitem" :disabled="conversationOperationPending" @click.stop="deleteConversation(conversation.id)"><Trash2 :size="14" />永久删除</button>
-                  </template>
-                </div>
+      <aside class="ai-history-rail" :class="{ 'is-collapsed': historyCollapsed }" :aria-label="historyCollapsed ? '已折叠的对话记录' : '当前对话记录'">
+        <Transition name="ai-history-content" mode="out-in">
+          <button v-if="historyCollapsed" key="collapsed" type="button" class="ai-history-collapsed__button" title="展开对话记录" aria-label="展开对话记录" @click="toggleHistoryCollapsed"><PanelLeftOpen :size="18" /><span>展开对话记录</span></button>
+          <div v-else key="expanded" class="ai-history-rail__content">
+            <header class="ai-history-rail__head">
+              <div><MessageSquare :size="18" /><strong>对话记录</strong></div>
+              <div class="ai-history-rail__tools">
+                <button type="button" title="新对话" aria-label="新对话" :disabled="sending || conversationOperationPending || !conversationReady || historyView === 'archived'" @click="resetConversation"><Plus :size="17" /></button>
+                <button type="button" title="隐藏对话记录" aria-label="隐藏对话记录" @click="toggleHistoryCollapsed"><PanelLeftClose :size="17" /></button>
               </div>
-            </TransitionGroup>
-            <div v-if="!conversationRows.length" class="ai-history-rail__empty"><Sparkles :size="16" /><span>{{ historyView === 'active' ? '开始一段新对话吧' : '还没有已归档的对话' }}</span></div>
+            </header>
+            <button type="button" class="ai-history-archive-toggle" :title="historyView === 'active' ? '查看已归档对话' : '返回活跃对话'" :aria-label="historyView === 'active' ? '查看已归档对话' : '返回活跃对话'" @click="historyView = historyView === 'active' ? 'archived' : 'active'"><Archive :size="14" />{{ historyView === 'active' ? '查看已归档' : '返回活跃对话' }}</button>
+            <div class="ai-history-rail__list">
+              <p>{{ historyView === 'active' ? `活跃对话 · ${activeConversations.length}/24` : `已归档 · ${archivedConversations.length}/100` }}</p>
+              <TransitionGroup name="ai-history-row" tag="div" class="ai-history-rows">
+                <div v-for="conversation in conversationRows" :key="conversation.id" class="ai-history-item-row" :class="{ 'is-active': conversation.active, 'is-loading': conversation.loading }">
+                  <button type="button" class="ai-history-item" :class="{ 'is-active': conversation.active }" :disabled="sending || conversation.archived || conversationSwitching || conversationOperationPending" @click="selectConversation(conversation.id)"><MessageSquare :size="14" /><span>{{ conversation.title }}</span><LoaderCircle v-if="conversation.loading" :size="13" /></button>
+                  <button type="button" class="ai-history-item__menu-button" :aria-label="`${conversation.title} 的操作`" :aria-expanded="historyMenuID === conversation.id" :disabled="sending || conversationSwitching || conversationOperationPending" @click.stop="toggleConversationMenu(conversation.id)"><Ellipsis :size="16" /></button>
+                  <div v-if="historyMenuID === conversation.id" class="ai-history-item__menu" role="menu">
+                    <button v-if="!conversation.archived" type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="archiveConversation(conversation.id)"><Archive :size="14" />归档</button>
+                    <template v-else>
+                      <button type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="restoreConversation(conversation.id)"><ArchiveRestore :size="14" />恢复</button>
+                      <button type="button" class="is-danger" role="menuitem" :disabled="conversationOperationPending" @click.stop="deleteConversation(conversation.id)"><Trash2 :size="14" />永久删除</button>
+                    </template>
+                  </div>
+                </div>
+              </TransitionGroup>
+              <div v-if="!conversationRows.length" class="ai-history-rail__empty"><Sparkles :size="16" /><span>{{ historyView === 'active' ? '开始一段新对话吧' : '还没有已归档的对话' }}</span></div>
+            </div>
           </div>
-        </aside>
-      </Transition>
+        </Transition>
+      </aside>
 
       <section ref="chatPanel" class="ai-chat-panel">
         <div ref="messageList" class="ai-message-list" aria-live="polite" role="log">
