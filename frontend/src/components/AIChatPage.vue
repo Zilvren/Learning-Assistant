@@ -47,16 +47,19 @@ const scopeSummary = computed(() => {
   return parts.join(" · ") || "整个资料库"
 })
 
+// readPositiveID 在当前界面组件中完成交互或数据处理。
 function readPositiveID(value) {
   const id = Number(value)
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
+// readPositiveIDs 在当前界面组件中完成交互或数据处理。
 function readPositiveIDs(value) {
   const seen = new Set()
   return String(value || "").split(",").map((item) => readPositiveID(item)).filter((id) => id && !seen.has(id) && seen.add(id)).slice(0, 60)
 }
 
+// scrollToLatest 在当前界面组件中完成交互或数据处理。
 function scrollToLatest() {
   nextTick(() => {
     const list = messageList.value
@@ -64,17 +67,20 @@ function scrollToLatest() {
   })
 }
 
+// newConversationID 在当前界面组件中完成交互或数据处理。
 function newConversationID() {
   const generated = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   return `chat-${generated}`
 }
 
+// conversationTitle 在当前界面组件中完成交互或数据处理。
 function conversationTitle(sourceMessages, fallback = "新对话") {
   const firstQuestion = sourceMessages.find((message) => message.role === "user")?.content
   const title = String(firstQuestion || "").replace(/\s+/g, " ").trim()
   return Array.from(title).slice(0, 48).join("") || fallback
 }
 
+// normalizeConversation 在当前界面组件中完成交互或数据处理。
 function normalizeConversation(conversation) {
   const id = String(conversation?.id || "")
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return null
@@ -98,6 +104,7 @@ function normalizeConversation(conversation) {
   }
 }
 
+// createConversation 在当前界面组件中完成交互或数据处理。
 function createConversation() {
   return {
     id: newConversationID(),
@@ -109,10 +116,12 @@ function createConversation() {
   }
 }
 
+// restoreMessages 在当前界面组件中完成交互或数据处理。
 function restoreMessages(conversation) {
   return (conversation.messages || []).map((message, index) => ({ ...message, id: `saved-${conversation.id}-${index}` }))
 }
 
+// syncConversationQuery 在当前界面组件中完成交互或数据处理。
 async function syncConversationQuery() {
   if (!activeConversationID.value) return
   const query = { ...route.query, conversation: activeConversationID.value }
@@ -121,6 +130,7 @@ async function syncConversationQuery() {
   await router.replace({ name: "ai", query })
 }
 
+// activateConversation 在当前界面组件中完成交互或数据处理。
 async function activateConversation(conversation, updateURL = true) {
   if (!conversation || sending.value) return
   activeConversationID.value = conversation.id
@@ -133,12 +143,14 @@ async function activateConversation(conversation, updateURL = true) {
   if (messages.value.length) scrollToLatest()
 }
 
+// selectConversation 在当前界面组件中完成交互或数据处理。
 async function selectConversation(id) {
   if (id === activeConversationID.value || sending.value) return
   const conversation = conversations.value.find((item) => item.id === id)
   if (conversation) await activateConversation(conversation)
 }
 
+// resetConversation 在当前界面组件中完成交互或数据处理。
 async function resetConversation() {
   if (sending.value) return
   composer.value = ""
@@ -153,11 +165,13 @@ async function resetConversation() {
   toast.success("已开始新的独立对话")
 }
 
+// chooseFolder 在当前界面组件中完成交互或数据处理。
 function chooseFolder(folderID) {
   folderSelection.value = folderID
   folderMenuOpen.value = false
 }
 
+// closeFolderMenu 在当前界面组件中完成交互或数据处理。
 function closeFolderMenu(event) {
   const target = event.target instanceof Element ? event.target : null
   if (!target?.closest(".ai-scope-popover")) {
@@ -166,6 +180,7 @@ function closeFolderMenu(event) {
   }
 }
 
+// closeFolderMenuOnEscape 在当前界面组件中完成交互或数据处理。
 function closeFolderMenuOnEscape(event) {
   if (event.key === "Escape") {
     folderMenuOpen.value = false
@@ -173,10 +188,12 @@ function closeFolderMenuOnEscape(event) {
   }
 }
 
+// loadFolderOptions 在当前界面组件中完成交互或数据处理。
 async function loadFolderOptions() {
   folderOptionsLoading.value = true
   const folders = []
   try {
+// visit 在当前界面组件中完成交互或数据处理。
     async function visit(parentID, parentPath) {
       const result = await api.getLibraryItems({ parentId: parentID, kind: "folder" })
       const children = [...(result.items || [])].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "zh-CN"))
@@ -202,6 +219,7 @@ async function loadFolderOptions() {
   }
 }
 
+// loadSelectedItems 在当前界面组件中完成交互或数据处理。
 async function loadSelectedItems() {
   const requestedIDs = [...selectedItemIDs.value]
   if (!requestedIDs.length) {
@@ -218,6 +236,7 @@ async function loadSelectedItems() {
   }
 }
 
+// applyFolderScope 在当前界面组件中完成交互或数据处理。
 async function applyFolderScope() {
   selectedFolderID.value = readPositiveID(folderSelection.value)
   folderMenuOpen.value = false
@@ -227,6 +246,7 @@ async function applyFolderScope() {
   toast.success(selectedFolderID.value ? `已索引路径：${selectedFolder.value?.path || "所选文件夹"}` : "已恢复为整个资料库")
 }
 
+// removeSelectedItem 在当前界面组件中完成交互或数据处理。
 async function removeSelectedItem(id) {
   selectedItemIDs.value = selectedItemIDs.value.filter((itemID) => itemID !== id)
   selectedItems.value = selectedItems.value.filter((item) => item.id !== id)
@@ -234,6 +254,7 @@ async function removeSelectedItem(id) {
   await syncConversationQuery()
 }
 
+// clearScopedContext 在当前界面组件中完成交互或数据处理。
 async function clearScopedContext() {
   selectedFolderID.value = null
   folderSelection.value = null
@@ -244,12 +265,14 @@ async function clearScopedContext() {
   toast.info("已恢复为整个资料库")
 }
 
+// historyForRequest 在当前界面组件中完成交互或数据处理。
 function historyForRequest() {
   return messages.value
     .filter((message) => message.role === "user" || message.role === "assistant")
     .map((message) => ({ role: message.role, content: message.content }))
 }
 
+// persistableMessages 在当前界面组件中完成交互或数据处理。
 function persistableMessages() {
   return messages.value
     .filter((message) => message.role === "user" || message.role === "assistant")
@@ -263,6 +286,7 @@ function persistableMessages() {
     }))
 }
 
+// updateActiveConversation 在当前界面组件中完成交互或数据处理。
 function updateActiveConversation(promote = false) {
   const currentIndex = conversations.value.findIndex((conversation) => conversation.id === activeConversationID.value)
   if (currentIndex < 0) return false
@@ -283,13 +307,13 @@ function updateActiveConversation(promote = false) {
   return true
 }
 
+// saveConversation 在当前界面组件中完成交互或数据处理。
 async function saveConversation(promote = false) {
   if (!updateActiveConversation(promote)) return
   try {
     const result = await api.saveAIConversation(conversations.value)
     const saved = Array.isArray(result?.conversations) ? result.conversations.map(normalizeConversation).filter(Boolean) : []
-    // Keep the local chat visible if an older server responds without the
-    // conversation it just accepted. The next save still reconciles it.
+    // 若旧版服务端响应未包含刚接受的对话，仍保持本地对话可见；下一次保存会继续完成同步。
     if (saved.some((conversation) => conversation.id === activeConversationID.value)) {
       conversations.value = saved
     }
@@ -298,6 +322,7 @@ async function saveConversation(promote = false) {
   }
 }
 
+// loadConversation 在当前界面组件中完成交互或数据处理。
 async function loadConversation() {
   try {
     const result = await api.getAIConversation()
@@ -313,16 +338,17 @@ async function loadConversation() {
   }
 }
 
+// ensureActiveConversation 在当前界面组件中完成交互或数据处理。
 async function ensureActiveConversation() {
   if (activeConversation.value) return
   const conversation = createConversation()
   conversations.value.unshift(conversation)
   await activateConversation(conversation)
-  // Persist immediately so the first sent message owns an independent chat
-  // even if the AI request is slow, cancelled, or fails.
+  // 立即持久化，确保首条已发送消息拥有独立对话，即使 AI 请求缓慢、被取消或失败也不受影响。
   await saveConversation()
 }
 
+// chatRequest 在当前界面组件中完成交互或数据处理。
 function chatRequest(message, history) {
   return {
     message,
@@ -334,6 +360,7 @@ function chatRequest(message, history) {
   }
 }
 
+// applyHarnessResult 在当前界面组件中完成交互或数据处理。
 function applyHarnessResult(result) {
   const sessionID = String(result?.harness_session_id || "")
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(sessionID)) return
@@ -341,6 +368,7 @@ function applyHarnessResult(result) {
   if (index >= 0) conversations.value.splice(index, 1, { ...conversations.value[index], harness_session_id: sessionID })
 }
 
+// send 在当前界面组件中完成交互或数据处理。
 async function send() {
   const content = composer.value.trim()
   if (!content || sending.value) return
@@ -369,6 +397,7 @@ async function send() {
   }
 }
 
+// continueGeneration 在当前界面组件中完成交互或数据处理。
 async function continueGeneration(message) {
   if (!message?.incomplete || sending.value || configured.value !== true) return
   const history = historyForRequest()
@@ -391,6 +420,7 @@ async function continueGeneration(message) {
   }
 }
 
+// keydown 在当前界面组件中完成交互或数据处理。
 function keydown(event) {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault()
@@ -398,10 +428,12 @@ function keydown(event) {
   }
 }
 
+// openSettings 在当前界面组件中完成交互或数据处理。
 function openSettings() {
   router.push({ name: "settings", hash: "#ai" })
 }
 
+// openSource 在当前界面组件中完成交互或数据处理。
 function openSource(source) {
   if (source.source_type === "library") {
     router.push({ name: "library-item", params: { itemId: source.id } })

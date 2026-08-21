@@ -70,8 +70,7 @@ func TestPostgresLibraryBrowsingDoesNotMigrateLegacyErrors(t *testing.T) {
 
 	base.SetDataDir(t.TempDir())
 	repos := jsonrepo.NewRepositories()
-	// Keep the in-memory test repositories while exercising PostgreSQL-mode
-	// service behaviour: browsing must not write legacy error notes.
+	// 在测试中保留内存仓储，同时验证 PostgreSQL 模式的 Service 行为：浏览不能写入旧版错题笔记。
 	if err := InitApp(config.Config{StorageDriver: "postgres"}, repos, nil); err != nil {
 		t.Fatal(err)
 	}

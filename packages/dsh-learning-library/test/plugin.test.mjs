@@ -6,6 +6,7 @@ test('registers the restricted tools as a DeepSeek Harness plugin', () => {
   const registered = []
   const context = {
     tools: {
+// register 为当前测试场景提供所需的回调或替身实现。
       register: (tool) => registered.push(tool),
     },
   }

@@ -122,9 +122,7 @@ func Load(args []string) Config {
 	return cfg
 }
 
-// Validate fails fast for unsupported or incomplete startup configuration.
-// Local JSON mode remains an explicit supported mode, while PostgreSQL mode
-// must always include a usable database URL.
+// Validate 会尽早拒绝不受支持或不完整的启动配置。本地 JSON 模式仍是明确支持的模式，而 PostgreSQL 模式必须始终包含可用的数据库 URL。
 // Validate 检查配置是否足以安全启动当前存储模式。
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Host) == "" {
@@ -230,6 +228,7 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	return duration
 }
 
+// envInt 在配置层中处理当前配置值。
 func envInt(key string, fallback int) int {
 	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
 	if err != nil {
@@ -256,10 +255,7 @@ func randomSecret() string {
 	return hex.EncodeToString(buffer[:])
 }
 
-// persistentJWTSecret keeps local PostgreSQL sessions valid across restarts
-// without requiring a development-only environment variable. Production
-// deployments should still set TRACKER_JWT_SECRET explicitly and keep it in a
-// proper secret manager.
+// persistentJWTSecret 让本地 PostgreSQL 会话跨重启保持有效，无需依赖仅用于开发的环境变量。生产部署仍应显式设置 TRACKER_JWT_SECRET，并将其保存在合适的密钥管理器中。
 // persistentJWTSecret 读取或生成开发环境可复用的 JWT 密钥。
 func persistentJWTSecret() string {
 	dir := strings.TrimSpace(os.Getenv("TRACKER_DATA_DIR"))

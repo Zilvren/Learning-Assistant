@@ -9,8 +9,7 @@ import (
 	base "study-tracker-go/internal/repository"
 )
 
-// TestPostgresLibraryMatchesQueryIncludesNoteBody verifies that note body text
-// is searchable even when it is absent from the file name and tags.
+// TestPostgresLibraryMatchesQueryIncludesNoteBody 验证即使笔记正文未出现在文件名和标签中，仍可被搜索到。
 func TestPostgresLibraryMatchesQueryIncludesNoteBody(t *testing.T) {
 	previousDataDir := base.DataDir()
 	base.SetDataDir(t.TempDir())

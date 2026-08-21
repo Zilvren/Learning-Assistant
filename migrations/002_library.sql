@@ -1,8 +1,7 @@
 BEGIN;
 
--- array_to_string is marked STABLE because it is generic over every element
--- type.  With a text[] input it is deterministic, so this concrete wrapper
--- makes the document eligible for a PostgreSQL expression index.
+-- array_to_string 被标记为 STABLE，因为它对所有元素类型都是通用的。
+-- 对 text[] 输入其结果是确定的，因此此具体包装函数可使文档用于 PostgreSQL 表达式索引。
 CREATE OR REPLACE FUNCTION library_item_search_document(item_name TEXT, item_tags TEXT[])
 RETURNS TSVECTOR
 LANGUAGE SQL

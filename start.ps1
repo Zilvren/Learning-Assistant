@@ -9,18 +9,21 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 Set-Location $Root
 
+# Require-Command 确认启动所需的外部命令可用，否则给出安装提示。
 function Require-Command($Name, $InstallHint) {
   if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
     throw "Missing command '$Name'. $InstallHint"
   }
 }
 
+# Assert-NativeSuccess 在原生命令失败时中止脚本并说明失败步骤。
 function Assert-NativeSuccess($Step) {
   if ($LASTEXITCODE -ne 0) {
     throw "$Step failed with exit code $LASTEXITCODE."
   }
 }
 
+# Test-PortAvailable 尝试监听本机端口，以判断该端口是否可供应用使用。
 function Test-PortAvailable($Port) {
   $listener = $null
   try {
@@ -36,6 +39,7 @@ function Test-PortAvailable($Port) {
   }
 }
 
+# Find-AvailablePort 从首选端口开始寻找可用端口。
 function Find-AvailablePort($PreferredPort) {
   for ($candidate = $PreferredPort; $candidate -lt ($PreferredPort + 20); $candidate++) {
     if (Test-PortAvailable $candidate) {

@@ -35,6 +35,7 @@ func GetLearningActivity(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// GetDailyPlan 在 HTTP 处理层中完成当前请求的处理与响应。
 func GetDailyPlan(c *gin.Context) {
 	result, err := service.GetDailyPlan(c.Request.Context())
 	if err != nil {
@@ -44,6 +45,7 @@ func GetDailyPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// SetDailyGoal 在 HTTP 处理层中完成当前请求的处理与响应。
 func SetDailyGoal(c *gin.Context) {
 	var goal models.DailyGoalSettings
 	if err := c.ShouldBindJSON(&goal); err != nil {
@@ -58,6 +60,7 @@ func SetDailyGoal(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// RecordFocusSession 在 HTTP 处理层中完成当前请求的处理与响应。
 func RecordFocusSession(c *gin.Context) {
 	var body struct {
 		Minutes   int    `json:"minutes"`
@@ -75,6 +78,7 @@ func RecordFocusSession(c *gin.Context) {
 	c.JSON(http.StatusCreated, result)
 }
 
+// GetWeeklyReport 在 HTTP 处理层中完成当前请求的处理与响应。
 func GetWeeklyReport(c *gin.Context) {
 	result, err := service.GetWeeklyReport(c.Request.Context())
 	if err != nil {

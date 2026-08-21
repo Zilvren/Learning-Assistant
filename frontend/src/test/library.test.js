@@ -54,8 +54,7 @@ describe("personal library", () => {
     expect(wrapper.findAll(".library-card__body strong").map((node) => node.text())).toEqual(["apple.pdf", "Zebra.pdf"])
 
     await wrapper.get('[aria-label="筛选标签 Redis"]').trigger("click")
-    // filterByTag intentionally starts router navigation without awaiting it;
-    // let the route watcher schedule its debounce before advancing fake time.
+    // filterByTag 会刻意启动路由导航而不等待它；推进模拟时间前先让路由监听器安排防抖。
     await flushPromises()
     await vi.advanceTimersByTimeAsync(250); await flushPromises()
     expect(router.currentRoute.value.query.tag).toBe("Redis")

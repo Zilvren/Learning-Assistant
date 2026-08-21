@@ -95,6 +95,7 @@ async function clearToken() {
   finally { tokenBusy.value = false }
 }
 
+// loadDeepSeekToken 在当前界面组件中完成交互或数据处理。
 async function loadDeepSeekToken() {
   try {
     const result = await api.getDeepSeekToken()
@@ -104,6 +105,7 @@ async function loadDeepSeekToken() {
   } catch (error) { toast.error(error.message || "DeepSeek 配置读取失败") }
 }
 
+// saveDeepSeekToken 在当前界面组件中完成交互或数据处理。
 async function saveDeepSeekToken() {
   if (!deepSeekToken.value.trim()) return toast.warning(deepSeekConfigured.value ? "粘贴新 API Key 后再保存" : "请输入 DeepSeek API Key")
   deepSeekBusy.value = true
@@ -116,6 +118,7 @@ async function saveDeepSeekToken() {
   finally { deepSeekBusy.value = false }
 }
 
+// clearDeepSeekToken 在当前界面组件中完成交互或数据处理。
 async function clearDeepSeekToken() {
   deepSeekBusy.value = true
   try {
@@ -127,6 +130,7 @@ async function clearDeepSeekToken() {
   finally { deepSeekBusy.value = false }
 }
 
+// saveDeepSeekModel 在当前界面组件中完成交互或数据处理。
 async function saveDeepSeekModel() {
   deepSeekModelBusy.value = true
   try {
@@ -137,11 +141,13 @@ async function saveDeepSeekModel() {
   finally { deepSeekModelBusy.value = false }
 }
 
+// formatTaskTime 在当前界面组件中完成交互或数据处理。
 function formatTaskTime(value) {
   if (!value) return "刚刚"
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value))
 }
 
+// loadOCRTasks 在当前界面组件中完成交互或数据处理。
 async function loadOCRTasks(silent = false) {
   ocrTasksBusy.value = true
   try {
@@ -152,6 +158,7 @@ async function loadOCRTasks(silent = false) {
   } finally { ocrTasksBusy.value = false }
 }
 
+// retryOCRTask 在当前界面组件中完成交互或数据处理。
 async function retryOCRTask(task) {
   try {
     await api.retryOCRTask(task.id)

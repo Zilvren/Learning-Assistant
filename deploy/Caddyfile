@@ -1,5 +1,5 @@
-# Initial IP-address deployment: HTTP is served on port 80.
-# After your domain has an ICP filing, replace ":80" with the domain name.
+# 初次使用 IP 地址部署时：通过 80 端口提供 HTTP 服务。
+# 域名完成 ICP 备案后，将“:80”替换为域名。
 :80 {
 	encode zstd gzip
 	reverse_proxy app:8000

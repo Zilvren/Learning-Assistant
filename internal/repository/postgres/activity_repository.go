@@ -9,6 +9,7 @@ import (
 
 type ActivityRepository struct{ store *Store }
 
+// Record 在存储层中执行当前数据访问或局部处理。
 func (r *ActivityRepository) Record(ctx context.Context, event models.ActivityEvent) error {
 	date := event.Date
 	if date == "" {
@@ -25,6 +26,7 @@ func (r *ActivityRepository) Record(ctx context.Context, event models.ActivityEv
 	return err
 }
 
+// List 在存储层中执行当前数据访问或局部处理。
 func (r *ActivityRepository) List(ctx context.Context, startDate, endDate time.Time) ([]models.ActivityEvent, error) {
 	rows, err := r.store.pool.Query(ctx, `
 		SELECT id, activity_date::text, event_type, coalesce(source_key, ''), value, created_at

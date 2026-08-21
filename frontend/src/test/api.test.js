@@ -26,6 +26,7 @@ describe("API errors", () => {
   })
 
   it("retries a binary backup request only once after a 401", async () => {
+// unauthorized 为当前用例准备或验证测试场景。
     const unauthorized = () => new Response(JSON.stringify({ detail: "登录已过期" }), {
       status: 401,
       headers: { "content-type": "application/json" },

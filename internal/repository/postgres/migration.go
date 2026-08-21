@@ -13,9 +13,7 @@ import (
 
 const migrationLockID int64 = 741902338
 
-// ApplyMigrations applies each embedded SQL migration exactly once. Existing
-// Docker-initialized databases predate the migration ledger, so their current
-// schema is detected and recorded before only newer migrations are executed.
+// ApplyMigrations 确保每个嵌入式 SQL 迁移只执行一次。现有 Docker 初始化数据库早于迁移账本，因此会先检测并记录其当前架构，再只执行更新的迁移。
 // ApplyMigrations 按迁移账本顺序将 PostgreSQL 架构升级到最新版本。
 func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool, migrationFS fs.FS) error {
 	entries, err := fs.ReadDir(migrationFS, ".")

@@ -69,6 +69,7 @@ func (r *verificationAuthRepository) FindRefreshToken(_ context.Context, _ strin
 	return 0, time.Time{}, true, errors.New("not implemented")
 }
 
+// ConsumeRefreshToken 验证当前模块在相应场景下的行为与边界条件。
 func (r *verificationAuthRepository) ConsumeRefreshToken(_ context.Context, _ string) (int64, time.Time, error) {
 	return 0, time.Time{}, errors.New("not implemented")
 }

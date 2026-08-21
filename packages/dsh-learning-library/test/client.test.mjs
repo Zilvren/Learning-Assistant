@@ -15,6 +15,7 @@ test('calls a configured HTTPS bridge with a bearer capability token', async () 
       TEST_BRIDGE_URL: 'https://bridge.example.test/base',
       TEST_CAPABILITY_TOKEN: token,
     },
+// fetchImpl 为当前测试场景提供所需的回调或替身实现。
     fetchImpl: async (url, init) => {
       calls.push({ url, init })
       return new Response(JSON.stringify({ result: { items: ['daily'] } }), { status: 200 })
@@ -51,6 +52,7 @@ test('reports a bridge error without exposing the capability token', async () =>
     tokenEnv: 'TEST_CAPABILITY_TOKEN',
   }, {
     env: { TEST_BRIDGE_URL: 'https://bridge.example.test', TEST_CAPABILITY_TOKEN: token },
+// fetchImpl 为当前测试场景提供所需的回调或替身实现。
     fetchImpl: async () => new Response(JSON.stringify({ detail: { message: 'Path is outside the granted scope' } }), { status: 403 }),
   })
 

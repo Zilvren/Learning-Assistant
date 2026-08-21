@@ -25,17 +25,14 @@ const (
 
 var ErrInvalidAIConversation = errors.New("AI 对话上下文无效")
 
-// GetAIConversation loads every saved chat for the current user. A chat owns
-// both its transcript and scope, so one conversation can never use another
-// conversation's library context after the user switches in the UI.
+// GetAIConversation 读取当前用户保存的全部对话。每个对话独占其消息记录和资料范围，因此在界面切换对话后不会使用其他对话的资料上下文。
 func GetAIConversation(ctx context.Context) ([]models.AIConversation, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if len(config.AIConversations) == 0 && len(config.AIChatContext) > 0 {
-		// Existing installs stored a single transcript. Preserve it as the first
-		// independent conversation rather than silently discarding its history.
+		// 旧版本只保存一份消息记录；将其保留为首个独立对话，避免静默丢弃历史内容。
 		legacy := models.AIConversation{ID: "legacy-import", Messages: config.AIChatContext}
 		legacy.Title = aiConversationTitle(legacy.Messages)
 		config.AIConversations = []models.AIConversation{legacy}
@@ -47,9 +44,7 @@ func GetAIConversation(ctx context.Context) ([]models.AIConversation, error) {
 	return cloneAIConversations(config.AIConversations), nil
 }
 
-// SaveAIConversation replaces the current user's bounded collection of
-// independent chats. The browser submits the full ordered list so switching
-// and creating chats remains equally safe in JSON and PostgreSQL modes.
+// SaveAIConversation 替换当前用户数量受限的独立对话集合。浏览器提交完整的有序列表，使 JSON 与 PostgreSQL 模式下的切换和新建对话同样安全。
 func SaveAIConversation(ctx context.Context, conversations []models.AIConversation) ([]models.AIConversation, error) {
 	normalized, err := normalizeAIConversations(conversations)
 	if err != nil {
@@ -67,6 +62,7 @@ func SaveAIConversation(ctx context.Context, conversations []models.AIConversati
 	return cloneAIConversations(normalized), nil
 }
 
+// ClearAIConversation 在业务层中执行当前流程或局部处理。
 func ClearAIConversation(ctx context.Context) error {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -77,6 +73,7 @@ func ClearAIConversation(ctx context.Context) error {
 	return saveConfig(ctx, config)
 }
 
+// normalizeAIConversations 在业务层中执行当前流程或局部处理。
 func normalizeAIConversations(conversations []models.AIConversation) ([]models.AIConversation, error) {
 	if len(conversations) > aiConversationMaxConversations {
 		conversations = conversations[:aiConversationMaxConversations]
@@ -113,6 +110,7 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 	return result, nil
 }
 
+// normalizeAIHarnessSessionID 在业务层中执行当前流程或局部处理。
 func normalizeAIHarnessSessionID(value string) string {
 	value = strings.TrimSpace(value)
 	if !validAIConversationID(value) {
@@ -121,6 +119,7 @@ func normalizeAIHarnessSessionID(value string) string {
 	return value
 }
 
+// validAIConversationID 在业务层中执行当前流程或局部处理。
 func validAIConversationID(value string) bool {
 	if value == "" || len([]rune(value)) > aiConversationMaxID {
 		return false
@@ -134,6 +133,7 @@ func validAIConversationID(value string) bool {
 	return true
 }
 
+// aiConversationTitleWithFallback 在业务层中执行当前流程或局部处理。
 func aiConversationTitleWithFallback(value string, messages []models.AIConversationMessage) string {
 	if title := boundedAIConversationText(value, aiConversationMaxName); title != "" {
 		return title
@@ -141,6 +141,7 @@ func aiConversationTitleWithFallback(value string, messages []models.AIConversat
 	return aiConversationTitle(messages)
 }
 
+// aiConversationTitle 在业务层中执行当前流程或局部处理。
 func aiConversationTitle(messages []models.AIConversationMessage) string {
 	for _, message := range messages {
 		if message.Role == "user" {
@@ -152,6 +153,7 @@ func aiConversationTitle(messages []models.AIConversationMessage) string {
 	return "新对话"
 }
 
+// normalizeAIConversationItemIDs 在业务层中执行当前流程或局部处理。
 func normalizeAIConversationItemIDs(values []int64) []int64 {
 	result := make([]int64, 0, min(len(values), aiConversationMaxItems))
 	seen := make(map[int64]struct{}, len(values))
@@ -168,6 +170,7 @@ func normalizeAIConversationItemIDs(values []int64) []int64 {
 	return result
 }
 
+// cloneAIConversations 在业务层中执行当前流程或局部处理。
 func cloneAIConversations(conversations []models.AIConversation) []models.AIConversation {
 	result := make([]models.AIConversation, 0, len(conversations))
 	for _, conversation := range conversations {
@@ -183,6 +186,7 @@ func cloneAIConversations(conversations []models.AIConversation) []models.AIConv
 	return result
 }
 
+// normalizeAIConversation 在业务层中执行当前流程或局部处理。
 func normalizeAIConversation(messages []models.AIConversationMessage) ([]models.AIConversationMessage, error) {
 	if len(messages) > aiConversationMaxMessages {
 		messages = messages[len(messages)-aiConversationMaxMessages:]
@@ -210,6 +214,7 @@ func normalizeAIConversation(messages []models.AIConversationMessage) ([]models.
 	return result, nil
 }
 
+// normalizeAIConversationSources 在业务层中执行当前流程或局部处理。
 func normalizeAIConversationSources(sources []models.AIChatSource) []models.AIChatSource {
 	result := make([]models.AIChatSource, 0, min(len(sources), aiConversationMaxSources))
 	for _, source := range sources {
@@ -226,6 +231,7 @@ func normalizeAIConversationSources(sources []models.AIChatSource) []models.AICh
 	return result
 }
 
+// boundedAIConversationText 在业务层中执行当前流程或局部处理。
 func boundedAIConversationText(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	runes := []rune(value)

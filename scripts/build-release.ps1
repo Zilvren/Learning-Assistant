@@ -23,12 +23,14 @@ $ZipPath = Join-Path $ReleaseDir "$ProductName.zip"
 $TrackerPath = Join-Path $DistDir "$ProductName.exe"
 $UpdaterPath = Join-Path $DistDir "Updater.exe"
 
+# Require-Command 确认构建所需的外部命令可用，否则给出安装提示。
 function Require-Command($Name, $InstallHint) {
   if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
     throw "Missing command '$Name'. $InstallHint"
   }
 }
 
+# Assert-NativeSuccess 在原生命令失败时中止构建并说明失败步骤。
 function Assert-NativeSuccess($Step) {
   if ($LASTEXITCODE -ne 0) {
     throw "$Step failed with exit code $LASTEXITCODE."

@@ -62,8 +62,7 @@ func main() {
 		log.Errorf("failed to start server: %v", err)
 		os.Exit(1)
 	}
-	// The Harness child process must call back only through loopback, even when
-	// the browser-facing server listens on every interface in a local network.
+	// 即使面向浏览器的服务监听本地网络中的所有网卡，Harness 子进程也只能通过回环地址回调。
 	service.SetHarnessBridgeURL(fmt.Sprintf("http://127.0.0.1:%d", port))
 
 	r := gin.New()
@@ -110,6 +109,7 @@ func setupRepositories(cfg config.Config) (repository.Repositories, *pgxpool.Poo
 // listenWithFallback 从首选端口开始尝试监听，开发环境中端口被占用时自动寻找后续可用端口。
 var listenTCP = net.Listen
 
+// listenWithFallback 完成当前模块定义的局部处理。
 func listenWithFallback(host string, preferredPort int) (net.Listener, int, error) {
 	const attempts = 20
 	for offset := 0; offset < attempts; offset++ {
@@ -163,8 +163,7 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 	r.POST("/api/auth/login", publicAuthLimit, handlers.Login)
 	r.POST("/api/auth/refresh", handlers.Refresh)
 	r.POST("/api/auth/logout", handlers.Logout)
-	// The official Harness child process has no browser cookies. This internal
-	// bridge accepts only its short-lived, conversation-scoped bearer grant.
+	// 官方 Harness 子进程没有浏览器 Cookie；此内部桥仅接受短时有效、限定对话范围的 Bearer 授权。
 	r.POST("/internal/harness/tools/:tool", middleware.HarnessToolAccess(app), handlers.HarnessTool)
 
 	//公开更新接口

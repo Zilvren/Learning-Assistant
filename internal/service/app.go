@@ -12,9 +12,7 @@ import (
 	"study-tracker-go/pkg/config"
 )
 
-// App owns the process dependencies used by services. It is immutable after
-// construction, so requests can safely share it without package-level mutable
-// state. PostgreSQL repositories are still created per request user.
+// App 持有 Service 所需的进程级依赖。构造后保持不可变，因此请求可安全共享它而无需包级可变状态；PostgreSQL 仓储仍按请求用户创建。
 type App struct {
 	config config.Config
 	repos  repository.Repositories
@@ -90,8 +88,7 @@ func AppFromContext(ctx context.Context) (*App, bool) {
 	return app, ok && app != nil
 }
 
-// legacyApp only exists for package-level compatibility in desktop helpers and
-// older unit tests. HTTP requests use ContextWithApp instead.
+// legacyApp 仅用于兼容桌面辅助逻辑和旧单元测试中的包级调用；HTTP 请求应使用 ContextWithApp。
 var legacyApp atomic.Pointer[App]
 
 // Init 是旧桌面辅助与测试的兼容入口；新的 HTTP 启动路径应使用 NewApp 和 RequestContext。

@@ -152,9 +152,7 @@ type BackupData struct {
 	Blobs     map[string][]byte
 }
 
-// LibraryBackup is the portable representation stored in library.json inside
-// a backup archive. Item and version IDs describe relationships within the
-// archive only; repositories allocate new database IDs during import.
+// LibraryBackup 是备份归档中 library.json 的可移植表示。条目和版本 ID 只描述归档内关系；导入时由仓储分配新的数据库 ID。
 type LibraryBackup struct {
 	SchemaVersion int                     `json:"schema_version"`
 	NextID        int64                   `json:"next_id"`
@@ -163,8 +161,7 @@ type LibraryBackup struct {
 	Versions      []models.LibraryVersion `json:"versions"`
 }
 
-// ActivityBackup and RelationBackup keep supplemental learning data portable
-// while preserving the JSON store's next-id state.
+// ActivityBackup 和 RelationBackup 在保留 JSON 存储下一个 ID 状态的同时，使补充学习数据可移植。
 type ActivityBackup struct {
 	NextID int64                  `json:"next_id"`
 	Events []models.ActivityEvent `json:"events"`

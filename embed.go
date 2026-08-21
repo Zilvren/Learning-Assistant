@@ -2,8 +2,7 @@ package main
 
 import "embed"
 
-// The all: prefix is required because Vite emits helper chunks whose names
-// begin with an underscore, which directory-pattern embeds skip by default.
+// 必须使用 all: 前缀，因为 Vite 会生成以下划线开头的辅助分块，而目录模式嵌入默认会跳过它们。
 //
 //go:embed all:frontend/dist
 var frontendFS embed.FS

@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from "vue-router"
 import AIChatPage from "../components/AIChatPage.vue"
 import { api } from "../api/index.js"
 
+// createRouterForTest 为当前用例准备或验证测试场景。
 function createRouterForTest() {
   return createRouter({ history: createMemoryHistory(), routes: [
     { path: "/ai", name: "ai", component: AIChatPage },
@@ -12,6 +13,7 @@ function createRouterForTest() {
   ] })
 }
 
+// mountAIPage 为当前用例准备或验证测试场景。
 async function mountAIPage(path = "/ai") {
   const router = createRouterForTest()
   await router.push(path)
@@ -21,6 +23,7 @@ async function mountAIPage(path = "/ai") {
   return { wrapper, router }
 }
 
+// mockReadyHarness 为当前用例准备或验证测试场景。
 function mockReadyHarness() {
   vi.spyOn(api, "getDeepSeekToken").mockResolvedValue({ configured: true })
   vi.spyOn(api, "getAIHarnessStatus").mockResolvedValue({ enabled: true })

@@ -72,7 +72,7 @@ func ResendEmailVerification(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, err)
 		return
 	}
-	// Do not reveal whether the address belongs to an unverified account.
+	// 不泄露该地址是否属于尚未验证的账户。
 	c.JSON(http.StatusAccepted, gin.H{"message": "如果该邮箱对应未验证账号，验证邮件已发送"})
 }
 

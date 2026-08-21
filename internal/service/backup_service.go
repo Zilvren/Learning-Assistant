@@ -44,21 +44,18 @@ func ExportBackupZip(ctx context.Context) ([]byte, string, error) {
 	return content.Bytes(), BackupFilename(), nil
 }
 
-// BackupFilename returns a portable, timestamped archive name for browser
-// downloads. Streaming callers can set this before the first ZIP byte is sent.
+// BackupFilename 返回适合浏览器下载的、带时间戳的可移植归档名称；流式调用方可在发送首个 ZIP 字节前设置它。
 func BackupFilename() string {
 	return fmt.Sprintf("study-tracker-backup-%s.zip", time.Now().Format("20060102-150405"))
 }
 
-// WriteBackupZip streams the portable backup to writer. Unlike ExportBackupZip
-// it does not retain a second full ZIP buffer in process memory.
+// WriteBackupZip 将可移植备份流式写入 writer；与 ExportBackupZip 不同，它不会在进程内存中保留第二份完整 ZIP 缓冲区。
 func WriteBackupZip(ctx context.Context, writer io.Writer) error {
 	data, err := loadBackupData(ctx)
 	if err != nil {
 		return err
 	}
-	// Credentials are deliberately not portable. Restoring a backup should
-	// never leak or overwrite the OCR token; users can reconnect it in settings.
+	// 凭据不应随备份迁移；恢复备份绝不能泄露或覆盖 OCR 令牌，用户可在设置中重新连接。
 	redactBackupCredentials(&data)
 	return writeBackupZip(writer, data)
 }
@@ -72,9 +69,7 @@ func ImportBackupZip(ctx context.Context, body []byte) (ImportBackupResult, erro
 	return restoreBackupData(ctx, data, files)
 }
 
-// ImportBackupReader keeps uploaded archives out of process memory. zip.Reader
-// needs random access, so the bounded stream is staged in an OS temp file and
-// removed immediately after validation and import.
+// ImportBackupReader 避免将上传归档留在进程内存。zip.Reader 需要随机访问，因此会将受限流暂存到操作系统临时文件，并在校验和导入后立即删除。
 // ImportBackupReader 从备份流导入用户数据，并返回导入结果摘要。
 func ImportBackupReader(ctx context.Context, input io.Reader) (ImportBackupResult, error) {
 	temp, err := os.CreateTemp("", "study-tracker-backup-*.zip")
@@ -130,9 +125,7 @@ func restoreBackupData(ctx context.Context, data store.BackupData, files []strin
 		}
 		data.Config = &portable
 	}
-	// Blob files live outside PostgreSQL. Store and verify them before creating
-	// database rows that reference their hashes, so a failed blob never leaves
-	// an imported note or file unreadable.
+	// Blob 文件位于 PostgreSQL 之外；先存储并校验 Blob，再创建引用其哈希的数据库行，避免失败的 Blob 使导入的笔记或文件无法读取。
 	for expected, body := range data.Blobs {
 		actual, _, blobErr := store.StoreBlob(bytes.NewReader(body))
 		if blobErr != nil {
@@ -170,8 +163,7 @@ func SaveCurrentBackupSnapshot(ctx context.Context, prefix string) (string, erro
 	return snapshot, nil
 }
 
-// SaveAutomaticBackupSnapshot makes at most one scheduled snapshot per day
-// and keeps only the requested number of automatic restore points.
+// SaveAutomaticBackupSnapshot 每天最多创建一个计划快照，并只保留指定数量的自动恢复点。
 func SaveAutomaticBackupSnapshot(ctx context.Context, keep int) (string, error) {
 	backupSnapshotMu.Lock()
 	defer backupSnapshotMu.Unlock()
@@ -202,6 +194,7 @@ func SaveAutomaticBackupSnapshot(ctx context.Context, keep int) (string, error) 
 	return snapshot, nil
 }
 
+// writeBackupArchive 在业务层中执行当前流程或局部处理。
 func writeBackupArchive(ctx context.Context, target string) (err error) {
 	temp, err := os.CreateTemp(filepath.Dir(target), ".backup-*.zip")
 	if err != nil {
@@ -227,6 +220,7 @@ func writeBackupArchive(ctx context.Context, target string) (err error) {
 	return replaceBackupFile(tempName, target)
 }
 
+// replaceBackupFile 在业务层中执行当前流程或局部处理。
 func replaceBackupFile(source, target string) error {
 	if err := os.Rename(source, target); err == nil {
 		return nil
@@ -237,6 +231,7 @@ func replaceBackupFile(source, target string) error {
 	return os.Rename(source, target)
 }
 
+// pruneAutomaticBackupSnapshots 在业务层中执行当前流程或局部处理。
 func pruneAutomaticBackupSnapshots(backupDir string, keep int) error {
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
@@ -305,6 +300,7 @@ func encodeBackupZip(data store.BackupData) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
+// writeBackupZip 在业务层中执行当前流程或局部处理。
 func writeBackupZip(writer io.Writer, data store.BackupData) error {
 	zw := zip.NewWriter(writer)
 	if data.Config != nil {

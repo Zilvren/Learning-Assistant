@@ -35,9 +35,7 @@ func OCRImageBytes(ctx context.Context, imageBytes []byte, fileName string) (str
 	return OCRFileBytes(ctx, imageBytes, fileName, "image/png")
 }
 
-// OCRFileBytes accepts the validated source name and MIME type from the API.
-// Keeping those values intact is essential for PDFs: sending every upload as
-// a PNG makes MinerU reject otherwise valid documents.
+// OCRFileBytes 接收 API 已校验的源文件名和 MIME 类型。保留这些值对 PDF 至关重要：若把所有上传都作为 PNG 发送，MinerU 会拒绝原本有效的文档。
 // OCRFileBytes 对上传的图片字节执行 OCR，并返回可写入笔记的识别文本。
 func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType string) (string, error) {
 	task, err := createOCRTask(ctx, imageBytes, fileName, mimeType)
@@ -54,9 +52,7 @@ func OCRFileBytes(ctx context.Context, imageBytes []byte, fileName, mimeType str
 	return completed.ResultMarkdown, nil
 }
 
-// StartOCRTask persists the upload before returning 202 to the client. The
-// actual MinerU polling then runs outside the request lifetime and can be
-// observed or retried from the OCR task center.
+// StartOCRTask 会在向客户端返回 202 前持久化上传内容；实际的 MinerU 轮询在请求生命周期外运行，可从 OCR 任务中心查看或重试。
 func StartOCRTask(ctx context.Context, imageBytes []byte, fileName, mimeType string) (repository.OCRTask, error) {
 	task, err := createOCRTask(ctx, imageBytes, fileName, mimeType)
 	if err != nil {
@@ -67,6 +63,7 @@ func StartOCRTask(ctx context.Context, imageBytes []byte, fileName, mimeType str
 	return task, nil
 }
 
+// createOCRTask 在业务层中执行当前流程或局部处理。
 func createOCRTask(ctx context.Context, imageBytes []byte, fileName, mimeType string) (repository.OCRTask, error) {
 	if len(imageBytes) == 0 || len(imageBytes) > OCRMaxUploadSize {
 		return repository.OCRTask{}, fmt.Errorf("OCR 文件必须在 1B 到 50MB 之间")
@@ -99,6 +96,7 @@ func createOCRTask(ctx context.Context, imageBytes []byte, fileName, mimeType st
 	return task, nil
 }
 
+// processOCRTask 在业务层中执行当前流程或局部处理。
 func processOCRTask(ctx context.Context, taskID int64) error {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -176,6 +174,7 @@ func processOCRTask(ctx context.Context, taskID int64) error {
 	return nil
 }
 
+// asyncOCRContext 在业务层中执行当前流程或局部处理。
 func asyncOCRContext(ctx context.Context) context.Context {
 	result := context.Background()
 	if app, err := appFor(ctx); err == nil {
@@ -187,6 +186,7 @@ func asyncOCRContext(ctx context.Context) context.Context {
 	return result
 }
 
+// GetOCRTask 在业务层中执行当前流程或局部处理。
 func GetOCRTask(ctx context.Context, id int64) (repository.OCRTask, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -195,6 +195,7 @@ func GetOCRTask(ctx context.Context, id int64) (repository.OCRTask, error) {
 	return repos.OCRTasks.Get(ctx, id)
 }
 
+// ListOCRTasks 在业务层中执行当前流程或局部处理。
 func ListOCRTasks(ctx context.Context) ([]repository.OCRTask, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -203,6 +204,7 @@ func ListOCRTasks(ctx context.Context) ([]repository.OCRTask, error) {
 	return repos.OCRTasks.List(ctx, 30)
 }
 
+// RetryOCRTask 在业务层中执行当前流程或局部处理。
 func RetryOCRTask(ctx context.Context, id int64) (repository.OCRTask, error) {
 	repos, err := repositories(ctx)
 	if err != nil {

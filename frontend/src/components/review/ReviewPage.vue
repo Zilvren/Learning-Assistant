@@ -15,6 +15,7 @@ const busy = ref(false)
 const contentLoading = ref(false)
 let openSequence = 0
 
+// load 在当前界面组件中完成交互或数据处理。
 async function load() {
   loading.value = true
   try {
@@ -25,6 +26,7 @@ async function load() {
   finally { loading.value = false }
 }
 
+// open 在当前界面组件中完成交互或数据处理。
 async function open(item) {
   const sequence = ++openSequence
   active.value = item
@@ -46,6 +48,7 @@ async function open(item) {
   }
 }
 
+// complete 在当前界面组件中完成交互或数据处理。
 async function complete(rating) {
   if (!active.value || busy.value || contentLoading.value) return
   const target = active.value

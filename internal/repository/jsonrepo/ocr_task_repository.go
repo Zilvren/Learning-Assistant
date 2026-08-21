@@ -16,6 +16,7 @@ type ocrTaskState struct {
 
 type OCRTaskRepository struct{ store *base.JSONStore }
 
+// loadOCRTasks 在存储层中执行当前数据访问或局部处理。
 func loadOCRTasks(tx *base.JSONTx) (ocrTaskState, error) {
 	state := ocrTaskState{NextID: 1, Tasks: []base.OCRTask{}}
 	err := tx.Load("ocr_tasks.json", &state)
@@ -97,6 +98,7 @@ func (r *OCRTaskRepository) Update(ctx context.Context, id int64, task base.OCRT
 	})
 }
 
+// Get 在存储层中执行当前数据访问或局部处理。
 func (r *OCRTaskRepository) Get(ctx context.Context, id int64) (base.OCRTask, error) {
 	var result base.OCRTask
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {
@@ -115,6 +117,7 @@ func (r *OCRTaskRepository) Get(ctx context.Context, id int64) (base.OCRTask, er
 	return result, err
 }
 
+// List 在存储层中执行当前数据访问或局部处理。
 func (r *OCRTaskRepository) List(ctx context.Context, limit int) ([]base.OCRTask, error) {
 	result := []base.OCRTask{}
 	err := r.store.Read(ctx, func(tx *base.JSONTx) error {

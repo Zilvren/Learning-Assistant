@@ -68,9 +68,9 @@ md.core.ruler.push("heading_anchors", (state) => {
   }
 })
 
-// Inline math: $...$
+// 行内数学公式：$...$
 const inlineRegex = /\$(.+?)\$/g
-// Block math: $$...$$
+// 块级数学公式：$$...$$
 const blockRegex = /\$\$(.+?)\$\$/gs
 
 // renderKatex 将公式渲染为 HTML；公式异常时仍返回可读的错误占位内容。

@@ -35,6 +35,7 @@ func (r *OCRTaskRepository) Create(ctx context.Context, task base.OCRTask) (int6
 	return id, err
 }
 
+// scanOCRTask 在存储层中执行当前数据访问或局部处理。
 func scanOCRTask(row pgx.Row) (base.OCRTask, error) {
 	var task base.OCRTask
 	var metadata []byte
@@ -47,6 +48,7 @@ func scanOCRTask(row pgx.Row) (base.OCRTask, error) {
 
 const ocrTaskColumns = "id,provider,status,source_filename,mime_type,file_size,coalesce(batch_id,''),coalesce(task_id,''),coalesce(result_markdown,''),coalesce(input_blob_hash,''),coalesce(error_message,''),metadata,created_at,updated_at,finished_at"
 
+// Get 在存储层中执行当前数据访问或局部处理。
 func (r *OCRTaskRepository) Get(ctx context.Context, id int64) (base.OCRTask, error) {
 	task, err := scanOCRTask(r.store.pool.QueryRow(ctx, "SELECT "+ocrTaskColumns+" FROM ocr_tasks WHERE user_id=$1 AND id=$2", r.store.userID, id))
 	if err == pgx.ErrNoRows {
@@ -55,6 +57,7 @@ func (r *OCRTaskRepository) Get(ctx context.Context, id int64) (base.OCRTask, er
 	return task, err
 }
 
+// List 在存储层中执行当前数据访问或局部处理。
 func (r *OCRTaskRepository) List(ctx context.Context, limit int) ([]base.OCRTask, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 30

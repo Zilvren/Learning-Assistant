@@ -7,6 +7,7 @@ import (
 	models "study-tracker-go/internal/model"
 )
 
+// TestHarnessToolGrantKeepsReadsAndWritesInsideTheConversationScope 验证当前模块在相应场景下的行为与边界条件。
 func TestHarnessToolGrantKeepsReadsAndWritesInsideTheConversationScope(t *testing.T) {
 	ctx := setupAIChatServiceTest(t)
 	folder, err := CreateLibraryItem(ctx, models.CreateLibraryItemRequest{Kind: "folder", Name: "数学"}, nil)
@@ -101,6 +102,7 @@ func TestHarnessToolGrantKeepsReadsAndWritesInsideTheConversationScope(t *testin
 	}
 }
 
+// TestHarnessToolGrantExpiresWhenRevoked 验证当前模块在相应场景下的行为与边界条件。
 func TestHarnessToolGrantExpiresWhenRevoked(t *testing.T) {
 	ctx := setupAIChatServiceTest(t)
 	token, err := NewHarnessToolGrant(ctx, models.AIChatRequest{Message: "你好"})

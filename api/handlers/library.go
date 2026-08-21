@@ -105,9 +105,7 @@ func ListLibraryReviews(c *gin.Context) {
 // ReviewLibraryNote 在HTTP 处理层中完成本文件定义的局部处理。
 func ReviewLibraryNote(c *gin.Context) {
 	id, ok := parseLibraryID(c)
-	if !ok {
-		return
-	}
+	if !ok { return }
 	var request models.ReviewRequest
 	if c.Request.ContentLength > 0 {
 		if err := c.ShouldBindJSON(&request); err != nil {
@@ -116,10 +114,7 @@ func ReviewLibraryNote(c *gin.Context) {
 		}
 	}
 	item, err := service.ReviewLibraryNote(c.Request.Context(), id, request.Rating)
-	if err != nil {
-		respondError(c, http.StatusBadRequest, err)
-		return
-	}
+	if err != nil { respondError(c, http.StatusBadRequest, err); return }
 	c.JSON(http.StatusOK, item)
 }
 
@@ -262,11 +257,17 @@ func GetLibraryContent(c *gin.Context) {
 	c.Data(http.StatusOK, ct, body)
 }
 
+// GetLibraryPreview 在 HTTP 处理层中完成当前请求的处理与响应。
 func GetLibraryPreview(c *gin.Context) {
 	id, ok := parseLibraryID(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	preview, err := service.GetDocumentPreview(c.Request.Context(), id)
-	if err != nil { respondError(c, http.StatusBadRequest, err); return }
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err)
+		return
+	}
 	c.JSON(http.StatusOK, preview)
 }
 

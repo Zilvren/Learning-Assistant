@@ -10,9 +10,7 @@ import (
 	"study-tracker-go/internal/service"
 )
 
-// HarnessToolAccess authenticates a short-lived bearer capability created for
-// one local Harness child process. It is deliberately separate from cookie
-// authentication: the child process never receives browser credentials.
+// HarnessToolAccess 验证为本地 Harness 子进程创建的短时 Bearer 能力令牌。它刻意独立于 Cookie 认证，因为子进程绝不会接收浏览器凭据。
 func HarnessToolAccess(app *service.App) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, ok := harnessBearerToken(c.GetHeader("Authorization"))
@@ -35,6 +33,7 @@ func HarnessToolAccess(app *service.App) gin.HandlerFunc {
 	}
 }
 
+// harnessBearerToken 在请求中间件中完成当前局部处理。
 func harnessBearerToken(header string) (string, bool) {
 	scheme, token, found := strings.Cut(strings.TrimSpace(header), " ")
 	if !found || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {

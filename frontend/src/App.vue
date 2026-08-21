@@ -9,6 +9,7 @@ const route = useRoute()
 const router = useRouter()
 const skipBootstrap = computed(() => Boolean(route.meta.skipAuth))
 
+// retryBootstrap 在当前界面组件中完成交互或数据处理。
 async function retryBootstrap() {
   const ok = await auth.init()
   if (ok && auth.enabled.value && !auth.user.value) {

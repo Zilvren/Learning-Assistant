@@ -10,8 +10,7 @@ import (
 	"study-tracker-go/internal/repository"
 )
 
-// ReviewInbox combines note and error reviews, so learners do not need to
-// remember which original feature created a due item.
+// ReviewInbox 汇总笔记和错题复习，使学习者无需记住到期项目最初来自哪个功能。
 func ReviewInbox(ctx context.Context) ([]models.ReviewInboxItem, error) {
 	repos, err := repositories(ctx)
 	if err != nil {
@@ -55,8 +54,10 @@ func ReviewInbox(ctx context.Context) ([]models.ReviewInboxItem, error) {
 	return items, nil
 }
 
+// emptyErrorFilter 在业务层中执行当前流程或局部处理。
 func emptyErrorFilter() repository.ErrorFilter { return repository.ErrorFilter{} }
 
+// overdueDays 在业务层中执行当前流程或局部处理。
 func overdueDays(value string, now time.Time) int {
 	date, err := time.ParseInLocation(time.DateOnly, value, now.Location())
 	if err != nil || value == "" {
@@ -70,6 +71,7 @@ func overdueDays(value string, now time.Time) int {
 	return days
 }
 
+// previewText 在业务层中执行当前流程或局部处理。
 func previewText(value string) string {
 	value = strings.Join(strings.Fields(value), " ")
 	if len([]rune(value)) > 96 {

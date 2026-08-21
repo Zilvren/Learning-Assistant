@@ -221,6 +221,7 @@ func (r *ErrorRepository) Review(ctx context.Context, id int, reviewedAt time.Ti
 	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
 }
 
+// ReviewWithRating 在存储层中执行当前数据访问或局部处理。
 func (r *ErrorRepository) ReviewWithRating(ctx context.Context, id int, reviewedAt time.Time, rating string) (models.ErrorProblem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {

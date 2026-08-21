@@ -97,9 +97,7 @@ func (r *LibraryRepository) List(ctx context.Context, f base.LibraryFilter) ([]m
 	return out, rows.Err()
 }
 
-// postgresLibraryMatchesQuery remains a small compatibility helper for
-// callers that only have a LibraryItem. List now performs this matching in
-// PostgreSQL through search_text, avoiding per-note blob reads.
+// postgresLibraryMatchesQuery 仍是供仅持有 LibraryItem 的调用方使用的小型兼容辅助函数。List 现在通过 PostgreSQL 的 search_text 完成匹配，避免逐笔记读取 Blob。
 func postgresLibraryMatchesQuery(item models.LibraryItem, query string) bool {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" || strings.Contains(strings.ToLower(item.Name+" "+strings.Join(item.Tags, " ")), query) {
@@ -328,9 +326,7 @@ type batchLibraryItem struct {
 	DeletedAt *time.Time
 }
 
-// Batch performs all validation and mutations inside one database transaction.
-// A failed member therefore never leaves a partially moved, restored, or
-// deleted selection behind.
+// Batch 在一个数据库事务内完成全部校验和修改，因此失败的成员不会留下部分移动、恢复或删除的选中项。
 // Batch 在一个 PostgreSQL 事务中批量移动、恢复或删除资料库条目。
 func (r *LibraryRepository) Batch(ctx context.Context, action string, ids []int64, parentID *int64) error {
 	ids = uniqueLibraryIDs(ids)
@@ -531,8 +527,7 @@ func (r *LibraryRepository) RestoreVersion(ctx context.Context, id, vid int64) (
 	if e != nil {
 		return x, e
 	}
-	// A restore updates the current pointer without manufacturing another
-	// history entry. SaveContent still advances the internal revision token.
+	// 恢复只更新当前指针，不额外生成历史条目；SaveContent 仍会推进内部修订令牌。
 	return r.SaveContent(ctx, id, b, x.CurrentVersion, false, true)
 }
 
@@ -611,6 +606,7 @@ func (r *LibraryRepository) Review(ctx context.Context, id int64, reviewedAt tim
 	return r.ReviewWithRating(ctx, id, reviewedAt, "good")
 }
 
+// ReviewWithRating 在存储层中执行当前数据访问或局部处理。
 func (r *LibraryRepository) ReviewWithRating(ctx context.Context, id int64, reviewedAt time.Time, rating string) (models.LibraryItem, error) {
 	tx, err := r.store.pool.Begin(ctx)
 	if err != nil {

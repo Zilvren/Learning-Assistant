@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy a checked-out GitHub Actions workspace without touching production data.
+# 将已检出的 GitHub Actions 工作区部署到服务器，同时不触碰生产数据。
 set -Eeuo pipefail
 
 source_dir=${1:?Usage: deploy-from-runner.sh <checked-out-source-directory> <app-image>}
@@ -22,7 +22,7 @@ if ! docker image inspect "$app_image" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Keep server-only secrets and volumes intact. --delete makes source files match Git.
+# 保留仅服务器可见的密钥和数据卷；--delete 使源码文件与 Git 工作区一致。
 rsync -a --delete \
   --exclude='.git/' \
   --exclude='.tools/' \

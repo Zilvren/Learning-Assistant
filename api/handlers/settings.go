@@ -44,6 +44,7 @@ func DeleteToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Token cleared"})
 }
 
+// GetDeepSeekToken 在 HTTP 处理层中完成当前请求的处理与响应。
 func GetDeepSeekToken(c *gin.Context) {
 	info, err := service.GetDeepSeekTokenInfo(c.Request.Context())
 	if err != nil {
@@ -53,6 +54,7 @@ func GetDeepSeekToken(c *gin.Context) {
 	c.JSON(http.StatusOK, info)
 }
 
+// SetDeepSeekToken 在 HTTP 处理层中完成当前请求的处理与响应。
 func SetDeepSeekToken(c *gin.Context) {
 	var body struct {
 		Token string `json:"token"`
@@ -68,6 +70,7 @@ func SetDeepSeekToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "DeepSeek API Key saved"})
 }
 
+// DeleteDeepSeekToken 在 HTTP 处理层中完成当前请求的处理与响应。
 func DeleteDeepSeekToken(c *gin.Context) {
 	if err := service.ClearDeepSeekToken(c.Request.Context()); err != nil {
 		respondError(c, http.StatusInternalServerError, err)
@@ -76,6 +79,7 @@ func DeleteDeepSeekToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "DeepSeek API Key cleared"})
 }
 
+// SetDeepSeekModel 在 HTTP 处理层中完成当前请求的处理与响应。
 func SetDeepSeekModel(c *gin.Context) {
 	var body struct {
 		Model string `json:"model"`

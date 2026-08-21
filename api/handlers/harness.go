@@ -11,9 +11,7 @@ import (
 	"study-tracker-go/internal/service"
 )
 
-// HarnessTool executes exactly one operation exposed by the local learning
-// library plugin. The endpoint is loopback-only in practice and additionally
-// guarded by a per-chat bearer capability.
+// HarnessTool 执行本地学习资料库插件暴露的一项操作。该端点实际上仅允许回环访问，并额外由每个对话的 Bearer 能力令牌保护。
 func HarnessTool(c *gin.Context) {
 	var args map[string]any
 	if err := c.ShouldBindJSON(&args); err != nil {
@@ -36,8 +34,7 @@ func HarnessTool(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": result})
 }
 
-// HarnessStatus lets the browser enable AI chat only when the required local
-// Harness runtime is installed and ready.
+// HarnessStatus 使浏览器只在所需本地 Harness 运行时已安装且就绪时启用 AI 对话。
 func HarnessStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, service.HarnessRuntimeStatus(c.Request.Context()))
 }

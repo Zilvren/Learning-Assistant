@@ -44,8 +44,11 @@ func TestListenWithFallback(t *testing.T) {
 
 type testListener struct{ address net.Addr }
 
+// Accept 验证当前模块在相应场景下的行为与边界条件。
 func (listener *testListener) Accept() (net.Conn, error) { return nil, errors.New("not implemented") }
+// Close 验证当前模块在相应场景下的行为与边界条件。
 func (listener *testListener) Close() error              { return nil }
+// Addr 验证当前模块在相应场景下的行为与边界条件。
 func (listener *testListener) Addr() net.Addr            { return listener.address }
 
 // TestBusinessRoutesAuthPolicy 在当前模块中验证对应场景的行为与边界条件。

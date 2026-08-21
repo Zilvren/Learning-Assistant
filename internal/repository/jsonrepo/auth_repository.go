@@ -55,6 +55,7 @@ func (r *AuthRepository) FindRefreshToken(ctx context.Context, tokenHash string)
 	return 0, time.Time{}, true, fmt.Errorf("JSON 模式不支持登录注册")
 }
 
+// ConsumeRefreshToken 在存储层中执行当前数据访问或局部处理。
 func (r *AuthRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (int64, time.Time, error) {
 	return 0, time.Time{}, fmt.Errorf("JSON 模式不支持登录注册")
 }

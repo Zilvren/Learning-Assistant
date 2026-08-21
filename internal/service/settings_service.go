@@ -60,8 +60,7 @@ func ClearToken(ctx context.Context) error {
 	return saveConfig(ctx, config)
 }
 
-// GetDeepSeekTokenInfo returns only a masked status; the API key is never
-// returned to the browser in full.
+// GetDeepSeekTokenInfo 仅返回脱敏后的状态，绝不会将完整 API 密钥返回给浏览器。
 func GetDeepSeekTokenInfo(ctx context.Context) (*TokenInfo, error) {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -74,6 +73,7 @@ func GetDeepSeekTokenInfo(ctx context.Context) (*TokenInfo, error) {
 	return &TokenInfo{Token: maskToken(config.DeepSeekToken), Configured: strings.TrimSpace(config.DeepSeekToken) != "", Model: modelName}, nil
 }
 
+// SetDeepSeekToken 在业务层中执行当前流程或局部处理。
 func SetDeepSeekToken(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -87,6 +87,7 @@ func SetDeepSeekToken(ctx context.Context, token string) error {
 	return saveConfig(ctx, config)
 }
 
+// ClearDeepSeekToken 在业务层中执行当前流程或局部处理。
 func ClearDeepSeekToken(ctx context.Context) error {
 	config, err := loadConfig(ctx)
 	if err != nil {
@@ -96,6 +97,7 @@ func ClearDeepSeekToken(ctx context.Context) error {
 	return saveConfig(ctx, config)
 }
 
+// SetDeepSeekModel 在业务层中执行当前流程或局部处理。
 func SetDeepSeekModel(ctx context.Context, modelName string) (string, error) {
 	modelName, err := normalizeDeepSeekModel(modelName)
 	if err != nil {
@@ -112,6 +114,7 @@ func SetDeepSeekModel(ctx context.Context, modelName string) (string, error) {
 	return modelName, nil
 }
 
+// maskToken 在业务层中执行当前流程或局部处理。
 func maskToken(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) > 12 {

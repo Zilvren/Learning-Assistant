@@ -77,8 +77,7 @@ func (r *BackupRepository) Import(ctx context.Context, data base.BackupData) err
 		}
 	}
 	if data.Library != nil {
-		// parent_id uses ON DELETE RESTRICT. Remove leaves in order so importing
-		// a ZIP also works when the current library already has folders.
+		// parent_id 使用 ON DELETE RESTRICT；按顺序移除叶节点，确保当前资料库已有文件夹时也能导入 ZIP。
 		for {
 			result, deleteErr := tx.Exec(ctx, `
 				DELETE FROM library_items item
@@ -371,6 +370,7 @@ func (r *BackupRepository) importLibrary(ctx context.Context, tx pgx.Tx, library
 	return itemIDMap, nil
 }
 
+// exportActivity 在存储层中执行当前数据访问或局部处理。
 func (r *BackupRepository) exportActivity(ctx context.Context) (*base.ActivityBackup, error) {
 	activity := &base.ActivityBackup{NextID: 1, Events: []models.ActivityEvent{}}
 	rows, err := r.store.pool.Query(ctx, `
@@ -397,6 +397,7 @@ func (r *BackupRepository) exportActivity(ctx context.Context) (*base.ActivityBa
 	return activity, nil
 }
 
+// exportRelations 在存储层中执行当前数据访问或局部处理。
 func (r *BackupRepository) exportRelations(ctx context.Context) (*base.RelationBackup, error) {
 	relations := &base.RelationBackup{NextID: 1, Relations: []models.LearningRelation{}}
 	rows, err := r.store.pool.Query(ctx, `
@@ -423,6 +424,7 @@ func (r *BackupRepository) exportRelations(ctx context.Context) (*base.RelationB
 	return relations, nil
 }
 
+// importActivity 在存储层中执行当前数据访问或局部处理。
 func (r *BackupRepository) importActivity(ctx context.Context, tx pgx.Tx, activity base.ActivityBackup) error {
 	for _, event := range activity.Events {
 		if event.Date == "" || event.EventType == "" {
@@ -443,6 +445,7 @@ func (r *BackupRepository) importActivity(ctx context.Context, tx pgx.Tx, activi
 	return nil
 }
 
+// importRelations 在存储层中执行当前数据访问或局部处理。
 func (r *BackupRepository) importRelations(ctx context.Context, tx pgx.Tx, relations base.RelationBackup, libraryIDMap map[int64]int64, errorIDMap map[int]int64) error {
 	mapID := func(kind string, id int64) (int64, bool) {
 		if kind == "library" {
@@ -480,10 +483,7 @@ func validBackupLibraryKind(kind string) bool {
 	return kind == "folder" || kind == "note" || kind == "file" || kind == "error"
 }
 
-// recordLibraryImportActivity records the act of bringing learning material
-// into the current account. Imported files retain their original timestamps,
-// so relying only on item triggers would otherwise place every activity on an
-// old date and leave today's dashboard empty after a restore.
+// recordLibraryImportActivity 记录将学习资料导入当前账户的操作。导入文件保留原始时间戳，若仅依赖条目触发器会把所有活动放在旧日期，导致恢复后当天的仪表盘为空。
 // recordLibraryImportActivity 为导入的资料库条目记录一次可聚合的学习活动。
 func (r *BackupRepository) recordLibraryImportActivity(ctx context.Context, tx pgx.Tx, library base.LibraryBackup) error {
 	location := time.FixedZone("CST", 8*60*60)
