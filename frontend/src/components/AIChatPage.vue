@@ -20,9 +20,11 @@ const harnessReason = ref("")
 const conversationReady = ref(false)
 const conversationSwitching = ref(false)
 const pendingConversationID = ref("")
+const conversationOperationID = ref("")
 const historyCollapsed = ref(readHistoryCollapsed())
 const historyView = ref("active")
 const historyMenuID = ref("")
+const chatPanel = ref(null)
 const messageList = ref(null)
 const folderOptions = ref([])
 const folderOptionsLoading = ref(false)
@@ -43,12 +45,13 @@ const activeConversations = computed(() => conversations.value.filter((conversat
 const archivedConversations = computed(() => conversations.value.filter((conversation) => conversation.archived_at))
 const visibleConversations = computed(() => historyView.value === "archived" ? archivedConversations.value : activeConversations.value)
 const activeConversation = computed(() => activeConversations.value.find((conversation) => conversation.id === activeConversationID.value) || null)
+const conversationOperationPending = computed(() => Boolean(conversationOperationID.value))
 const conversationRows = computed(() => visibleConversations.value.map((conversation) => ({
   id: conversation.id,
   title: conversation.title || "新对话",
   active: !conversation.archived_at && conversation.id === activeConversationID.value,
   archived: Boolean(conversation.archived_at),
-  loading: conversation.id === pendingConversationID.value,
+  loading: conversation.id === pendingConversationID.value || conversation.id === conversationOperationID.value,
 })))
 const scopeSummary = computed(() => {
   const parts = []
@@ -80,12 +83,33 @@ function readHistoryCollapsed() {
 
 // toggleHistoryCollapsed 切换对话侧栏的折叠状态，并只写入当前浏览器的本地存储。
 function toggleHistoryCollapsed() {
+  const panel = chatPanel.value
+  const before = panel?.getBoundingClientRect?.()
+  panel?.getAnimations?.().forEach((animation) => animation.cancel())
   historyCollapsed.value = !historyCollapsed.value
   try {
     globalThis.localStorage?.setItem("learning-assistant:ai-history-collapsed", String(historyCollapsed.value))
   } catch {
     // 无痕模式或受限环境不能保存偏好时，仍允许本次页面内切换。
   }
+  nextTick(() => animateHistoryLayout(panel, before))
+}
+
+// animateHistoryLayout 用 FLIP 位移衔接侧栏切换后的聊天画布，避免直接改变宽度产生生硬跳变。
+function animateHistoryLayout(panel, before) {
+  if (!panel || !before || typeof panel.animate !== "function" || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return
+  const after = panel.getBoundingClientRect()
+  const offset = before.left - after.left
+  if (Math.abs(offset) < 1) return
+  const animation = panel.animate([
+    { opacity: 0.985, transform: `translateX(${offset}px)` },
+    { opacity: 1, transform: "translateX(0)" },
+  ], {
+    duration: 240,
+    easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+    fill: "both",
+  })
+  animation.addEventListener?.("finish", () => animation.cancel(), { once: true })
 }
 
 // scrollToLatest 在当前界面组件中完成交互或数据处理。
@@ -113,11 +137,12 @@ function conversationTitle(sourceMessages, fallback = "新对话") {
 function normalizeConversation(conversation) {
   const id = String(conversation?.id || "")
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return null
-  const restoredMessages = (conversation.messages || [])
-    .filter((message) => message?.role === "user" || message?.role === "assistant")
+  // 旧版本可能留下未完成的空消息；不把它再次写回服务端，以免整组对话无法保存或归档。
+  const restoredMessages = (Array.isArray(conversation.messages) ? conversation.messages : [])
+    .filter((message) => (message?.role === "user" || message?.role === "assistant") && String(message.content || "").trim())
     .map((message) => ({
       role: message.role,
-      content: String(message.content || ""),
+      content: String(message.content || "").trim(),
       scope: String(message.scope || ""),
       model: String(message.model || ""),
       sources: Array.isArray(message.sources) ? message.sources : [],
@@ -127,7 +152,7 @@ function normalizeConversation(conversation) {
     id,
     title: String(conversation.title || conversationTitle(restoredMessages)),
     folder_id: readPositiveID(conversation.folder_id),
-    item_ids: readPositiveIDs((conversation.item_ids || []).join(",")),
+    item_ids: readPositiveIDs((Array.isArray(conversation.item_ids) ? conversation.item_ids : []).join(",")),
     messages: restoredMessages,
     harness_session_id: /^[A-Za-z0-9_-]{1,80}$/.test(String(conversation.harness_session_id || "")) ? String(conversation.harness_session_id) : "",
     archived_at: conversation.archived_at ? String(conversation.archived_at) : "",
@@ -221,19 +246,25 @@ function toggleConversationMenu(id) {
 
 // applySavedConversations 用服务端返回的标准化对话集合替换本地状态。
 function applySavedConversations(result) {
-  const saved = Array.isArray(result?.conversations) ? result.conversations.map(normalizeConversation).filter(Boolean) : []
-  if (!saved.length && Array.isArray(result?.conversations) && result.conversations.length) return false
+  if (!Array.isArray(result?.conversations)) return false
+  const saved = result.conversations.map(normalizeConversation).filter(Boolean)
+  if (saved.length !== result.conversations.length) return false
   conversations.value = saved
   return true
 }
 
 // archiveConversation 归档一条对话；当前对话归档后自动切到最近的活跃对话或新建对话。
 async function archiveConversation(id) {
-  if (sending.value || conversationSwitching.value) return
+  if (sending.value || conversationSwitching.value || conversationOperationID.value) return
   const archivingCurrent = id === activeConversationID.value
   historyMenuID.value = ""
-  if (archivingCurrent) await saveConversation()
+  conversationOperationID.value = id
   try {
+    // 对话尚未成功写入服务端时不能继续归档，否则会造成“上下文格式错误”后又报“对话不存在”。
+    if (archivingCurrent && !(await saveConversation())) {
+      toast.error("当前对话未保存，已取消归档；请刷新页面后重试")
+      return
+    }
     const result = await api.archiveAIConversation(id)
     if (!applySavedConversations(result)) throw new Error("归档后的对话数据无效")
     if (archivingCurrent) {
@@ -244,13 +275,16 @@ async function archiveConversation(id) {
     toast.success("对话已归档")
   } catch (error) {
     toast.error(error.message || "归档对话失败")
+  } finally {
+    conversationOperationID.value = ""
   }
 }
 
 // restoreConversation 恢复一条归档对话；服务端会拒绝超过活跃对话上限的操作。
 async function restoreConversation(id) {
-  if (sending.value || conversationSwitching.value) return
+  if (sending.value || conversationSwitching.value || conversationOperationID.value) return
   historyMenuID.value = ""
+  conversationOperationID.value = id
   try {
     const result = await api.restoreAIConversation(id)
     if (!applySavedConversations(result)) throw new Error("恢复后的对话数据无效")
@@ -258,20 +292,25 @@ async function restoreConversation(id) {
     toast.success("对话已恢复")
   } catch (error) {
     toast.error(error.message || "恢复对话失败")
+  } finally {
+    conversationOperationID.value = ""
   }
 }
 
 // deleteConversation 永久删除一条已归档对话，并在执行前要求用户确认。
 async function deleteConversation(id) {
-  if (sending.value || conversationSwitching.value) return
+  if (sending.value || conversationSwitching.value || conversationOperationID.value) return
   if (typeof globalThis.confirm === "function" && !globalThis.confirm("永久删除后无法恢复，确定继续吗？")) return
   historyMenuID.value = ""
+  conversationOperationID.value = id
   try {
     const result = await api.deleteAIConversation(id)
     if (!applySavedConversations(result)) throw new Error("删除后的对话数据无效")
     toast.success("归档对话已永久删除")
   } catch (error) {
     toast.error(error.message || "删除对话失败")
+  } finally {
+    conversationOperationID.value = ""
   }
 }
 
@@ -391,10 +430,10 @@ function historyForRequest() {
 // persistableMessages 在当前界面组件中完成交互或数据处理。
 function persistableMessages() {
   return messages.value
-    .filter((message) => message.role === "user" || message.role === "assistant")
+    .filter((message) => (message.role === "user" || message.role === "assistant") && String(message.content || "").trim())
     .map((message) => ({
       role: message.role,
-      content: message.content,
+      content: String(message.content || "").trim(),
       scope: message.scope || "",
       model: message.model || "",
       sources: message.sources || [],
@@ -425,16 +464,16 @@ function updateActiveConversation(promote = false) {
 
 // saveConversation 在当前界面组件中完成交互或数据处理。
 async function saveConversation(promote = false) {
-  if (!updateActiveConversation(promote)) return
+  if (!updateActiveConversation(promote)) return false
   try {
     const result = await api.saveAIConversation(conversations.value)
-    // 若旧版服务端响应未包含刚接受的对话，仍保持本地对话可见；下一次保存会继续完成同步。
-    const saved = Array.isArray(result?.conversations) ? result.conversations.map(normalizeConversation).filter(Boolean) : []
-    if (saved.some((conversation) => conversation.id === activeConversationID.value)) {
-      conversations.value = saved
+    if (!applySavedConversations(result) || !conversations.value.some((conversation) => conversation.id === activeConversationID.value)) {
+      throw new Error("服务端未确认保存当前对话")
     }
+    return true
   } catch (error) {
     toast.warning(error.message || "本次对话暂未保存")
+    return false
   }
 }
 
@@ -599,36 +638,40 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
 <template>
   <div class="ai-chat-page">
     <section class="ai-workspace" :class="{ 'is-history-collapsed': historyCollapsed }" aria-label="AI 学习助手">
-      <aside v-if="historyCollapsed" class="ai-history-collapsed" aria-label="已折叠的对话记录">
-        <button type="button" title="展开对话记录" aria-label="展开对话记录" @click="toggleHistoryCollapsed"><PanelLeftOpen :size="18" /><span>展开对话记录</span></button>
-      </aside>
-      <aside v-else class="ai-history-rail" aria-label="当前对话记录">
-        <header class="ai-history-rail__head">
-          <div><MessageSquare :size="18" /><strong>对话记录</strong></div>
-          <div class="ai-history-rail__tools">
-            <button type="button" title="新对话" aria-label="新对话" :disabled="sending || !conversationReady || historyView === 'archived'" @click="resetConversation"><Plus :size="17" /></button>
-            <button type="button" title="隐藏对话记录" aria-label="隐藏对话记录" @click="toggleHistoryCollapsed"><PanelLeftClose :size="17" /></button>
-          </div>
-        </header>
-        <button type="button" class="ai-history-archive-toggle" @click="historyView = historyView === 'active' ? 'archived' : 'active'"><Archive :size="14" />{{ historyView === 'active' ? '已归档' : '返回活跃对话' }}</button>
-        <div class="ai-history-rail__list">
-          <p>{{ historyView === 'active' ? `活跃对话 · ${activeConversations.length}/24` : `已归档 · ${archivedConversations.length}/100` }}</p>
-          <div v-for="conversation in conversationRows" :key="conversation.id" class="ai-history-item-row" :class="{ 'is-active': conversation.active, 'is-loading': conversation.loading }">
-            <button type="button" class="ai-history-item" :class="{ 'is-active': conversation.active }" :disabled="sending || conversation.archived" @click="selectConversation(conversation.id)"><MessageSquare :size="14" /><span>{{ conversation.title }}</span><LoaderCircle v-if="conversation.loading" :size="13" /></button>
-            <button type="button" class="ai-history-item__menu-button" :aria-label="`${conversation.title} 的操作`" :aria-expanded="historyMenuID === conversation.id" :disabled="sending || conversationSwitching" @click.stop="toggleConversationMenu(conversation.id)"><Ellipsis :size="16" /></button>
-            <div v-if="historyMenuID === conversation.id" class="ai-history-item__menu" role="menu">
-              <button v-if="!conversation.archived" type="button" role="menuitem" @click="archiveConversation(conversation.id)"><Archive :size="14" />归档</button>
-              <template v-else>
-                <button type="button" role="menuitem" @click="restoreConversation(conversation.id)"><ArchiveRestore :size="14" />恢复</button>
-                <button type="button" class="is-danger" role="menuitem" @click="deleteConversation(conversation.id)"><Trash2 :size="14" />永久删除</button>
-              </template>
+      <Transition name="ai-history-rail">
+        <aside v-if="historyCollapsed" key="collapsed" class="ai-history-collapsed" aria-label="已折叠的对话记录">
+          <button type="button" title="展开对话记录" aria-label="展开对话记录" @click="toggleHistoryCollapsed"><PanelLeftOpen :size="18" /><span>展开对话记录</span></button>
+        </aside>
+        <aside v-else key="expanded" class="ai-history-rail" aria-label="当前对话记录">
+          <header class="ai-history-rail__head">
+            <div><MessageSquare :size="18" /><strong>对话记录</strong></div>
+            <div class="ai-history-rail__tools">
+              <button type="button" title="新对话" aria-label="新对话" :disabled="sending || conversationOperationPending || !conversationReady || historyView === 'archived'" @click="resetConversation"><Plus :size="17" /></button>
+              <button type="button" title="隐藏对话记录" aria-label="隐藏对话记录" @click="toggleHistoryCollapsed"><PanelLeftClose :size="17" /></button>
             </div>
+          </header>
+          <button type="button" class="ai-history-archive-toggle" :title="historyView === 'active' ? '查看已归档对话' : '返回活跃对话'" :aria-label="historyView === 'active' ? '查看已归档对话' : '返回活跃对话'" @click="historyView = historyView === 'active' ? 'archived' : 'active'"><Archive :size="14" />{{ historyView === 'active' ? '查看已归档' : '返回活跃对话' }}</button>
+          <div class="ai-history-rail__list">
+            <p>{{ historyView === 'active' ? `活跃对话 · ${activeConversations.length}/24` : `已归档 · ${archivedConversations.length}/100` }}</p>
+            <TransitionGroup name="ai-history-row" tag="div" class="ai-history-rows">
+              <div v-for="conversation in conversationRows" :key="conversation.id" class="ai-history-item-row" :class="{ 'is-active': conversation.active, 'is-loading': conversation.loading }">
+                <button type="button" class="ai-history-item" :class="{ 'is-active': conversation.active }" :disabled="sending || conversation.archived || conversationSwitching || conversationOperationPending" @click="selectConversation(conversation.id)"><MessageSquare :size="14" /><span>{{ conversation.title }}</span><LoaderCircle v-if="conversation.loading" :size="13" /></button>
+                <button type="button" class="ai-history-item__menu-button" :aria-label="`${conversation.title} 的操作`" :aria-expanded="historyMenuID === conversation.id" :disabled="sending || conversationSwitching || conversationOperationPending" @click.stop="toggleConversationMenu(conversation.id)"><Ellipsis :size="16" /></button>
+                <div v-if="historyMenuID === conversation.id" class="ai-history-item__menu" role="menu">
+                  <button v-if="!conversation.archived" type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="archiveConversation(conversation.id)"><Archive :size="14" />归档</button>
+                  <template v-else>
+                    <button type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="restoreConversation(conversation.id)"><ArchiveRestore :size="14" />恢复</button>
+                    <button type="button" class="is-danger" role="menuitem" :disabled="conversationOperationPending" @click.stop="deleteConversation(conversation.id)"><Trash2 :size="14" />永久删除</button>
+                  </template>
+                </div>
+              </div>
+            </TransitionGroup>
+            <div v-if="!conversationRows.length" class="ai-history-rail__empty"><Sparkles :size="16" /><span>{{ historyView === 'active' ? '开始一段新对话吧' : '还没有已归档的对话' }}</span></div>
           </div>
-          <div v-if="!conversationRows.length" class="ai-history-rail__empty"><Sparkles :size="16" /><span>{{ historyView === 'active' ? '开始一段新对话吧' : '还没有已归档的对话' }}</span></div>
-        </div>
-      </aside>
+        </aside>
+      </Transition>
 
-      <section class="ai-chat-panel">
+      <section ref="chatPanel" class="ai-chat-panel">
         <div ref="messageList" class="ai-message-list" aria-live="polite" role="log">
           <div v-if="!messages.length && !conversationSwitching" class="ai-chat-empty"><h1>有什么可以帮你的？</h1></div>
           <article v-for="message in messages" :key="message.id" :data-message-id="message.id" class="ai-message" :class="`ai-message--${message.role}`">

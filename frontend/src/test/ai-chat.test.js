@@ -180,6 +180,45 @@ describe("Harness-only AI chat", () => {
     expect(router.currentRoute.value.query.conversation).toBe("next")
   })
 
+  it("archives a current conversation that has saved folder and item context", async () => {
+    mockReadyHarness()
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
+      { id: "contextual", title: "资料对话", folder_id: 4, item_ids: [7], messages: [{ role: "assistant", content: "资料内容" }] },
+    ] })
+    vi.spyOn(api, "getLibraryItem").mockResolvedValue({ id: 7, kind: "note", name: "导数专题" })
+    const save = vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+    const archive = vi.spyOn(api, "archiveAIConversation").mockResolvedValue({ conversations: [
+      { id: "contextual", title: "资料对话", folder_id: 4, item_ids: [7], messages: [{ role: "assistant", content: "资料内容" }], archived_at: "2026-08-21T00:00:00Z" },
+    ] })
+
+    const { wrapper } = await mountAIPage()
+    await wrapper.get('button[aria-label="资料对话 的操作"]').trigger("click")
+    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await flushPromises()
+
+    expect(save).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ id: "contextual", folder_id: 4, item_ids: [7] }),
+    ]))
+    expect(archive).toHaveBeenCalledWith("contextual")
+  })
+
+  it("does not archive a current conversation when its save fails", async () => {
+    mockReadyHarness()
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
+      { id: "current", title: "当前对话", item_ids: [], messages: [{ role: "assistant", content: "当前内容" }] },
+    ] })
+    vi.spyOn(api, "saveAIConversation").mockRejectedValue(new Error("AI 对话上下文格式错误"))
+    const archive = vi.spyOn(api, "archiveAIConversation")
+
+    const { wrapper } = await mountAIPage()
+    await wrapper.get('button[aria-label="当前对话 的操作"]').trigger("click")
+    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await flushPromises()
+
+    expect(archive).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain("当前内容")
+  })
+
   it("can collapse the conversation list and keeps that preference in this browser", async () => {
     mockReadyHarness()
     const { wrapper } = await mountAIPage()

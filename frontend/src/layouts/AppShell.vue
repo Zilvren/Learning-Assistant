@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <main id="app-main-content" class="app-main" tabindex="-1" data-testid="formal-app-main">
+    <main id="app-main-content" class="app-main" :class="{ 'app-main--ai': route.name === 'ai' }" tabindex="-1" data-testid="formal-app-main">
       <RouterView v-slot="{ Component, route: currentRoute }">
         <Transition name="page-shift" mode="out-in">
           <component :is="Component" :key="currentRoute.path" />
