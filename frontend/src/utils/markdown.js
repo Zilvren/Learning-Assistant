@@ -22,6 +22,7 @@ const md = markdownit({
 
 const safeDataImageSource = /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i
 const defaultImageRenderer = md.renderer.rules.image
+const defaultFenceRenderer = md.renderer.rules.fence
 
 // embeddedImageWidth 从图片 title 元数据取宽度，并把范围限制在安全的展示尺寸内。
 function embeddedImageWidth(value) {
@@ -44,6 +45,14 @@ md.renderer.rules.image = (tokens, index, options, env, self) => {
   const width = embeddedImageWidth(token.attrGet("title"))
   const alignment = embeddedImageAlignment(token.attrGet("title"))
   return `<img class="markdown-image--align-${alignment}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" width="${width}">`
+}
+
+// Mermaid 代码块交给浏览器端组件生成 SVG；此处只保留经过转义的图表定义。
+md.renderer.rules.fence = (tokens, index, options, env, self) => {
+  const token = tokens[index]
+  const language = token.info.trim().split(/\s+/)[0]?.toLowerCase()
+  if (language === "mermaid") return `<pre class="mermaid">${escapeHtml(token.content)}</pre>\n`
+  return defaultFenceRenderer ? defaultFenceRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
 }
 
 // headingID 为标题生成稳定、可用于目录跳转的 HTML id。

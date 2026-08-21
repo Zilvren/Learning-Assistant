@@ -241,6 +241,13 @@ describe("personal library", () => {
     expect(html).not.toContain('<script>')
   })
 
+  it("marks Mermaid fences for safe browser-side diagram rendering", () => {
+    const html=renderMd('```mermaid\nflowchart LR\n  User["用户"] --> UI["Vue 聊天页"]\n```')
+    expect(html).toContain('class="mermaid"')
+    expect(html).toContain('flowchart LR')
+    expect(html).not.toContain('<svg')
+  })
+
   it("builds stable outline anchors for rendered Markdown headings", () => {
     const source='# Redis\n\n## 链表实现\n\n正文'
     const outline=extractOutline(source)
