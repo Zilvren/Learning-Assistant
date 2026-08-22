@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { flushPromises, mount } from "@vue/test-utils"
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils"
 import { createMemoryHistory, createRouter } from "vue-router"
 import AIChatPage from "../components/AIChatPage.vue"
 import { api } from "../api/index.js"
@@ -32,10 +32,18 @@ function mockReadyHarness() {
   vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
 }
 
+// historyMenuItem 从页面顶层的浮层菜单取得当前操作项。
+function historyMenuItem() {
+  const menu = document.body.querySelector(".ai-history-item__menu--floating")
+  if (!menu) throw new Error("未找到对话操作菜单")
+  return new DOMWrapper(menu).get('button[role="menuitem"]')
+}
+
 describe("Harness-only AI chat", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     globalThis.localStorage?.clear()
+    document.body.replaceChildren()
   })
 
   it("disables the assistant when the required Harness runtime is unavailable", async () => {
@@ -172,7 +180,11 @@ describe("Harness-only AI chat", () => {
 
     const { wrapper, router } = await mountAIPage()
     await wrapper.get('button[aria-label="当前对话 的操作"]').trigger("click")
-    await wrapper.get('button[role="menuitem"]').trigger("click")
+
+    expect(wrapper.find(".ai-history-rail__list .ai-history-item__menu").exists()).toBe(false)
+    expect(document.body.querySelector(".ai-history-item__menu--floating")).not.toBeNull()
+
+    await historyMenuItem().trigger("click")
     await flushPromises()
 
     expect(archive).toHaveBeenCalledWith("current")
@@ -212,7 +224,7 @@ describe("Harness-only AI chat", () => {
 
     const { wrapper } = await mountAIPage()
     await wrapper.get('button[aria-label="资料对话 的操作"]').trigger("click")
-    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await historyMenuItem().trigger("click")
     await flushPromises()
 
     expect(save).toHaveBeenCalledWith(expect.arrayContaining([
@@ -242,7 +254,7 @@ describe("Harness-only AI chat", () => {
 
     const { wrapper } = await mountAIPage()
     await wrapper.get('button[aria-label="待归档对话 的操作"]').trigger("click")
-    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await historyMenuItem().trigger("click")
     await flushPromises()
 
     expect(archive).toHaveBeenCalledWith("pending")
@@ -259,7 +271,7 @@ describe("Harness-only AI chat", () => {
 
     const { wrapper } = await mountAIPage()
     await wrapper.get('button[aria-label="当前对话 的操作"]').trigger("click")
-    await wrapper.get('button[role="menuitem"]').trigger("click")
+    await historyMenuItem().trigger("click")
     await flushPromises()
 
     expect(archive).not.toHaveBeenCalled()

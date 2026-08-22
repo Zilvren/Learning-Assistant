@@ -24,6 +24,7 @@ const conversationOperationID = ref("")
 const historyCollapsed = ref(readHistoryCollapsed())
 const historyView = ref("active")
 const historyMenuID = ref("")
+const historyMenuPosition = ref({ top: 0, left: 0 })
 const chatPanel = ref(null)
 const messageList = ref(null)
 const folderOptions = ref([])
@@ -46,6 +47,11 @@ const archivedConversations = computed(() => conversations.value.filter((convers
 const visibleConversations = computed(() => historyView.value === "archived" ? archivedConversations.value : activeConversations.value)
 const activeConversation = computed(() => activeConversations.value.find((conversation) => conversation.id === activeConversationID.value) || null)
 const conversationOperationPending = computed(() => Boolean(conversationOperationID.value))
+const historyMenuConversation = computed(() => conversations.value.find((conversation) => conversation.id === historyMenuID.value) || null)
+const historyMenuStyle = computed(() => ({
+  top: `${historyMenuPosition.value.top}px`,
+  left: `${historyMenuPosition.value.left}px`,
+}))
 const conversationRows = computed(() => visibleConversations.value.map((conversation) => ({
   id: conversation.id,
   title: conversation.title || "新对话",
@@ -240,9 +246,30 @@ async function resetConversation() {
   return true
 }
 
-// toggleConversationMenu 打开或关闭指定对话的操作菜单。
-function toggleConversationMenu(id) {
-  historyMenuID.value = historyMenuID.value === id ? "" : id
+// toggleConversationMenu 打开或关闭指定对话的操作菜单，并将菜单挂到页面顶层以避开所有滚动裁切。
+function toggleConversationMenu(id, event) {
+  if (historyMenuID.value === id) {
+    historyMenuID.value = ""
+    return
+  }
+  const trigger = event?.currentTarget
+  const triggerRect = trigger?.getBoundingClientRect?.()
+  const conversation = conversations.value.find((item) => item.id === id)
+  const menuWidth = 126
+  const menuHeight = conversation?.archived_at ? 104 : 56
+  const padding = 8
+  let top = padding
+  let left = padding
+  if (triggerRect) {
+    const lowerTop = triggerRect.bottom + 4
+    const upperTop = triggerRect.top - menuHeight - 4
+    const viewportHeight = globalThis.innerHeight || 0
+    const viewportWidth = globalThis.innerWidth || 0
+    top = lowerTop + menuHeight <= viewportHeight - padding || upperTop < padding ? lowerTop : upperTop
+    left = Math.max(padding, Math.min(viewportWidth - menuWidth - padding, triggerRect.right - menuWidth))
+  }
+  historyMenuPosition.value = { top, left }
+  historyMenuID.value = id
 }
 
 // applySavedConversations 用服务端返回的标准化对话集合替换本地状态。
@@ -328,7 +355,7 @@ function closeFolderMenu(event) {
     folderMenuOpen.value = false
     scopeMenuOpen.value = false
   }
-  if (!target?.closest(".ai-history-item-row")) historyMenuID.value = ""
+  if (!target?.closest(".ai-history-item-row, .ai-history-item__menu")) historyMenuID.value = ""
 }
 
 // closeFolderMenuOnEscape 在当前界面组件中完成交互或数据处理。
@@ -656,14 +683,7 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
               <TransitionGroup name="ai-history-row" tag="div" class="ai-history-rows">
                 <div v-for="conversation in conversationRows" :key="conversation.id" class="ai-history-item-row" :class="{ 'is-active': conversation.active, 'is-loading': conversation.loading }">
                   <button type="button" class="ai-history-item" :class="{ 'is-active': conversation.active }" :disabled="sending || conversation.archived || conversationSwitching || conversationOperationPending" @click="selectConversation(conversation.id)"><MessageSquare :size="14" /><span>{{ conversation.title }}</span><LoaderCircle v-if="conversation.loading" :size="13" /></button>
-                  <button type="button" class="ai-history-item__menu-button" :aria-label="`${conversation.title} 的操作`" :aria-expanded="historyMenuID === conversation.id" :disabled="sending || conversationSwitching || conversationOperationPending" @click.stop="toggleConversationMenu(conversation.id)"><Ellipsis :size="16" /></button>
-                  <div v-if="historyMenuID === conversation.id" class="ai-history-item__menu" role="menu">
-                    <button v-if="!conversation.archived" type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="archiveConversation(conversation.id)"><Archive :size="14" />归档</button>
-                    <template v-else>
-                      <button type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="restoreConversation(conversation.id)"><ArchiveRestore :size="14" />恢复</button>
-                      <button type="button" class="is-danger" role="menuitem" :disabled="conversationOperationPending" @click.stop="deleteConversation(conversation.id)"><Trash2 :size="14" />永久删除</button>
-                    </template>
-                  </div>
+                  <button type="button" class="ai-history-item__menu-button" :aria-label="`${conversation.title} 的操作`" :aria-expanded="historyMenuID === conversation.id" :disabled="sending || conversationSwitching || conversationOperationPending" @click.stop="toggleConversationMenu(conversation.id, $event)"><Ellipsis :size="16" /></button>
                 </div>
               </TransitionGroup>
               <div v-if="!conversationRows.length" class="ai-history-rail__empty"><Sparkles :size="16" /><span>{{ historyView === 'active' ? '开始一段新对话吧' : '还没有已归档的对话' }}</span></div>
@@ -671,6 +691,16 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
           </div>
         </Transition>
       </aside>
+
+      <Teleport to="body">
+        <div v-if="historyMenuConversation" class="ai-history-item__menu ai-history-item__menu--floating" role="menu" :style="historyMenuStyle" @pointerdown.stop>
+          <button v-if="!historyMenuConversation.archived_at" type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="archiveConversation(historyMenuConversation.id)"><Archive :size="14" />归档</button>
+          <template v-else>
+            <button type="button" role="menuitem" :disabled="conversationOperationPending" @click.stop="restoreConversation(historyMenuConversation.id)"><ArchiveRestore :size="14" />恢复</button>
+            <button type="button" class="is-danger" role="menuitem" :disabled="conversationOperationPending" @click.stop="deleteConversation(historyMenuConversation.id)"><Trash2 :size="14" />永久删除</button>
+          </template>
+        </div>
+      </Teleport>
 
       <section ref="chatPanel" class="ai-chat-panel">
         <div ref="messageList" class="ai-message-list" aria-live="polite" role="log">
