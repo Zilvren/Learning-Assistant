@@ -105,6 +105,8 @@ func TestAIConversationPersistsHarnessSessionAndScopedChats(t *testing.T) {
 			ID:               "math-review",
 			FolderID:         func() *int64 { value := int64(4); return &value }(),
 			ItemIDs:          []int64{8},
+			ContextSummary:   "目标：完成导数复习；下一步：整理错题。",
+			ContextMemory:    &models.AIConversationMemory{Goal: "完成导数复习", Completed: []string{"已整理公式"}, NextStep: "整理错题"},
 			HarnessSessionID: "harness-math-review",
 			Messages: []models.AIConversationMessage{
 				{Role: "user", Content: "请帮我安排复习", Scope: "路径：数学"},
@@ -116,7 +118,7 @@ func TestAIConversationPersistsHarnessSessionAndScopedChats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(saved) != 2 || saved[0].HarnessSessionID != "harness-math-review" || saved[0].Messages[1].Sources[0].Title != "导数笔记" {
+	if len(saved) != 2 || saved[0].HarnessSessionID != "harness-math-review" || saved[0].ContextSummary == "" || saved[0].ContextMemory == nil || saved[0].ContextMemory.NextStep != "整理错题" || saved[0].Messages[1].Sources[0].Title != "导数笔记" {
 		t.Fatalf("unexpected saved conversation: %#v", saved)
 	}
 

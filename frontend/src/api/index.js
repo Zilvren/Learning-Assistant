@@ -43,6 +43,112 @@ async function request(method, path, body, retry = true) {
   return res.json()
 }
 
+// requestAIChatStream 读取 AI 的 SSE 答案快照；服务端只会推送用户可见答案，不会推送思考或工具细节。
+async function requestAIChatStream(data, onEvent, retry = true) {
+  const res = await fetch(BASE + '/ai/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(data),
+    credentials: 'include',
+  })
+  if (res.status === 401 && retry) {
+    const ok = await refreshAuth()
+    if (ok) return requestAIChatStream(data, onEvent, false)
+  }
+  if (!res.ok) throw await responseError(res)
+  if (!res.body) throw new ApiError('浏览器不支持流式回答，请刷新后重试', res.status)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let completed = null
+  const consume = (frame) => {
+    const lines = frame.replace(/\r/g, '').split('\n')
+    let event = 'message'
+    const dataLines = []
+    for (const line of lines) {
+      if (line.startsWith('event:')) event = line.slice(6).trim()
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+    }
+    if (!dataLines.length) return
+    const payload = JSON.parse(dataLines.join('\n'))
+    if (event === 'error') throw new ApiError(payload.message || 'AI 暂时无法回答，请稍后重试', 502, { code: payload.code })
+    if (event === 'done') completed = payload
+    onEvent?.({ event, data: payload })
+  }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+      let separator
+      while ((separator = buffer.match(/\r?\n\r?\n/))) {
+        const boundary = separator.index
+        const frame = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + separator[0].length)
+        consume(frame)
+      }
+      if (done) break
+    }
+    if (buffer.trim()) consume(buffer)
+  } finally {
+    reader.releaseLock()
+  }
+  if (!completed) throw new ApiError('AI 流式回答意外结束，请重试', 502)
+  return completed
+}
+
+// requestAITurnStream 订阅可重放的任务事件。连接中断不会取消服务端任务；浏览器可携带 after 游标重新连接。
+async function requestAITurnStream(id, onEvent, { after = 0, signal, retry = true } = {}) {
+  const params = new URLSearchParams()
+  if (Number.isFinite(Number(after)) && Number(after) > 0) params.set('after', String(Math.floor(Number(after))))
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await fetch(`${BASE}/ai/turns/${encodeURIComponent(id)}/events${suffix}`, {
+    headers: { Accept: 'text/event-stream', ...(after ? { 'Last-Event-ID': String(after) } : {}) },
+    credentials: 'include',
+    signal,
+  })
+  if (res.status === 401 && retry) {
+    const ok = await refreshAuth()
+    if (ok) return requestAITurnStream(id, onEvent, { after, signal, retry: false })
+  }
+  if (!res.ok) throw await responseError(res, '无法连接 AI 任务')
+  if (!res.body) throw new ApiError('浏览器不支持任务事件流，请刷新后重试', res.status)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const consume = (frame) => {
+    const lines = frame.replace(/\r/g, '').split('\n')
+    let event = 'message'
+    let eventID = 0
+    const dataLines = []
+    for (const line of lines) {
+      if (line.startsWith('event:')) event = line.slice(6).trim()
+      if (line.startsWith('id:')) eventID = Number(line.slice(3).trim()) || 0
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+    }
+    if (!dataLines.length) return
+    onEvent?.({ event, id: eventID, data: JSON.parse(dataLines.join('\n')) })
+  }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+      let separator
+      while ((separator = buffer.match(/\r?\n\r?\n/))) {
+        const boundary = separator.index
+        const frame = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + separator[0].length)
+        consume(frame)
+      }
+      if (done) break
+    }
+    if (buffer.trim()) consume(buffer)
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 // requestBackupExport 单独处理二进制 ZIP 下载，避免走 JSON 解码分支。
 async function requestBackupExport(retry = true) {
   const res = await fetch(BASE + '/backup/export', { credentials: 'include' })
@@ -232,6 +338,14 @@ export const api = {
 	getAIHarnessStatus: () => request('GET', '/ai/harness'),
 // aiChat 封装对应的后端接口调用。
 	aiChat: (data) => request('POST', '/ai/chat', data),
+// aiChatStream 按最终答案快照更新对话；用于减少长回答时的等待感。
+	aiChatStream: (data, onEvent) => requestAIChatStream(data, onEvent),
+	startAITurn: (data) => request('POST', '/ai/turns', data),
+	getAITurn: (id) => request('GET', `/ai/turns/${encodeURIComponent(id)}`),
+	listAITurns: (conversationID = '') => request('GET', `/ai/turns${conversationID ? `?conversation_id=${encodeURIComponent(conversationID)}` : ''}`),
+	streamAITurn: (id, onEvent, options) => requestAITurnStream(id, onEvent, options),
+	cancelAITurn: (id) => request('POST', `/ai/turns/${encodeURIComponent(id)}/cancel`, {}),
+	resolveAITurnApproval: (id, approvalID, approved) => request('POST', `/ai/turns/${encodeURIComponent(id)}/approvals/${encodeURIComponent(approvalID)}`, { approved: Boolean(approved) }),
 // getAIConversation 封装对应的后端接口调用。
 	getAIConversation: () => request('GET', '/ai/conversation'),
 // saveAIConversation 封装对应的后端接口调用。

@@ -30,6 +30,10 @@ function mockReadyHarness() {
   vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [] })
   vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [] })
   vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+	vi.spyOn(api, "listAITurns").mockResolvedValue({ turns: [] })
+	vi.spyOn(api, "startAITurn").mockResolvedValue({ id: "turn-test", status: "queued" })
+	vi.spyOn(api, "streamAITurn").mockImplementation(async (_id, onEvent) => onEvent({ event: "turn.completed", data: { status: "completed" } }))
+	vi.spyOn(api, "getAITurn").mockResolvedValue({ id: "turn-test", status: "completed", answer: "默认最终答案", model: "deepseek-v4-flash", sources: [] })
 }
 
 // historyMenuItem 从页面顶层的浮层菜单取得当前操作项。
@@ -61,12 +65,8 @@ describe("Harness-only AI chat", () => {
 
   it("sends every note-write request through Harness instead of preview endpoints", async () => {
     mockReadyHarness()
-    const chat = vi.spyOn(api, "aiChat").mockResolvedValue({
-      answer: "已创建 daily / 今日整理.md。",
-      model: "deepseek-v4-flash",
-      sources: [],
-      harness_session_id: "harness-daily",
-    })
+	const chat = vi.spyOn(api, "startAITurn")
+	vi.spyOn(api, "getAITurn").mockResolvedValue({ id: "turn-test", status: "completed", answer: "已创建 daily / 今日整理.md。", model: "deepseek-v4-flash", sources: [], harness_session_id: "harness-daily" })
 
     const { wrapper } = await mountAIPage()
     await wrapper.get("textarea").setValue("把今天的复习整理写在 daily/今日整理.md 中")
@@ -82,6 +82,33 @@ describe("Harness-only AI chat", () => {
     expect(wrapper.find('[aria-label="AI 写入预览"]').exists()).toBe(false)
   })
 
+  it("uses chat-first mode without proactively selecting library context", async () => {
+    mockReadyHarness()
+	const chat = vi.spyOn(api, "startAITurn")
+    const saveConversation = vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+
+    const { wrapper } = await mountAIPage()
+    await wrapper.get('button[aria-label="选择 AI 资料范围"]').trigger("click")
+    await wrapper.get('button[aria-label="使用纯聊天"]').trigger("click")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("默认不主动查资料")
+    expect(wrapper.text()).toContain("明确要求时仍可使用资料库")
+
+    await wrapper.get("textarea").setValue("陪我聊聊学习焦虑")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({
+      chat_only: true,
+      folder_id: null,
+      item_ids: [],
+    }))
+    expect(saveConversation).toHaveBeenLastCalledWith(expect.arrayContaining([
+      expect.objectContaining({ chat_only: true }),
+    ]))
+  })
+
   it("passes the selected scope to the Harness chat and persists its session id", async () => {
     mockReadyHarness()
     vi.spyOn(api, "getLibraryItems").mockImplementation(({ parentId, kind }) => {
@@ -89,12 +116,8 @@ describe("Harness-only AI chat", () => {
       return Promise.resolve({ items: [] })
     })
     vi.spyOn(api, "getLibraryItem").mockResolvedValue({ id: 7, kind: "note", name: "导数专题" })
-    const chat = vi.spyOn(api, "aiChat").mockResolvedValue({
-      answer: "先复习导数符号表。",
-      model: "deepseek-v4-flash",
-      sources: [],
-      harness_session_id: "harness-math",
-    })
+	const chat = vi.spyOn(api, "startAITurn")
+	vi.spyOn(api, "getAITurn").mockResolvedValue({ id: "turn-test", status: "completed", answer: "先复习导数符号表。", model: "deepseek-v4-flash", sources: [], harness_session_id: "harness-math" })
     const saveConversation = vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
 
     const { wrapper } = await mountAIPage("/ai?folder=4&items=7")
@@ -128,7 +151,7 @@ describe("Harness-only AI chat", () => {
     }] })
     vi.spyOn(api, "getLibraryItems").mockResolvedValue({ items: [] })
     vi.spyOn(api, "saveAIConversation").mockResolvedValue({ conversations: [] })
-    const chat = vi.spyOn(api, "aiChat").mockResolvedValue({ answer: "再做两道单调性题。", model: "deepseek-v4-flash", sources: [], harness_session_id: "harness-existing" })
+	const chat = vi.spyOn(api, "startAITurn")
 
     const { wrapper } = await mountAIPage()
     await wrapper.get("textarea").setValue("下一步怎么练？")
@@ -143,6 +166,93 @@ describe("Harness-only AI chat", () => {
         { role: "assistant", content: "先从导数符号表开始复习。" },
       ],
     }))
+  })
+
+  it("streams the final answer and persists a rolling context summary for a long conversation", async () => {
+    mockReadyHarness()
+    const messages = Array.from({ length: 120 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `第 ${index + 1} 条对话`,
+    }))
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [{
+      id: "long-chat",
+      title: "长期学习计划",
+      item_ids: [],
+      messages,
+      context_summary: "旧摘要：继续完成学习计划。",
+      harness_session_id: "harness-long-chat",
+    }] })
+    const saveConversation = vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+	const chat = vi.spyOn(api, "startAITurn")
+	vi.spyOn(api, "streamAITurn").mockImplementation(async (_id, onEvent) => {
+		onEvent({ event: "answer.updated", data: { status: "running", answer: "这是逐步显示的最终答案。" } })
+		onEvent({ event: "turn.completed", data: { status: "completed" } })
+	})
+	vi.spyOn(api, "getAITurn").mockResolvedValue({ id: "turn-test", status: "completed", answer: "这是逐步显示的最终答案。", model: "deepseek-v4-flash", sources: [], harness_session_id: "harness-long-chat", context_summary: "长期目标：完成学习计划。下一步：最后整理进 20260822.md。" })
+
+    const { wrapper } = await mountAIPage()
+    await wrapper.get("textarea").setValue("请继续安排下一步")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({
+      context_summary: "旧摘要：继续完成学习计划。",
+      compact_context: true,
+    }))
+    expect(wrapper.text()).toContain("这是逐步显示的最终答案。")
+    expect(saveConversation).toHaveBeenLastCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        id: "long-chat",
+        context_summary: "长期目标：完成学习计划。下一步：最后整理进 20260822.md。",
+      }),
+    ]))
+  })
+
+  it("shows a note write for explicit confirmation before the task continues", async () => {
+    mockReadyHarness()
+    let completeStream
+    vi.spyOn(api, "streamAITurn").mockImplementation(async (_id, onEvent) => {
+      onEvent({ event: "approval.required", data: { status: "waiting_approval", approval: { id: "approval-1", tool: "update_note", path: "daily/20260822.md", original_content: "旧内容", content: "新内容" } } })
+      await new Promise((resolve) => { completeStream = () => { onEvent({ event: "turn.completed", data: { status: "completed" } }); resolve() } })
+    })
+    vi.spyOn(api, "getAITurn").mockResolvedValue({ id: "turn-test", status: "completed", answer: "已按确认更新笔记。", model: "deepseek-v4-flash", sources: [], audit: [{ tool: "update_note", outcome: "succeeded" }] })
+    const approval = vi.spyOn(api, "resolveAITurnApproval").mockImplementation(async () => {
+      completeStream()
+      return { id: "turn-test", status: "running" }
+    })
+
+    const { wrapper } = await mountAIPage()
+    await wrapper.get("textarea").setValue("把总结写入今天的笔记")
+    await wrapper.get("form").trigger("submit")
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("daily/20260822.md")
+    expect(wrapper.text()).toContain("拟写入内容")
+    await wrapper.get(".ai-write-approval__actions button:last-child").trigger("click")
+    await flushPromises()
+
+    expect(approval).toHaveBeenCalledWith("turn-test", "approval-1", true)
+    expect(wrapper.text()).toContain("已按确认更新笔记。")
+    expect(wrapper.text()).toContain("本次操作 · 1")
+  })
+
+  it("reconnects to an unfinished task after reloading its conversation", async () => {
+    mockReadyHarness()
+    vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [{
+      id: "resumable-chat", title: "可恢复对话", item_ids: [], messages: [{ role: "user", content: "继续我的计划" }],
+    }] })
+    vi.spyOn(api, "listAITurns").mockResolvedValue({ turns: [{ id: "turn-resume", conversation_id: "resumable-chat", status: "running", answer: "正在整理" }] })
+    const stream = vi.spyOn(api, "streamAITurn").mockImplementation(async (_id, onEvent) => {
+      onEvent({ event: "answer.updated", data: { status: "running", answer: "已恢复并继续完成计划。" } })
+      onEvent({ event: "turn.completed", data: { status: "completed" } })
+    })
+    vi.spyOn(api, "getAITurn").mockResolvedValue({ id: "turn-resume", status: "completed", answer: "已恢复并继续完成计划。", model: "deepseek-v4-flash", sources: [] })
+
+    const { wrapper } = await mountAIPage()
+    await flushPromises()
+
+    expect(stream).toHaveBeenCalledWith("turn-resume", expect.any(Function), expect.any(Object))
+    expect(wrapper.text()).toContain("已恢复并继续完成计划。")
   })
 
   it("keeps the current conversation visible until the target conversation data is ready", async () => {

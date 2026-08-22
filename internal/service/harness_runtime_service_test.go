@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,8 @@ func TestHarnessSessionIDKeepsOneConversationSeparate(t *testing.T) {
 func TestHarnessPromptKeepsClientContinuityAfterSessionCompaction(t *testing.T) {
 	prompt := harnessPrompt(models.AIChatRequest{
 		HarnessSessionID: "stored-session",
+		ContextSummary:   "长期目标：最后将聊天整理进 20260822.md。",
+		CompactContext:   true,
 		History: []models.AIChatMessage{
 			{Role: "user", Content: "我们先聊天，最后把内容整理进 20260822.md。"},
 			{Role: "assistant", Content: "好的，我会在最后整理。"},
@@ -42,12 +45,29 @@ func TestHarnessPromptKeepsClientContinuityAfterSessionCompaction(t *testing.T) 
 	for _, expected := range []string{
 		"Client-backed continuity record",
 		"Return only the final answer for the user.",
+		"Durable conversation memory from earlier turns.",
+		"长期目标：最后将聊天整理进 20260822.md。",
+		"machine-only <conversation-memory> block",
 		"我们先聊天，最后把内容整理进 20260822.md。",
 		"继续聊今天的学习计划。",
 		"Current user message:\n请记住最后要做什么？",
 	} {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("prompt is missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
+// TestHarnessPromptChatFirstDefersLibraryUse 验证聊天优先只抑制主动检索，不撤销用户明确要求时的资料库能力。
+func TestHarnessPromptChatFirstDefersLibraryUse(t *testing.T) {
+	prompt := harnessPrompt(models.AIChatRequest{ChatOnly: true}, "陪我聊聊今天的学习压力")
+	for _, expected := range []string{
+		"The user chose chat-first mode.",
+		"do not proactively search, read, create, or update the learning library",
+		"Library tools remain available only when the user explicitly asks",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("chat-first prompt is missing %q:\n%s", expected, prompt)
 		}
 	}
 }
@@ -94,6 +114,42 @@ func TestSanitizeHarnessAnswerRemovesHiddenReasoning(t *testing.T) {
 	}
 	if got := sanitizeHarnessAnswer("<think>尚未完成的思考"); got != "" {
 		t.Fatalf("expected unfinished reasoning to be hidden, got %q", got)
+	}
+}
+
+// TestSplitHarnessAnswerKeepsMachineMemoryOutOfVisibleText 验证滚动摘要只作为服务端长期记忆，不会进入用户答案。
+func TestSplitHarnessAnswerKeepsMachineMemoryOutOfVisibleText(t *testing.T) {
+	raw := "最终答案：先完成两道题。<conversation-memory>原始目标：最后整理进 20260822.md。\n下一步：继续聊天。</conversation-memory>"
+	answer, summary, memory := splitHarnessAnswer(raw)
+	if answer != "最终答案：先完成两道题。" {
+		t.Fatalf("unexpected visible answer: %q", answer)
+	}
+	if summary != "原始目标：最后整理进 20260822.md。\n下一步：继续聊天。" {
+		t.Fatalf("unexpected context summary: %q", summary)
+	}
+	if memory != nil {
+		t.Fatalf("legacy memory block should remain a summary, got %#v", memory)
+	}
+}
+
+func TestSplitHarnessAnswerReadsStructuredMemory(t *testing.T) {
+	raw := "最终答案：下次先完成错题复盘。<conversation-memory>{\"goal\":\"完成本周导数复习\",\"completed\":[\"整理导数错题\"],\"references\":[\"daily/20260822.md\"],\"next_step\":\"完成两道单调性题\"}</conversation-memory>"
+	answer, summary, memory := splitHarnessAnswer(raw)
+	if answer != "最终答案：下次先完成错题复盘。" || summary != "" {
+		t.Fatalf("unexpected parsed answer or legacy summary: answer=%q summary=%q", answer, summary)
+	}
+	if memory == nil || memory.Goal != "完成本周导数复习" || memory.NextStep != "完成两道单调性题" || len(memory.References) != 1 {
+		t.Fatalf("unexpected structured memory: %#v", memory)
+	}
+}
+
+// TestHarnessClientStreamsOnlyVisibleAnswer 验证 JSON-RPC 事件中的思考和内部记忆不会写入 SSE 答案。
+func TestHarnessClientStreamsOnlyVisibleAnswer(t *testing.T) {
+	updates := []string{}
+	client := &harnessRPCClient{onAnswer: func(answer string) { updates = append(updates, answer) }}
+	client.captureResult(json.RawMessage(`{"event":{"type":"message/created","message":{"role":"assistant","content":[{"type":"text","text":"<think>不展示</think>最终答案。<conversation-memory>内部摘要</conversation-memory>"}]}}}`))
+	if len(updates) != 1 || updates[0] != "最终答案。" {
+		t.Fatalf("unexpected streamed updates: %#v", updates)
 	}
 }
 

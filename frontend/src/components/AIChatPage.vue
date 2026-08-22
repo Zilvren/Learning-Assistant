@@ -33,10 +33,18 @@ const selectedFolderID = ref(readPositiveID(route.query.folder))
 const folderSelection = ref(selectedFolderID.value)
 const folderMenuOpen = ref(false)
 const scopeMenuOpen = ref(false)
+const chatOnly = ref(route.query.chat_only === "1")
 const selectedItemIDs = ref(readPositiveIDs(route.query.items))
 const selectedItems = ref([])
+const activeTurnID = ref("")
+const activeTurnStatus = ref("")
+const activeApproval = ref(null)
+const activeApprovalResolving = ref(false)
+let activeTurnStreamController = null
 
 const continueInstruction = "请从你上一条回答结束的位置直接继续。不要重复任何已经输出的内容，保持原有格式，并完成剩余内容。"
+const contextSummaryWarmupMessages = 120
+const contextSummaryIntervalMessages = 40
 const canSend = computed(() => Boolean(composer.value.trim()) && !sending.value && !conversationSwitching.value && configured.value === true && harnessReady.value === true && conversationReady.value)
 const selectedFolder = computed(() => folderOptions.value.find((folder) => folder.id === selectedFolderID.value) || null)
 const selectedFolderOption = computed(() => folderOptions.value.find((folder) => folder.id === readPositiveID(folderSelection.value)) || null)
@@ -47,6 +55,7 @@ const archivedConversations = computed(() => conversations.value.filter((convers
 const visibleConversations = computed(() => historyView.value === "archived" ? archivedConversations.value : activeConversations.value)
 const activeConversation = computed(() => activeConversations.value.find((conversation) => conversation.id === activeConversationID.value) || null)
 const conversationOperationPending = computed(() => Boolean(conversationOperationID.value))
+const waitingForWriteApproval = computed(() => Boolean(activeApproval.value?.id) && activeTurnStatus.value === "waiting_approval")
 const historyMenuConversation = computed(() => conversations.value.find((conversation) => conversation.id === historyMenuID.value) || null)
 const historyMenuStyle = computed(() => ({
   top: `${historyMenuPosition.value.top}px`,
@@ -60,6 +69,7 @@ const conversationRows = computed(() => visibleConversations.value.map((conversa
   loading: conversation.id === pendingConversationID.value || conversation.id === conversationOperationID.value,
 })))
 const scopeSummary = computed(() => {
+  if (chatOnly.value) return "纯聊天 · 不主动使用资料库"
   const parts = []
   if (selectedFolder.value) parts.push(`路径：${selectedFolder.value.path}`)
   if (selectedItems.value.length) parts.push(`已转发 ${selectedItems.value.length} 项资料`)
@@ -139,6 +149,16 @@ function conversationTitle(sourceMessages, fallback = "新对话") {
   return Array.from(title).slice(0, 48).join("") || fallback
 }
 
+function normalizeContextMemory(memory) {
+  if (!memory || typeof memory !== "object") return null
+  const list = (value) => Array.isArray(value) ? value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 16) : []
+  const normalized = {
+    goal: String(memory.goal || "").trim(), completed: list(memory.completed), decisions: list(memory.decisions),
+    references: list(memory.references), blockers: list(memory.blockers), next_step: String(memory.next_step || "").trim(),
+  }
+  return normalized.goal || normalized.next_step || normalized.completed.length || normalized.decisions.length || normalized.references.length || normalized.blockers.length ? normalized : null
+}
+
 // normalizeConversation 在当前界面组件中完成交互或数据处理。
 function normalizeConversation(conversation) {
   const id = String(conversation?.id || "")
@@ -152,6 +172,7 @@ function normalizeConversation(conversation) {
       scope: String(message.scope || ""),
       model: String(message.model || ""),
       sources: Array.isArray(message.sources) ? message.sources : [],
+      audit: Array.isArray(message.audit) ? message.audit : [],
       incomplete: Boolean(message.incomplete),
     }))
   return {
@@ -159,7 +180,10 @@ function normalizeConversation(conversation) {
     title: String(conversation.title || conversationTitle(restoredMessages)),
     folder_id: readPositiveID(conversation.folder_id),
     item_ids: readPositiveIDs((Array.isArray(conversation.item_ids) ? conversation.item_ids : []).join(",")),
+    chat_only: Boolean(conversation.chat_only),
     messages: restoredMessages,
+    context_summary: String(conversation.context_summary || "").trim(),
+    context_memory: normalizeContextMemory(conversation.context_memory),
     harness_session_id: /^[A-Za-z0-9_-]{1,80}$/.test(String(conversation.harness_session_id || "")) ? String(conversation.harness_session_id) : "",
     // Go 的 archived_at 是 *time.Time；空字符串无法反序列化，应以 null 表示未归档。
     archived_at: conversation.archived_at ? String(conversation.archived_at) : null,
@@ -173,7 +197,10 @@ function createConversation() {
     title: "新对话",
     folder_id: selectedFolderID.value,
     item_ids: [...selectedItemIDs.value],
+    chat_only: chatOnly.value,
     messages: [],
+    context_summary: "",
+    context_memory: null,
     harness_session_id: "",
     archived_at: null,
   }
@@ -190,6 +217,8 @@ async function syncConversationQuery() {
   const query = { ...route.query, conversation: activeConversationID.value }
   delete query.folder
   delete query.items
+  delete query.chat_only
+  if (chatOnly.value) query.chat_only = "1"
   await router.replace({ name: "ai", query })
 }
 
@@ -199,13 +228,15 @@ async function activateConversation(conversation, updateURL = true) {
   conversationSwitching.value = true
   pendingConversationID.value = conversation.id
   try {
-    const folderID = readPositiveID(conversation.folder_id)
-    const requestedItemIDs = readPositiveIDs((conversation.item_ids || []).join(","))
+    const conversationChatOnly = Boolean(conversation.chat_only)
+    const folderID = conversationChatOnly ? null : readPositiveID(conversation.folder_id)
+    const requestedItemIDs = conversationChatOnly ? [] : readPositiveIDs((conversation.item_ids || []).join(","))
     const resolvedItems = await resolveSelectedItems(requestedItemIDs)
     activeConversationID.value = conversation.id
     messages.value = restoreMessages(conversation)
     selectedFolderID.value = folderID
     folderSelection.value = folderID
+    chatOnly.value = conversationChatOnly
     selectedItemIDs.value = resolvedItems.ids
     selectedItems.value = resolvedItems.items
     if (resolvedItems.ids.length !== requestedItemIDs.length) toast.warning("已移除不存在或已删除的转发资料")
@@ -234,6 +265,7 @@ async function resetConversation() {
     return false
   }
   composer.value = ""
+  chatOnly.value = false
   selectedFolderID.value = null
   folderSelection.value = null
   selectedItemIDs.value = []
@@ -421,6 +453,7 @@ async function loadSelectedItems() {
 
 // applyFolderScope 在当前界面组件中完成交互或数据处理。
 async function applyFolderScope() {
+  chatOnly.value = false
   selectedFolderID.value = readPositiveID(folderSelection.value)
   folderMenuOpen.value = false
   scopeMenuOpen.value = false
@@ -439,6 +472,7 @@ async function removeSelectedItem(id) {
 
 // clearScopedContext 在当前界面组件中完成交互或数据处理。
 async function clearScopedContext() {
+  chatOnly.value = false
   selectedFolderID.value = null
   folderSelection.value = null
   selectedItemIDs.value = []
@@ -446,6 +480,27 @@ async function clearScopedContext() {
   await saveConversation()
   await syncConversationQuery()
   toast.info("已恢复为整个资料库")
+}
+
+// chooseChatFirstScope 切换为默认不主动检索资料的聊天模式；用户明确提出资料需求时仍可调用资料库工具。
+async function chooseChatFirstScope() {
+  chatOnly.value = true
+  selectedFolderID.value = null
+  folderSelection.value = null
+  selectedItemIDs.value = []
+  selectedItems.value = []
+  folderMenuOpen.value = false
+  scopeMenuOpen.value = false
+  await saveConversation()
+  await syncConversationQuery()
+  toast.success("已切换为纯聊天；需要时仍可让我查资料")
+}
+
+// chooseLibraryScopeMode 恢复默认资料库模式，同时保留用户接下来选择整库或具体路径的空间。
+async function chooseLibraryScopeMode() {
+  chatOnly.value = false
+  await saveConversation()
+  await syncConversationQuery()
 }
 
 // historyForRequest 在当前界面组件中完成交互或数据处理。
@@ -465,6 +520,7 @@ function persistableMessages() {
       scope: message.scope || "",
       model: message.model || "",
       sources: message.sources || [],
+      audit: message.audit || [],
       incomplete: Boolean(message.incomplete),
     }))
 }
@@ -479,6 +535,7 @@ function updateActiveConversation(promote = false) {
     title: conversationTitle(messages.value, current.title),
     folder_id: selectedFolderID.value,
     item_ids: [...selectedItemIDs.value],
+    chat_only: chatOnly.value,
     messages: persistableMessages(),
   }
   if (promote && currentIndex > 0) {
@@ -493,9 +550,11 @@ function updateActiveConversation(promote = false) {
 // saveConversation 在当前界面组件中完成交互或数据处理。
 async function saveConversation(promote = false, requiredConversationID = activeConversationID.value) {
   if (!updateActiveConversation(promote)) return false
+	const previous = conversations.value
   try {
     const result = await api.saveAIConversation(conversations.value)
     if (!applySavedConversations(result) || !conversations.value.some((conversation) => conversation.id === requiredConversationID)) {
+		conversations.value = previous
       throw new Error("服务端未确认保存该对话")
     }
     return true
@@ -511,14 +570,15 @@ async function loadConversation() {
     const result = await api.getAIConversation()
     conversations.value = (result.conversations || []).map(normalizeConversation).filter(Boolean)
     const requestedID = String(route.query.conversation || "")
-    const hasIncomingScope = selectedFolderID.value !== null || selectedItemIDs.value.length > 0
+    const hasIncomingScope = chatOnly.value || selectedFolderID.value !== null || selectedItemIDs.value.length > 0
     const initial = activeConversations.value.find((conversation) => conversation.id === requestedID) || (hasIncomingScope ? null : activeConversations.value[0])
     if (initial) await activateConversation(initial, requestedID !== initial.id)
-  } catch (error) {
-    toast.warning(error.message || "无法恢复已保存的对话")
-  } finally {
-    conversationReady.value = true
-  }
+	} catch (error) {
+		toast.warning(error.message || "无法恢复已保存的对话")
+	} finally {
+		conversationReady.value = true
+		void resumeLatestActiveTurn()
+	}
 }
 
 // ensureActiveConversation 在当前界面组件中完成交互或数据处理。
@@ -536,27 +596,159 @@ async function ensureActiveConversation() {
   return true
 }
 
-// chatRequest 在当前界面组件中完成交互或数据处理。
+// shouldCompactContext 控制自动滚动摘要频率：长对话首次达到阈值后每 40 条消息更新一次。
+function shouldCompactContext(history) {
+  return history.length >= contextSummaryWarmupMessages && history.length % contextSummaryIntervalMessages === 0
+}
+
+// chatRequest 将应用级长期摘要与本轮上下文一并交给 Harness；摘要到达阈值时请求生成下一版。
 function chatRequest(message, history) {
+  const current = activeConversation.value
   return {
     message,
     history,
     folder_id: selectedFolderID.value,
     item_ids: selectedItemIDs.value,
+    chat_only: chatOnly.value,
     conversation_id: activeConversationID.value,
-    harness_session_id: activeConversation.value?.harness_session_id || "",
+    harness_session_id: current?.harness_session_id || "",
+    context_summary: current?.context_summary || "",
+    context_memory: normalizeContextMemory(current?.context_memory),
+    compact_context: shouldCompactContext(history),
   }
 }
 
 // applyHarnessResult 在当前界面组件中完成交互或数据处理。
 function applyHarnessResult(result) {
   const sessionID = String(result?.harness_session_id || "")
-  if (!/^[A-Za-z0-9_-]{1,80}$/.test(sessionID)) return
+  const contextSummary = String(result?.context_summary || "").trim()
+  const contextMemory = normalizeContextMemory(result?.context_memory)
+  const validSessionID = /^[A-Za-z0-9_-]{1,80}$/.test(sessionID)
+  if (!validSessionID && !contextSummary && !contextMemory) return
   const index = conversations.value.findIndex((conversation) => conversation.id === activeConversationID.value)
-  if (index >= 0) conversations.value.splice(index, 1, { ...conversations.value[index], harness_session_id: sessionID })
+  if (index >= 0) {
+    const current = conversations.value[index]
+    conversations.value.splice(index, 1, {
+      ...current,
+      ...(validSessionID ? { harness_session_id: sessionID } : {}),
+      ...(contextSummary ? { context_summary: contextSummary } : {}),
+      ...(contextMemory ? { context_memory: contextMemory } : {}),
+    })
+  }
 }
 
-// send 在当前界面组件中完成交互或数据处理。
+// updateStreamingAnswer 用服务端推送的完整可见答案快照替换同一条消息，不会显示模型推理内容。
+function updateStreamingAnswer(id, answer) {
+	const index = messages.value.findIndex((message) => message.id === id)
+	if (index < 0) {
+		messages.value.push({ id, role: "assistant", content: String(answer || ""), streaming: true })
+  } else {
+    messages.value[index] = { ...messages.value[index], content: String(answer || ""), streaming: true }
+  }
+	scrollToLatest()
+}
+
+// applyTurnResult 将终态任务结果写回当前对话；任务事件中不夹带模型思考，完整终态会从受保护的任务资源读取。
+function applyTurnResult(result) {
+	applyHarnessResult(result)
+  activeTurnStatus.value = String(result?.status || "")
+  if (result?.approval?.status === "pending") activeApproval.value = result.approval
+  else activeApproval.value = null
+}
+
+function attachTurnAudit(assistantID, audit) {
+  const index = messages.value.findIndex((message) => message.id === assistantID)
+  if (index < 0 || !Array.isArray(audit)) return
+  messages.value[index] = { ...messages.value[index], audit }
+}
+
+// applyTurnEvent 将可重放事件映射为页面状态；它只反映答案、确认和审计，不呈现工具参数或隐藏推理。
+function applyTurnEvent(assistantID, payload) {
+  const event = String(payload?.event || "")
+  const data = payload?.data || {}
+  if (data.status) activeTurnStatus.value = String(data.status)
+  if (event === "answer.updated") updateStreamingAnswer(assistantID, data.answer)
+  if (event === "approval.required") activeApproval.value = data.approval || null
+  if (event === "approval.resolved") activeApproval.value = null
+  if (event === "tool.completed" && data.audit) {
+    const index = messages.value.findIndex((message) => message.id === assistantID)
+    if (index >= 0) attachTurnAudit(assistantID, [...(messages.value[index].audit || []), data.audit])
+  }
+}
+
+function applyCompletedTurn(assistantID, result) {
+  applyTurnResult(result)
+  const answer = String(result?.answer || "").trim()
+  if (!answer) return
+  const index = messages.value.findIndex((message) => message.id === assistantID)
+  const finalMessage = {
+    id: assistantID, role: "assistant", content: answer, model: result.model,
+    sources: result.sources || [], audit: result.audit || [], incomplete: Boolean(result.incomplete),
+  }
+  if (index >= 0) messages.value[index] = finalMessage
+  else messages.value.push(finalMessage)
+}
+
+// followAITurn 订阅后台任务并在网络中断后从持久化任务状态取回最终结果。关闭页面不会取消任务。
+async function followAITurn(turn, assistantID) {
+  activeTurnID.value = String(turn.id || "")
+  activeTurnStatus.value = String(turn.status || "queued")
+  activeApproval.value = turn.approval?.status === "pending" ? turn.approval : null
+  activeTurnStreamController?.abort()
+  activeTurnStreamController = new AbortController()
+  try {
+    await api.streamAITurn(activeTurnID.value, (payload) => applyTurnEvent(assistantID, payload), { signal: activeTurnStreamController.signal })
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      const latest = await api.getAITurn(activeTurnID.value).catch(() => null)
+      if (!latest || ["queued", "running", "waiting_approval"].includes(latest.status)) {
+        throw new Error("与 AI 任务的连接已中断；任务仍在后台进行，可刷新页面后继续接收。")
+      }
+      applyTurnResult(latest)
+    }
+  } finally {
+    if (activeTurnStreamController?.signal.aborted) return
+  }
+  const result = await api.getAITurn(activeTurnID.value)
+  applyTurnResult(result)
+  if (result.status === "completed") applyCompletedTurn(assistantID, result)
+  return result
+}
+
+async function resolveWriteApproval(approved) {
+  const approval = activeApproval.value
+  if (!approval?.id || !activeTurnID.value || activeApprovalResolving.value) return
+  activeApprovalResolving.value = true
+  try {
+    const turn = await api.resolveAITurnApproval(activeTurnID.value, approval.id, approved)
+    applyTurnResult(turn)
+    toast.info(approved ? "已确认写入，AI 正在继续完成回复" : "已拒绝写入，AI 会保留资料并继续回复")
+  } catch (error) {
+    toast.error(error.message || "处理写入确认失败")
+  } finally {
+    activeApprovalResolving.value = false
+  }
+}
+
+async function cancelCurrentTurn() {
+  if (!activeTurnID.value || !sending.value) return
+  try {
+    const turn = await api.cancelAITurn(activeTurnID.value)
+    applyTurnResult(turn)
+    toast.info("已取消本次生成")
+  } catch (error) {
+    toast.error(error.message || "取消 AI 任务失败")
+  }
+}
+
+async function startTurn(message, history, assistantID) {
+  const turn = await api.startAITurn(chatRequest(message, history))
+  const result = await followAITurn(turn, assistantID)
+  if (result?.status === "failed") throw new Error(result.error || "AI 暂时无法回答，请稍后重试。")
+  return result
+}
+
+// send 为用户消息先建立持久化对话，再启动可恢复任务；刷新或网络断开不会导致正在执行的 Agent 被取消。
 async function send() {
   const content = composer.value.trim()
   if (!content || sending.value) return
@@ -565,46 +757,70 @@ async function send() {
   if (harnessReady.value !== true) return toast.warning(harnessReason.value || "Harness 运行环境尚未就绪")
   if (!(await ensureActiveConversation())) return
   const history = historyForRequest()
-  messages.value.push({ id: `user-${Date.now()}`, role: "user", content, scope: hasScopedContext.value ? scopeSummary.value : "" })
+  messages.value.push({ id: `user-${Date.now()}`, role: "user", content, scope: chatOnly.value || hasScopedContext.value ? scopeSummary.value : "" })
   composer.value = ""
+  await saveConversation(true)
   sending.value = true
   scrollToLatest()
-  let shouldSaveConversation = true
+  const assistantID = `assistant-${Date.now()}`
   try {
-    const result = await api.aiChat(chatRequest(content, history))
-    applyHarnessResult(result)
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
+    await startTurn(content, history, assistantID)
   } catch (error) {
     const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
     if (needsSetup) configured.value = false
+    messages.value = messages.value.filter((message) => message.id !== assistantID)
     messages.value.push({ id: `error-${Date.now()}`, role: "error", content: error.message || "AI 暂时无法回答，请稍后重试。", setup: needsSetup })
   } finally {
     sending.value = false
-    if (shouldSaveConversation) await saveConversation(true)
+    activeTurnID.value = ""
+    activeTurnStatus.value = ""
+    activeApproval.value = null
+    await saveConversation(true)
     scrollToLatest()
   }
 }
 
-// continueGeneration 在当前界面组件中完成交互或数据处理。
+// continueGeneration 使用同一任务模型继续一条被长度上限截断的回答。
 async function continueGeneration(message) {
   if (!message?.incomplete || sending.value || configured.value !== true) return
   const history = historyForRequest()
   sending.value = true
-  scrollToLatest()
+  const assistantID = `assistant-${Date.now()}`
   try {
-    const result = await api.aiChat(chatRequest(continueInstruction, history))
-    applyHarnessResult(result)
-    const messageIndex = messages.value.findIndex((item) => item.id === message.id)
-    if (messageIndex >= 0) messages.value[messageIndex] = { ...messages.value[messageIndex], incomplete: false }
-    messages.value.push({ id: `assistant-${Date.now()}`, role: "assistant", content: result.answer, model: result.model, sources: result.sources || [], incomplete: Boolean(result.incomplete) })
-    await saveConversation(true)
+    await startTurn(continueInstruction, history, assistantID)
+    const index = messages.value.findIndex((item) => item.id === message.id)
+    if (index >= 0) messages.value[index] = { ...messages.value[index], incomplete: false }
   } catch (error) {
-    const needsSetup = error?.detail?.code === "deepseek_not_configured" || error?.code === "deepseek_not_configured"
-    if (needsSetup) configured.value = false
     toast.error(error.message || "继续生成失败，请重试")
   } finally {
     sending.value = false
+    activeTurnID.value = ""
+    activeTurnStatus.value = ""
+    activeApproval.value = null
+    await saveConversation(true)
     scrollToLatest()
+  }
+}
+
+async function resumeLatestActiveTurn() {
+  if (!activeConversationID.value || sending.value) return
+  const result = await api.listAITurns(activeConversationID.value).catch(() => null)
+  const turns = Array.isArray(result?.turns) ? result.turns : []
+  const turn = [...turns].reverse().find((item) => ["queued", "running", "waiting_approval"].includes(item.status))
+  if (!turn) return
+  const assistantID = `assistant-${turn.id}`
+  if (turn.answer) updateStreamingAnswer(assistantID, turn.answer)
+  sending.value = true
+  try {
+    await followAITurn(turn, assistantID)
+  } catch (error) {
+    toast.warning(error.message || "无法恢复 AI 任务")
+  } finally {
+    sending.value = false
+    activeTurnID.value = ""
+    activeTurnStatus.value = ""
+    activeApproval.value = null
+    await saveConversation(true)
   }
 }
 
@@ -652,8 +868,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener("pointerdown", closeFolderMenu)
-  document.removeEventListener("keydown", closeFolderMenuOnEscape)
+	document.removeEventListener("pointerdown", closeFolderMenu)
+	document.removeEventListener("keydown", closeFolderMenuOnEscape)
+	activeTurnStreamController?.abort()
 })
 
 watch(() => String(route.query.conversation || ""), async (nextID) => {
@@ -661,6 +878,7 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
   const conversation = activeConversations.value.find((item) => item.id === nextID)
   if (conversation) await activateConversation(conversation, false)
 })
+
 </script>
 
 <template>
@@ -713,29 +931,38 @@ watch(() => String(route.query.conversation || ""), async (nextID) => {
               <p v-else>{{ message.content }}</p>
               <small v-if="message.scope" class="ai-message__scope">{{ message.scope }}</small>
               <div v-if="message.sources?.length" class="ai-message__sources"><span>本次参考</span><button v-for="source in message.sources" :key="`${source.source_type}-${source.id}`" type="button" @click="openSource(source)">{{ source.source_type === 'error' ? '错题' : '资料' }} · {{ source.title }}</button></div>
+              <details v-if="message.audit?.length" class="ai-message__audit"><summary>本次操作 · {{ message.audit.length }}</summary><ul><li v-for="(audit, index) in message.audit" :key="`${audit.tool}-${audit.created_at || index}`"><span>{{ audit.tool }}</span><small>{{ audit.outcome === 'succeeded' ? '完成' : audit.outcome === 'rejected' ? '已拒绝' : audit.outcome === 'cancelled' ? '已取消' : '未完成' }}</small></li></ul></details>
               <div v-if="message.incomplete" class="ai-message__continuation"><span>回答达到长度上限，可能尚未完成。</span><button type="button" :disabled="sending || configured !== true" @click="continueGeneration(message)">继续生成</button></div>
               <button v-if="message.setup" type="button" class="ai-message__setup" @click="openSettings">去配置 DeepSeek</button>
               <small v-if="message.model">{{ message.model }}</small>
             </div>
           </article>
-          <article v-if="sending" class="ai-message ai-message--assistant"><div class="ai-message__avatar"><Bot :size="16" /></div><div class="ai-message__body ai-message__thinking"><LoaderCircle :size="17" />正在阅读资料库并组织建议…</div></article>
+          <article v-if="waitingForWriteApproval" class="ai-message ai-message--assistant ai-message--approval"><div class="ai-message__avatar"><FileText :size="16" /></div><div class="ai-message__body"><span class="ai-message__label">需要你的确认</span><p>AI 准备{{ activeApproval.tool === 'create_note' ? '创建' : '更新' }}资料：<strong>{{ activeApproval.path }}</strong></p><div class="ai-write-approval__content"><section v-if="activeApproval.original_content"><small>当前内容</small><pre>{{ activeApproval.original_content }}</pre></section><section><small>拟写入内容</small><pre>{{ activeApproval.content }}</pre></section></div><div class="ai-write-approval__actions"><button type="button" :disabled="activeApprovalResolving" @click="resolveWriteApproval(false)">拒绝</button><button type="button" :disabled="activeApprovalResolving" @click="resolveWriteApproval(true)">{{ activeApprovalResolving ? '处理中…' : '确认写入' }}</button></div></div></article>
+          <article v-else-if="sending" class="ai-message ai-message--assistant"><div class="ai-message__avatar"><Bot :size="16" /></div><div class="ai-message__body ai-message__thinking"><LoaderCircle :size="17" />正在准备最终答案…</div></article>
         </div>
 
         <form class="ai-composer" @submit.prevent="send">
           <div class="ai-composer__entry">
             <div class="ai-scope-popover">
-              <button type="button" class="ai-composer__scope-button" aria-label="选择 AI 资料范围" :aria-expanded="scopeMenuOpen" :class="{ 'is-active': hasScopedContext }" @click="scopeMenuOpen = !scopeMenuOpen"><Folder :size="19" /><i v-if="hasScopedContext"></i></button>
+              <button type="button" class="ai-composer__scope-button" aria-label="选择 AI 资料范围" :aria-expanded="scopeMenuOpen" :class="{ 'is-active': hasScopedContext || chatOnly }" @click="scopeMenuOpen = !scopeMenuOpen"><Folder :size="19" /><i v-if="hasScopedContext || chatOnly"></i></button>
               <section v-if="scopeMenuOpen" class="ai-scope-popover__card" aria-label="AI 资料范围">
-                <header><strong>资料范围</strong><button v-if="hasScopedContext" type="button" aria-label="清除资料范围" @click="clearScopedContext"><X :size="14" /></button></header>
-                <div class="ai-path-combobox"><button type="button" class="ai-path-combobox__trigger" aria-label="资料路径" aria-haspopup="listbox" :aria-expanded="folderMenuOpen" :disabled="folderOptionsLoading" @click="folderMenuOpen = !folderMenuOpen"><Folder :size="14" /><span>{{ selectedFolderLabel }}</span><ChevronDown :size="15" :class="{ 'is-open': folderMenuOpen }" /></button><div v-if="folderMenuOpen" class="ai-path-combobox__menu" role="listbox" aria-label="资料路径"><button type="button" role="option" :aria-selected="folderSelection === null" @click="chooseFolder(null)"><span>整个资料库</span><small>不限定路径</small></button><button v-for="folder in folderOptions" :key="folder.id" type="button" role="option" :aria-selected="readPositiveID(folderSelection) === folder.id" @click="chooseFolder(folder.id)"><span>{{ folder.path }}</span></button></div></div>
-                <footer><small>仅使用可读文本</small><button type="button" class="ai-scope-popover__apply" :disabled="folderOptionsLoading" @click="applyFolderScope">完成</button></footer>
-                <div v-if="selectedItems.length" class="ai-context-picker__items"><span>已转发资料</span><button v-for="item in selectedItems" :key="item.id" type="button" @click="removeSelectedItem(item.id)"><FileText :size="14" />{{ item.name }}<X :size="13" /></button></div>
+                <header><strong>资料范围</strong><button v-if="hasScopedContext || chatOnly" type="button" aria-label="清除资料范围" @click="clearScopedContext"><X :size="14" /></button></header>
+                <div class="ai-scope-mode" role="radiogroup" aria-label="资料使用方式">
+                  <button type="button" role="radio" aria-label="使用纯聊天" :aria-checked="chatOnly" :class="{ 'is-selected': chatOnly }" @click="chooseChatFirstScope"><MessageSquare :size="14" /><span>纯聊天<small>默认不主动查资料</small></span></button>
+                  <button type="button" role="radio" aria-label="使用资料库" :aria-checked="!chatOnly" :class="{ 'is-selected': !chatOnly }" @click="chooseLibraryScopeMode"><Folder :size="14" /><span>使用资料库<small>可选择整个资料库或路径</small></span></button>
+                </div>
+                <template v-if="!chatOnly">
+                  <div class="ai-path-combobox"><button type="button" class="ai-path-combobox__trigger" aria-label="资料路径" aria-haspopup="listbox" :aria-expanded="folderMenuOpen" :disabled="folderOptionsLoading" @click="folderMenuOpen = !folderMenuOpen"><Folder :size="14" /><span>{{ selectedFolderLabel }}</span><ChevronDown :size="15" :class="{ 'is-open': folderMenuOpen }" /></button><div v-if="folderMenuOpen" class="ai-path-combobox__menu" role="listbox" aria-label="资料路径"><button type="button" role="option" :aria-selected="folderSelection === null" @click="chooseFolder(null)"><span>整个资料库</span><small>不限定路径</small></button><button v-for="folder in folderOptions" :key="folder.id" type="button" role="option" :aria-selected="readPositiveID(folderSelection) === folder.id" @click="chooseFolder(folder.id)"><span>{{ folder.path }}</span></button></div></div>
+                  <footer><small>仅使用可读文本</small><button type="button" class="ai-scope-popover__apply" :disabled="folderOptionsLoading" @click="applyFolderScope">完成</button></footer>
+                  <div v-if="selectedItems.length" class="ai-context-picker__items"><span>已转发资料</span><button v-for="item in selectedItems" :key="item.id" type="button" @click="removeSelectedItem(item.id)"><FileText :size="14" />{{ item.name }}<X :size="13" /></button></div>
+                </template>
               </section>
             </div>
             <textarea v-model="composer" rows="1" maxlength="2000" placeholder="输入你的问题…" :disabled="sending || conversationSwitching || configured !== true || harnessReady !== true" @keydown="keydown" />
-            <button type="submit" class="ai-composer__send" :disabled="!canSend" :aria-label="sending ? '正在发送' : '发送消息'"><LoaderCircle v-if="sending" :size="18" /><SendHorizontal v-else :size="18" /></button>
+            <button v-if="sending" type="button" class="ai-composer__send ai-composer__cancel" aria-label="取消本次生成" title="取消本次生成" @click="cancelCurrentTurn"><X :size="18" /></button>
+            <button v-else type="submit" class="ai-composer__send" :disabled="!canSend" aria-label="发送消息"><SendHorizontal :size="18" /></button>
           </div>
-          <small class="ai-composer__context-status">Harness Agent · 可按资料范围检索、读取，并以版本保护创建或更新笔记</small>
+          <small class="ai-composer__context-status">{{ chatOnly ? '纯聊天 · 默认不主动查资料；你明确要求时仍可使用资料库' : 'Harness Agent · 可按资料范围检索、读取，并以版本保护创建或更新笔记' }}</small>
           <div v-if="configured === false" class="ai-composer__setup">尚未连接 DeepSeek <button type="button" @click="openSettings">去配置</button></div>
           <div v-else-if="harnessReady === false" class="ai-composer__setup">Harness 未就绪：{{ harnessReason || '请检查本地运行环境' }}</div>
         </form>

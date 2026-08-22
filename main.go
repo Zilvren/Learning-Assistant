@@ -210,7 +210,14 @@ func registerRoutes(r *gin.Engine, apps ...*service.App) {
 
 		// AI 学习助手：仅使用受限的 DeepSeek Harness Agent；Key 与工具令牌都留在服务端。
 		api.GET("/ai/harness", handlers.HarnessStatus)
+		api.POST("/ai/turns", middleware.RateLimit(20, time.Minute), handlers.StartAITurn)
+		api.GET("/ai/turns", handlers.ListAITurns)
+		api.GET("/ai/turns/:id", handlers.GetAITurn)
+		api.GET("/ai/turns/:id/events", handlers.StreamAITurn)
+		api.POST("/ai/turns/:id/cancel", handlers.CancelAITurn)
+		api.POST("/ai/turns/:id/approvals/:approvalID", handlers.ResolveAITurnWriteApproval)
 		api.POST("/ai/chat", middleware.RateLimit(20, time.Minute), handlers.AIChat)
+		api.POST("/ai/chat/stream", middleware.RateLimit(20, time.Minute), handlers.AIChatStream)
 		api.GET("/ai/conversation", handlers.GetAIConversation)
 		api.PUT("/ai/conversation", handlers.SaveAIConversation)
 		api.DELETE("/ai/conversation", handlers.ClearAIConversation)

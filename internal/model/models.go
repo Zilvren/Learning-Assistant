@@ -120,6 +120,7 @@ type Config struct {
 	DeepSeekModel   string                  `json:"deepseek_model"`
 	AIChatContext   []AIConversationMessage `json:"ai_chat_context,omitempty"`
 	AIConversations []AIConversation        `json:"ai_conversations,omitempty"`
+	AITurns         []AITurn                `json:"ai_turns,omitempty"`
 	Username        string                  `json:"username"` // 用户名
 	DailyGoal       DailyGoalSettings       `json:"daily_goal"`
 }
@@ -259,7 +260,18 @@ type AIConversationMessage struct {
 	Scope      string         `json:"scope,omitempty"`
 	Model      string         `json:"model,omitempty"`
 	Sources    []AIChatSource `json:"sources,omitempty"`
+	Audit      []AIToolAudit  `json:"audit,omitempty"`
 	Incomplete bool           `json:"incomplete,omitempty"`
+}
+
+// AIConversationMemory 是与聊天正文分离的长期工作记忆。它只保存可核对的目标、决定和未完成事项，不包含模型推理。
+type AIConversationMemory struct {
+	Goal       string   `json:"goal,omitempty"`
+	Completed  []string `json:"completed,omitempty"`
+	Decisions  []string `json:"decisions,omitempty"`
+	References []string `json:"references,omitempty"`
+	Blockers   []string `json:"blockers,omitempty"`
+	NextStep   string   `json:"next_step,omitempty"`
 }
 
 // AIConversation 是一个范围独立且可持久化的 AI 对话。每条记录拥有自己的消息和资料范围，因此切换对话不会将前一对话的上下文泄露到下一次请求。
@@ -268,18 +280,91 @@ type AIConversation struct {
 	Title            string                  `json:"title"`
 	FolderID         *int64                  `json:"folder_id,omitempty"`
 	ItemIDs          []int64                 `json:"item_ids,omitempty"`
+	ChatOnly         bool                    `json:"chat_only,omitempty"`
 	Messages         []AIConversationMessage `json:"messages"`
+	ContextSummary   string                  `json:"context_summary,omitempty"`
+	ContextMemory    *AIConversationMemory   `json:"context_memory,omitempty"`
 	HarnessSessionID string                  `json:"harness_session_id,omitempty"`
 	ArchivedAt       *time.Time              `json:"archived_at,omitempty"`
 }
 
 type AIChatRequest struct {
-	Message          string          `json:"message"`
-	History          []AIChatMessage `json:"history"`
-	FolderID         *int64          `json:"folder_id,omitempty"`
-	ItemIDs          []int64         `json:"item_ids,omitempty"`
-	ConversationID   string          `json:"conversation_id,omitempty"`
-	HarnessSessionID string          `json:"harness_session_id,omitempty"`
+	Message          string                `json:"message"`
+	History          []AIChatMessage       `json:"history"`
+	FolderID         *int64                `json:"folder_id,omitempty"`
+	ItemIDs          []int64               `json:"item_ids,omitempty"`
+	ChatOnly         bool                  `json:"chat_only,omitempty"`
+	ConversationID   string                `json:"conversation_id,omitempty"`
+	HarnessSessionID string                `json:"harness_session_id,omitempty"`
+	ContextSummary   string                `json:"context_summary,omitempty"`
+	ContextMemory    *AIConversationMemory `json:"context_memory,omitempty"`
+	CompactContext   bool                  `json:"compact_context,omitempty"`
+	TurnID           string                `json:"-"`
+}
+
+// AITurnStatus 描述一个可恢复 AI 任务在应用侧的生命周期；不包含模型隐藏推理。
+type AITurnStatus string
+
+const (
+	AITurnQueued          AITurnStatus = "queued"
+	AITurnRunning         AITurnStatus = "running"
+	AITurnWaitingApproval AITurnStatus = "waiting_approval"
+	AITurnCompleted       AITurnStatus = "completed"
+	AITurnFailed          AITurnStatus = "failed"
+	AITurnCancelled       AITurnStatus = "cancelled"
+)
+
+// AIWriteApproval 是模型尝试产生副作用前交给用户确认的写入意图；正文仅保存于该用户的私有设置中。
+type AIWriteApproval struct {
+	ID              string     `json:"id"`
+	Tool            string     `json:"tool"`
+	Path            string     `json:"path"`
+	ItemID          int64      `json:"item_id,omitempty"`
+	BaseVersion     int        `json:"base_version,omitempty"`
+	OriginalContent string     `json:"original_content,omitempty"`
+	Content         string     `json:"content"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ResolvedAt      *time.Time `json:"resolved_at,omitempty"`
+}
+
+// AIToolAudit 记录工具的名称、结果和时间，不保存资料正文或模型推理。
+type AIToolAudit struct {
+	Tool      string    `json:"tool"`
+	Outcome   string    `json:"outcome"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// AITurnEvent 是浏览器可重放的进度事件。Answer 永远是服务端过滤后的用户可见答案快照。
+type AITurnEvent struct {
+	Sequence  int64            `json:"sequence"`
+	Type      string           `json:"type"`
+	Status    AITurnStatus     `json:"status,omitempty"`
+	Answer    string           `json:"answer,omitempty"`
+	Sources   []AIChatSource   `json:"sources,omitempty"`
+	Audit     *AIToolAudit     `json:"audit,omitempty"`
+	Approval  *AIWriteApproval `json:"approval,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	CreatedAt time.Time        `json:"created_at"`
+}
+
+// AITurn 持久化 AI 任务的用户可见状态、答案、引用与审计，支持浏览器重连后继续订阅。
+type AITurn struct {
+	ID               string                `json:"id"`
+	ConversationID   string                `json:"conversation_id"`
+	Status           AITurnStatus          `json:"status"`
+	Answer           string                `json:"answer,omitempty"`
+	Model            string                `json:"model,omitempty"`
+	Sources          []AIChatSource        `json:"sources,omitempty"`
+	ContextSummary   string                `json:"context_summary,omitempty"`
+	ContextMemory    *AIConversationMemory `json:"context_memory,omitempty"`
+	HarnessSessionID string                `json:"harness_session_id,omitempty"`
+	Error            string                `json:"error,omitempty"`
+	Approval         *AIWriteApproval      `json:"approval,omitempty"`
+	Audit            []AIToolAudit         `json:"audit,omitempty"`
+	Events           []AITurnEvent         `json:"events,omitempty"`
+	CreatedAt        time.Time             `json:"created_at"`
+	UpdatedAt        time.Time             `json:"updated_at"`
 }
 
 type AIChatSource struct {
@@ -290,11 +375,13 @@ type AIChatSource struct {
 }
 
 type AIChatResponse struct {
-	Answer           string         `json:"answer"`
-	Model            string         `json:"model"`
-	Sources          []AIChatSource `json:"sources"`
-	Incomplete       bool           `json:"incomplete"`
-	HarnessSessionID string         `json:"harness_session_id,omitempty"`
+	Answer           string                `json:"answer"`
+	Model            string                `json:"model"`
+	Sources          []AIChatSource        `json:"sources"`
+	Incomplete       bool                  `json:"incomplete"`
+	HarnessSessionID string                `json:"harness_session_id,omitempty"`
+	ContextSummary   string                `json:"context_summary,omitempty"`
+	ContextMemory    *AIConversationMemory `json:"context_memory,omitempty"`
 }
 
 // HarnessStatus 报告所需 Agent 运行时是否就绪；AI 功能没有备用的直接提供商路径。

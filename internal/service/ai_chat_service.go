@@ -46,6 +46,14 @@ func ChatWithStudyAI(ctx context.Context, request models.AIChatRequest) (models.
 	return chatWithHarnessStudyAI(ctx, request)
 }
 
+// AIAnswerStream 接收逐步增长的、已过滤推理内容的用户可见答案快照。
+type AIAnswerStream func(answer string)
+
+// ChatWithStudyAIStream 在不暴露模型思考过程的前提下，向调用方推送最终答案的可见部分。
+func ChatWithStudyAIStream(ctx context.Context, request models.AIChatRequest, onAnswer AIAnswerStream) (models.AIChatResponse, error) {
+	return chatWithHarnessStudyAIStream(ctx, request, onAnswer)
+}
+
 // newAILibraryScope 在业务层中执行当前流程或局部处理。
 func newAILibraryScope(request models.AIChatRequest) (aiLibraryScope, error) {
 	scope := aiLibraryScope{folderID: request.FolderID}

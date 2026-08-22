@@ -29,6 +29,7 @@ var (
 type harnessToolGrant struct {
 	userID  int64
 	scope   aiLibraryScope
+	turnID  string
 	expires time.Time
 	sources map[int64]models.AIChatSource
 }
@@ -63,7 +64,7 @@ func NewHarnessToolGrant(ctx context.Context, request models.AIChatRequest) (str
 			delete(harnessToolGrants.items, existing)
 		}
 	}
-	harnessToolGrants.items[token] = &harnessToolGrant{userID: userID, scope: scope, expires: time.Now().Add(harnessToolGrantLifetime), sources: make(map[int64]models.AIChatSource)}
+	harnessToolGrants.items[token] = &harnessToolGrant{userID: userID, scope: scope, turnID: strings.TrimSpace(request.TurnID), expires: time.Now().Add(harnessToolGrantLifetime), sources: make(map[int64]models.AIChatSource)}
 	harnessToolGrants.Unlock()
 	return token, nil
 }
@@ -122,20 +123,36 @@ func ExecuteHarnessTool(ctx context.Context, token, tool string, args map[string
 	if err != nil {
 		return nil, err
 	}
-	switch strings.TrimSpace(tool) {
+	tool = strings.TrimSpace(tool)
+	var result any
+	switch tool {
 	case "list_paths":
-		return harnessListPaths(ctx, grant.scope, args)
+		result, err = harnessListPaths(ctx, grant.scope, args)
 	case "search":
-		return harnessSearch(ctx, token, grant.scope, args)
+		result, err = harnessSearch(ctx, token, grant.scope, args)
 	case "read_note":
-		return harnessReadNote(ctx, token, grant.scope, args)
+		result, err = harnessReadNote(ctx, token, grant.scope, args)
 	case "create_note":
-		return harnessCreateNote(ctx, grant.scope, args)
+		result, err = harnessCreateNote(ctx, grant, args)
 	case "update_note":
-		return harnessUpdateNote(ctx, grant.scope, args)
+		result, err = harnessUpdateNote(ctx, grant, args)
 	default:
-		return nil, ErrHarnessToolUnavailable
+		err = ErrHarnessToolUnavailable
 	}
+	if grant.turnID != "" {
+		outcome := "succeeded"
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrAIWriteRejected):
+			outcome = "rejected"
+		case errors.Is(err, context.Canceled):
+			outcome = "cancelled"
+		default:
+			outcome = "failed"
+		}
+		RecordAITurnToolAudit(context.WithoutCancel(ctx), grant.turnID, tool, outcome)
+	}
+	return result, err
 }
 
 // harnessScopedItems 在业务层中执行当前流程或局部处理。
@@ -293,7 +310,8 @@ func harnessRecordSource(token string, item models.LibraryItem) {
 }
 
 // harnessCreateNote 在业务层中执行当前流程或局部处理。
-func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
+func harnessCreateNote(ctx context.Context, grant *harnessToolGrant, args map[string]any) (map[string]any, error) {
+	scope := grant.scope
 	targetPath := strings.TrimSpace(harnessStringArg(args, "path"))
 	content := harnessStringArg(args, "content")
 	if targetPath == "" {
@@ -316,6 +334,17 @@ func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	if target.item != nil {
 		return nil, fmt.Errorf("目标“%s”已存在；请先读取该笔记，再使用更新工具保存新版本", target.targetPath)
 	}
+	approved, err := RequestAITurnWriteApproval(ctx, grant.turnID, models.AIWriteApproval{
+		Tool:    "create_note",
+		Path:    target.targetPath,
+		Content: content,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !approved {
+		return nil, ErrAIWriteRejected
+	}
 	item, err := createHarnessLibraryNote(ctx, target.parentID, target.name, content)
 	if err != nil {
 		return nil, err
@@ -327,7 +356,8 @@ func harnessCreateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 }
 
 // harnessUpdateNote 在业务层中执行当前流程或局部处理。
-func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[string]any) (map[string]any, error) {
+func harnessUpdateNote(ctx context.Context, grant *harnessToolGrant, args map[string]any) (map[string]any, error) {
+	scope := grant.scope
 	itemID := int64(harnessBoundedInt(args, "item_id", 0, 1, int(^uint(0)>>1)))
 	baseVersion, validVersion := harnessRequiredPositiveInt(args, "base_version")
 	content := harnessStringArg(args, "content")
@@ -350,6 +380,27 @@ func harnessUpdateNote(ctx context.Context, scope aiLibraryScope, args map[strin
 	}
 	if target == nil || target.Kind != "note" || !aiEditableLibraryItem(*target) {
 		return nil, fmt.Errorf("笔记不在当前资料范围内或不可编辑")
+	}
+	originalContent, currentItem, err := ReadLibraryContent(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if currentItem.CurrentVersion != baseVersion {
+		return nil, fmt.Errorf("笔记已被更新，请重新读取最新版本后再保存")
+	}
+	approved, err := RequestAITurnWriteApproval(ctx, grant.turnID, models.AIWriteApproval{
+		Tool:            "update_note",
+		Path:            harnessLibraryPath(items, *target),
+		ItemID:          itemID,
+		BaseVersion:     baseVersion,
+		OriginalContent: string(originalContent),
+		Content:         content,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !approved {
+		return nil, ErrAIWriteRejected
 	}
 	item, err := updateHarnessLibraryNote(ctx, itemID, content, baseVersion)
 	if err != nil {

@@ -2,13 +2,35 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	models "study-tracker-go/internal/model"
 )
 
-import models "study-tracker-go/internal/model"
+// aiConfigMutationMu 串行化同一进程内 AI 对话、任务和审批对设置仓储的读改写，避免流式任务覆盖前端刚保存的对话。
+var aiConfigMutationMu sync.Mutex
+
+// mutateAIConfig 在持锁期间读取、修改并保存用户范围的 AI 设置。
+func mutateAIConfig(ctx context.Context, mutate func(*models.Config) error) (models.Config, error) {
+	aiConfigMutationMu.Lock()
+	defer aiConfigMutationMu.Unlock()
+	config, err := loadConfig(ctx)
+	if err != nil {
+		return models.Config{}, err
+	}
+	if err := mutate(&config); err != nil {
+		return models.Config{}, err
+	}
+	if err := saveConfig(ctx, config); err != nil {
+		return models.Config{}, err
+	}
+	return config, nil
+}
 
 const (
 	aiConversationMaxActive   = 24
@@ -57,13 +79,11 @@ func SaveAIConversation(ctx context.Context, conversations []models.AIConversati
 	if err != nil {
 		return nil, err
 	}
-	config, err := loadConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	config.AIConversations = normalized
-	config.AIChatContext = nil
-	if err := saveConfig(ctx, config); err != nil {
+	if _, err := mutateAIConfig(ctx, func(config *models.Config) error {
+		config.AIConversations = normalized
+		config.AIChatContext = nil
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return cloneAIConversations(normalized), nil
@@ -71,13 +91,13 @@ func SaveAIConversation(ctx context.Context, conversations []models.AIConversati
 
 // ClearAIConversation 在业务层中执行当前流程或局部处理。
 func ClearAIConversation(ctx context.Context) error {
-	config, err := loadConfig(ctx)
-	if err != nil {
-		return err
-	}
-	config.AIChatContext = nil
-	config.AIConversations = nil
-	return saveConfig(ctx, config)
+	_, err := mutateAIConfig(ctx, func(config *models.Config) error {
+		config.AIChatContext = nil
+		config.AIConversations = nil
+		config.AITurns = nil
+		return nil
+	})
+	return err
 }
 
 // ArchiveAIConversation 将指定活跃对话移入归档，并由服务端记录归档时间。
@@ -192,6 +212,11 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 		if folderID != nil && *folderID <= 0 {
 			folderID = nil
 		}
+		itemIDs := normalizeAIConversationItemIDs(conversation.ItemIDs)
+		if conversation.ChatOnly {
+			folderID = nil
+			itemIDs = nil
+		}
 		archivedAt := normalizeAIConversationArchivedAt(conversation.ArchivedAt)
 		if archivedAt == nil {
 			activeCount++
@@ -208,8 +233,11 @@ func normalizeAIConversations(conversations []models.AIConversation) ([]models.A
 			ID:               id,
 			Title:            aiConversationTitleWithFallback(conversation.Title, messages),
 			FolderID:         folderID,
-			ItemIDs:          normalizeAIConversationItemIDs(conversation.ItemIDs),
+			ItemIDs:          itemIDs,
+			ChatOnly:         conversation.ChatOnly,
 			Messages:         messages,
+			ContextSummary:   normalizeAIConversationSummary(conversation.ContextSummary),
+			ContextMemory:    normalizeAIConversationMemory(conversation.ContextMemory),
 			HarnessSessionID: normalizeAIHarnessSessionID(conversation.HarnessSessionID),
 			ArchivedAt:       archivedAt,
 		})
@@ -233,6 +261,60 @@ func normalizeAIHarnessSessionID(value string) string {
 		return ""
 	}
 	return value
+}
+
+// normalizeAIConversationSummary 保留经过模型压缩的长期记忆，并限制其大小避免它反过来挤占后续上下文。
+func normalizeAIConversationSummary(value string) string {
+	return boundedAIConversationText(value, aiCompactSummaryRunes)
+}
+
+// normalizeAIConversationMemory 将长期记忆限制为确定的字段和上限，避免它成为未经约束的第二份聊天记录。
+func normalizeAIConversationMemory(memory *models.AIConversationMemory) *models.AIConversationMemory {
+	if memory == nil {
+		return nil
+	}
+	normalized := &models.AIConversationMemory{
+		Goal:       boundedAIConversationText(memory.Goal, 1_600),
+		Completed:  normalizeAIConversationMemoryEntries(memory.Completed),
+		Decisions:  normalizeAIConversationMemoryEntries(memory.Decisions),
+		References: normalizeAIConversationMemoryEntries(memory.References),
+		Blockers:   normalizeAIConversationMemoryEntries(memory.Blockers),
+		NextStep:   boundedAIConversationText(memory.NextStep, 1_600),
+	}
+	if normalized.Goal == "" && normalized.NextStep == "" && len(normalized.Completed) == 0 && len(normalized.Decisions) == 0 && len(normalized.References) == 0 && len(normalized.Blockers) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeAIConversationMemoryEntries(values []string) []string {
+	result := make([]string, 0, min(len(values), 16))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = boundedAIConversationText(value, 600)
+		if value == "" || len(result) == 16 {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+// aiConversationMemoryJSON 提供给 Harness 的数据始终是规范化 JSON，令模型能区分其字段与普通提示词。
+func aiConversationMemoryJSON(memory *models.AIConversationMemory) string {
+	memory = normalizeAIConversationMemory(memory)
+	if memory == nil {
+		return ""
+	}
+	encoded, err := json.Marshal(memory)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 // validAIConversationID 在业务层中执行当前流程或局部处理。
@@ -295,12 +377,27 @@ func cloneAIConversations(conversations []models.AIConversation) []models.AIConv
 			Title:            conversation.Title,
 			FolderID:         conversation.FolderID,
 			ItemIDs:          append([]int64(nil), conversation.ItemIDs...),
+			ChatOnly:         conversation.ChatOnly,
 			Messages:         append([]models.AIConversationMessage(nil), conversation.Messages...),
+			ContextSummary:   conversation.ContextSummary,
+			ContextMemory:    cloneAIConversationMemory(conversation.ContextMemory),
 			HarnessSessionID: conversation.HarnessSessionID,
 			ArchivedAt:       normalizeAIConversationArchivedAt(conversation.ArchivedAt),
 		})
 	}
 	return result
+}
+
+func cloneAIConversationMemory(memory *models.AIConversationMemory) *models.AIConversationMemory {
+	if memory == nil {
+		return nil
+	}
+	clone := *memory
+	clone.Completed = append([]string(nil), memory.Completed...)
+	clone.Decisions = append([]string(nil), memory.Decisions...)
+	clone.References = append([]string(nil), memory.References...)
+	clone.Blockers = append([]string(nil), memory.Blockers...)
+	return &clone
 }
 
 // normalizeAIConversation 在业务层中执行当前流程或局部处理。
@@ -324,11 +421,26 @@ func normalizeAIConversation(messages []models.AIConversationMessage) ([]models.
 		} else {
 			normalized.Model = boundedAIConversationText(message.Model, aiConversationMaxModel)
 			normalized.Sources = normalizeAIConversationSources(message.Sources)
+			normalized.Audit = normalizeAIConversationAudit(message.Audit)
 			normalized.Incomplete = message.Incomplete
 		}
 		result = append(result, normalized)
 	}
 	return result, nil
+}
+
+// normalizeAIConversationAudit 保留简短、可理解的工具结果，不保存工具参数、资料正文或模型推理。
+func normalizeAIConversationAudit(audit []models.AIToolAudit) []models.AIToolAudit {
+	result := make([]models.AIToolAudit, 0, min(len(audit), 32))
+	for _, item := range audit {
+		tool := boundedAIConversationText(item.Tool, 80)
+		outcome := boundedAIConversationText(item.Outcome, 32)
+		if tool == "" || outcome == "" || len(result) == 32 {
+			continue
+		}
+		result = append(result, models.AIToolAudit{Tool: tool, Outcome: outcome, CreatedAt: item.CreatedAt.UTC()})
+	}
+	return result
 }
 
 // normalizeAIConversationSources 在业务层中执行当前流程或局部处理。
