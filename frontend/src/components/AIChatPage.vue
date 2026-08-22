@@ -155,7 +155,8 @@ function normalizeConversation(conversation) {
     item_ids: readPositiveIDs((Array.isArray(conversation.item_ids) ? conversation.item_ids : []).join(",")),
     messages: restoredMessages,
     harness_session_id: /^[A-Za-z0-9_-]{1,80}$/.test(String(conversation.harness_session_id || "")) ? String(conversation.harness_session_id) : "",
-    archived_at: conversation.archived_at ? String(conversation.archived_at) : "",
+    // Go 的 archived_at 是 *time.Time；空字符串无法反序列化，应以 null 表示未归档。
+    archived_at: conversation.archived_at ? String(conversation.archived_at) : null,
   }
 }
 
@@ -168,7 +169,7 @@ function createConversation() {
     item_ids: [...selectedItemIDs.value],
     messages: [],
     harness_session_id: "",
-    archived_at: "",
+    archived_at: null,
   }
 }
 

@@ -197,7 +197,7 @@ describe("Harness-only AI chat", () => {
     await flushPromises()
 
     expect(save).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ id: "contextual", folder_id: 4, item_ids: [7] }),
+      expect.objectContaining({ id: "contextual", folder_id: 4, item_ids: [7], archived_at: null }),
     ]))
     expect(archive).toHaveBeenCalledWith("contextual")
   })
