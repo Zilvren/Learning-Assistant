@@ -291,6 +291,28 @@ func aiHistoryTranscript(history []models.AIChatMessage) string {
 	return strings.Join(parts, "\n\n")
 }
 
+// harnessContinuityHistory 保留开场目标和最近消息，作为 Harness 持久会话压缩后的受控兜底。
+// 对话刚开始时的用户诉求通常定义了整段交流的最终产物；仅保留尾部会使模型在长对话后丢掉它。
+func harnessContinuityHistory(history []models.AIChatMessage, budget int) []models.AIChatMessage {
+	if budget <= 0 || len(history) == 0 {
+		return nil
+	}
+	if len(history) == 1 {
+		return aiHistoryWithinTokenBudget(history, budget)
+	}
+
+	opening := history[0]
+	openingCost := aiApproxTokens(opening.Content) + 8
+	if openingCost >= budget {
+		return []models.AIChatMessage{opening}
+	}
+	recent := aiHistoryWithinTokenBudget(history[1:], budget-openingCost)
+	result := make([]models.AIChatMessage, 0, len(recent)+1)
+	result = append(result, opening)
+	result = append(result, recent...)
+	return result
+}
+
 // aiHistoryLine 在业务层中执行当前流程或局部处理。
 func aiHistoryLine(item models.AIChatMessage) string {
 	role := "用户"

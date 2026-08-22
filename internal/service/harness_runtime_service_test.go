@@ -28,6 +28,43 @@ func TestHarnessSessionIDKeepsOneConversationSeparate(t *testing.T) {
 	}
 }
 
+// TestHarnessPromptKeepsClientContinuityAfterSessionCompaction 验证已有 Harness 会话也会携带客户端连续记录，
+// 防止提供商压缩旧上下文后让用户看到像“新对话”一样的回答。
+func TestHarnessPromptKeepsClientContinuityAfterSessionCompaction(t *testing.T) {
+	prompt := harnessPrompt(models.AIChatRequest{
+		HarnessSessionID: "stored-session",
+		History: []models.AIChatMessage{
+			{Role: "user", Content: "我们先聊天，最后把内容整理进 20260822.md。"},
+			{Role: "assistant", Content: "好的，我会在最后整理。"},
+			{Role: "user", Content: "继续聊今天的学习计划。"},
+		},
+	}, "请记住最后要做什么？")
+	for _, expected := range []string{
+		"Client-backed continuity record",
+		"Return only the final answer for the user.",
+		"我们先聊天，最后把内容整理进 20260822.md。",
+		"继续聊今天的学习计划。",
+		"Current user message:\n请记住最后要做什么？",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("prompt is missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
+// TestHarnessContinuityHistoryKeepsOpeningGoalAndRecentTurns 验证当记录超出预算时，仍同时保留开场目标和末尾对话。
+func TestHarnessContinuityHistoryKeepsOpeningGoalAndRecentTurns(t *testing.T) {
+	history := []models.AIChatMessage{
+		{Role: "user", Content: "开场目标"},
+		{Role: "assistant", Content: strings.Repeat("旧", 30)},
+		{Role: "user", Content: strings.Repeat("近", 30)},
+	}
+	continuity := harnessContinuityHistory(history, 44)
+	if len(continuity) != 2 || continuity[0].Content != "开场目标" || continuity[1].Content != strings.Repeat("近", 30) {
+		t.Fatalf("expected opening goal plus newest turn, got %#v", continuity)
+	}
+}
+
 // TestHarnessAssistantFragmentsReadDurableAssistantMessages 验证当前模块在相应场景下的行为与边界条件。
 func TestHarnessAssistantFragmentsReadDurableAssistantMessages(t *testing.T) {
 	value := map[string]any{
@@ -46,6 +83,17 @@ func TestHarnessAssistantFragmentsReadDurableAssistantMessages(t *testing.T) {
 	}
 	if got := mergeHarnessText("你好", "你好，世界"); got != "你好，世界" {
 		t.Fatalf("expected cumulative chunk to replace prior content, got %q", got)
+	}
+}
+
+// TestSanitizeHarnessAnswerRemovesHiddenReasoning 验证模型意外混入的思考标签不会展示给用户。
+func TestSanitizeHarnessAnswerRemovesHiddenReasoning(t *testing.T) {
+	raw := "<think>先分析资料和工具调用</think>\n\n最终答案：今天先复习导数。\n<analysis>不应展示</analysis>"
+	if got := sanitizeHarnessAnswer(raw); got != "最终答案：今天先复习导数。" {
+		t.Fatalf("unexpected visible answer: %q", got)
+	}
+	if got := sanitizeHarnessAnswer("<think>尚未完成的思考"); got != "" {
+		t.Fatalf("expected unfinished reasoning to be hidden, got %q", got)
 	}
 }
 
