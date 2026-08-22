@@ -180,6 +180,25 @@ describe("Harness-only AI chat", () => {
     expect(router.currentRoute.value.query.conversation).toBe("next")
   })
 
+  it("saves a newly created conversation with a null archive timestamp", async () => {
+    mockReadyHarness()
+    const save = vi.spyOn(api, "saveAIConversation").mockImplementation((conversations) => Promise.resolve({ conversations }))
+
+    const { wrapper } = await mountAIPage()
+    save.mockClear()
+
+    await wrapper.get('button[aria-label="新对话"]').trigger("click")
+    await flushPromises()
+
+    expect(save).toHaveBeenCalledTimes(1)
+    const savedConversations = save.mock.calls[0][0]
+    expect(savedConversations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ archived_at: null }),
+    ]))
+    expect(savedConversations.every((conversation) => conversation.archived_at === null)).toBe(true)
+    expect(wrapper.text()).not.toContain("对话上下文格式错误")
+  })
+
   it("archives a current conversation that has saved folder and item context", async () => {
     mockReadyHarness()
     vi.spyOn(api, "getAIConversation").mockResolvedValue({ conversations: [
